@@ -21,6 +21,7 @@ GUI 應用程式。
 | starship | 提示字元 |
 | mise | runtime 版本管理器 |
 | uv | Python 套件/runtime 管理器 |
+| bun | JS runtime + 套件管理器（copilot-proxy 用） |
 | just | 任務執行器（本 repo 的 `justfile`） |
 | make | GNU make |
 | zig | Neovim tree-sitter parser 的 C 編譯器 |
@@ -29,8 +30,9 @@ GUI 應用程式。
 | win32yank | Neovim 的剪貼簿提供者 |
 | gnupg | `gpg` —— 讓 mise 驗證 runtime 下載 |
 
-Runtime：`node@lts` + `bun` 由 mise 安裝為基本內建（npm-based 的 coding agents 需要
-node）。啟用 **Extra runtimes** 時才會加裝 `rust`、`go`、`ruby`。
+Runtime：`node@lts` 由 mise 安裝（npm-based 的 coding agents 需要 node）；`bun`
+改由 **scoop** 安裝（mise 沒有 Windows-arm64 的 bun build）。啟用 **Extra
+runtimes** 時才會加裝 `rust`、`go`、`ruby`。
 
 ## GUI 應用程式（winget）
 

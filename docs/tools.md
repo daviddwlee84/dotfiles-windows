@@ -21,6 +21,7 @@ tools; **winget** handles GUI apps.
 | starship | prompt |
 | mise | runtime version manager |
 | uv | Python package/runtime manager |
+| bun | JS runtime + package manager (backs copilot-proxy) |
 | just | task runner (this repo's `justfile`) |
 | make | GNU make |
 | zig | C compiler for Neovim tree-sitter parsers |
@@ -29,9 +30,9 @@ tools; **winget** handles GUI apps.
 | win32yank | clipboard provider for Neovim |
 | gnupg | `gpg` — lets mise verify runtime downloads |
 
-Runtimes: `node@lts` + `bun` are installed via mise as a baseline (the npm-based
-coding agents need node). `rust`, `go`, `ruby` are added when **Extra runtimes**
-is enabled.
+Runtimes: `node@lts` is installed via mise (the npm-based coding agents need
+node); `bun` comes from **scoop** (mise has no Windows-arm64 bun build). `rust`,
+`go`, `ruby` are added when **Extra runtimes** is enabled.
 
 ## GUI apps (winget)
 

@@ -121,6 +121,10 @@ Scoop-Install @(
     'delta', 'lazygit', 'neovim', 'yazi', 'btop', 'television',
     # gnupg lets mise gpg-verify its runtime downloads (else: "gpg not found").
     'mise', 'uv', 'gnupg',
+    # bun via scoop, NOT mise: mise has no Windows-arm64 bun build (it records
+    # the version but the binary never lands -> dead shim), and scoop's bun is a
+    # real binary on PATH. copilot-proxy needs bun/bunx.
+    'bun',
     # LazyVim needs a C compiler for tree-sitter parsers (zig), the tree-sitter
     # CLI the nvim-treesitter `main` branch requires, and a clipboard provider so
     # `unnamedplus` yanks reach the Windows clipboard (win32yank).
@@ -135,11 +139,12 @@ if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm
     Scoop-Install @('gcc')
 }
 
-# Node + bun via mise (node is a hard dep for the npm-based coding agents).
+# Node via mise (a hard dep for the npm-based coding agents). bun comes from
+# scoop above -- mise has no Windows-arm64 bun build.
 if (Have mise) {
-    Info 'mise: node@lts, bun@latest'
-    mise use -g node@lts bun@latest
-    if ($LASTEXITCODE -ne 0) { Register-Failure 'mise:node/bun' }
+    Info 'mise: node@lts'
+    mise use -g node@lts
+    if ($LASTEXITCODE -ne 0) { Register-Failure 'mise:node' }
     mise reshim   # generate shims so pinned tools land on PATH (see 00_env)
 }
 

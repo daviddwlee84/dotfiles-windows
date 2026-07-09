@@ -85,7 +85,7 @@ if ($Source) {
     } catch { }
     if ($srcExists) {
         Info 'chezmoi update (git pull + apply — picks up new commits)'
-        chezmoi update
+        chezmoi update --init
     } else {
         Info "chezmoi init --apply --branch $Branch $Repo"
         chezmoi init --apply --branch $Branch $Repo
