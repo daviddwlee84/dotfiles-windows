@@ -11,6 +11,14 @@ pyproject.toml
 uv.lock
 PSScriptAnalyzerSettings.psd1
 
+# project-knowledge-harness (maintainer-facing repo metadata, never shipped).
+AGENTS.md
+TODO.md
+backlog
+backlog/**
+pitfalls
+pitfalls/**
+
 docs
 docs/**
 .github
