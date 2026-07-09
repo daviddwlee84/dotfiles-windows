@@ -11,6 +11,9 @@ uv.lock
 .DS_Store
 Thumbs.db
 
+# dockur/windows VM disk
+docker/windows/storage/
+
 # agent/session artifacts (not part of the dotfiles)
 .claude/
 .specstory/
