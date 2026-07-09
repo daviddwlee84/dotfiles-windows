@@ -1,0 +1,26 @@
+// Shared VSCode / Cursor keybindings (seeded once; edit freely afterwards).
+[
+  {
+    "key": "alt+n",
+    "command": "explorer.newFile",
+    "when": "explorerViewletFocus"
+  },
+  {
+    "key": "shift+alt+n",
+    "command": "explorer.newFolder",
+    "when": "explorerViewletFocus"
+  },
+  {
+    "key": "f5",
+    "command": "workbench.action.debug.run",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "shift+enter",
+    "command": "workbench.action.terminal.sendSequence",
+    "args": {
+      "text": "\u001b[13;2u"
+    },
+    "when": "terminalFocus"
+  }
+]

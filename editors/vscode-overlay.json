@@ -1,0 +1,13 @@
+{
+  "editor.fontFamily": "Hack Nerd Font Mono, Consolas, 'Courier New', monospace",
+  "editor.fontSize": 12,
+  "editor.lineNumbers": "relative",
+  "editor.formatOnSave": true,
+  "editor.acceptSuggestionOnEnter": "smart",
+  "editor.renderWhitespace": "boundary",
+  "files.trimTrailingWhitespace": true,
+  "terminal.integrated.fontFamily": "Hack Nerd Font Mono",
+  "terminal.integrated.mouseWheelScrollSensitivity": 3,
+  "terminal.integrated.defaultProfile.windows": "PowerShell",
+  "workbench.editor.enablePreview": false
+}

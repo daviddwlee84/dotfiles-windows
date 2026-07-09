@@ -82,6 +82,11 @@ if (-not (Get-Module -ListAvailable -Name PSFzf)) {
     Info 'Install-Module PSFzf'
     Install-Module PSFzf -Scope CurrentUser -Force -AcceptLicense -ErrorAction SilentlyContinue
 }
+# AudioDeviceCmdlets: absolute volume + explicit mute for the sys* helpers.
+if (-not (Get-Module -ListAvailable -Name AudioDeviceCmdlets)) {
+    Info 'Install-Module AudioDeviceCmdlets'
+    Install-Module AudioDeviceCmdlets -Scope CurrentUser -Force -AcceptLicense -ErrorAction SilentlyContinue
+}
 
 {{ if .installExtraRuntimes -}}
 # Extra language runtimes via mise (rust/go/ruby). node/bun/uv are baseline.

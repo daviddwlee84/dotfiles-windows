@@ -1,0 +1,45 @@
+#Requires -Version 7
+# run_onchange_after_20_editor_overlays.ps1 — merge a shared settings overlay
+# into VSCode + Cursor, and seed keybindings once. Re-runs when either embedded
+# source file changes. Skips an editor whose User dir doesn't exist (not installed).
+
+$ErrorActionPreference = 'Stop'
+
+# Embedded at render time from the (chezmoi-ignored) editors/ sources — so this
+# script is self-contained and re-runs when they change.
+$overlayJson = @'
+{{ include "editors/vscode-overlay.json" }}
+'@
+$keybindingsJson = @'
+{{ include "editors/keybindings.json" }}
+'@
+
+$overlay = $overlayJson | ConvertFrom-Json -AsHashtable
+
+function Merge-EditorSettings([string]$userDir) {
+    if (-not (Test-Path $userDir)) { return }   # editor not installed
+    $settingsPath = Join-Path $userDir 'settings.json'
+    $settings = @{}
+    if (Test-Path $settingsPath) {
+        $raw = Get-Content -Raw $settingsPath
+        # best-effort JSONC: drop whole-line // comments and /* */ blocks.
+        $raw = [regex]::Replace($raw, '(?m)^\s*//.*$', '')
+        $raw = [regex]::Replace($raw, '/\*.*?\*/', '', 'Singleline')
+        if ($raw.Trim()) { try { $settings = $raw | ConvertFrom-Json -AsHashtable } catch { Write-Warning "could not parse $settingsPath; overlaying onto empty"; $settings = @{} } }
+    }
+    foreach ($k in $overlay.Keys) { $settings[$k] = $overlay[$k] }
+    New-Item -ItemType Directory -Force -Path $userDir | Out-Null
+    $settings | ConvertTo-Json -Depth 12 | Set-Content -Path $settingsPath -Encoding utf8
+    Write-Host "editor overlay -> $settingsPath"
+
+    # Seed keybindings once; never clobber the user's edits.
+    $kbPath = Join-Path $userDir 'keybindings.json'
+    if (-not (Test-Path $kbPath)) {
+        $keybindingsJson | Set-Content -Path $kbPath -Encoding utf8
+        Write-Host "seeded keybindings -> $kbPath"
+    }
+}
+
+foreach ($editor in 'Code', 'Cursor') {
+    Merge-EditorSettings (Join-Path $env:APPDATA "$editor\User")
+}
