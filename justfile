@@ -45,8 +45,8 @@ test:
 
 # serve the docs site locally
 docs-serve:
-    uv run mkdocs serve
+    uv run --with mkdocs-material --with mkdocs-static-i18n mkdocs serve
 
 # build the docs site (strict)
 docs-build:
-    uv run mkdocs build --strict
+    uv run --with mkdocs-material --with mkdocs-static-i18n mkdocs build --strict

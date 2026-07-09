@@ -5,6 +5,7 @@ site/
 .venv/
 __pycache__/
 *.pyc
+uv.lock
 
 # os
 .DS_Store

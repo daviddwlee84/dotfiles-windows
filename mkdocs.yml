@@ -1,0 +1,60 @@
+site_name: Windows dotfiles
+site_description: Native Windows + PowerShell 7 dotfiles, managed by chezmoi
+site_url: https://daviddwlee84.github.io/windows-dotfiles/
+repo_url: https://github.com/daviddwlee84/windows-dotfiles
+docs_dir: docs
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.code.annotate
+    - search.suggest
+
+plugins:
+  - search
+  - i18n:
+      docs_structure: suffix
+      languages:
+        - locale: en
+          default: true
+          name: English
+        - locale: zh-TW
+          name: 繁體中文
+          nav_translations:
+            Home: 首頁
+            Setup: 安裝
+            Tools: 工具索引
+            Rationale: 設計取捨
+            copilot-proxy: copilot-proxy
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Setup: setup.md
+  - Tools: tools.md
+  - Rationale: rationale.md
+  - copilot-proxy: copilot-proxy.md

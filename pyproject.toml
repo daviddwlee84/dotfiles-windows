@@ -1,0 +1,12 @@
+[project]
+name = "windows-dotfiles-docs"
+version = "0.1.0"
+description = "Docs site for the Windows (pwsh) chezmoi dotfiles."
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+docs = [
+    "mkdocs-material>=9.5",
+    "mkdocs-static-i18n>=1.2",
+]
