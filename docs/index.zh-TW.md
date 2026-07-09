@@ -1,8 +1,13 @@
 # Windows dotfiles
 
 原生 **Windows + PowerShell 7** dotfiles，由 [chezmoi](https://chezmoi.io) 管理。
-這是跨平台（macOS/Linux）dotfiles 的獨立 Windows 版本 —— PowerShell 層是用原生方式
-撰寫，而非把 POSIX shell 設定逐行硬翻過來。
+這是跨平台（macOS/Linux）dotfiles
+[daviddwlee84/dotfiles](https://github.com/daviddwlee84/dotfiles) 的獨立 Windows
+版本 —— PowerShell 層是用原生方式撰寫，而非把 POSIX shell 設定逐行硬翻過來。
+
+!!! tip "我該用哪個 repo 安裝？"
+    - **原生 Windows（PowerShell）** → 這個 repo（`dotfiles-windows`）。
+    - **macOS / Linux / WSL** → [daviddwlee84/dotfiles](https://github.com/daviddwlee84/dotfiles)。
 
 ## 你會得到
 

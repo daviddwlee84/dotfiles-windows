@@ -1,9 +1,16 @@
 # dotfiles-windows
 
 Native **Windows + PowerShell 7** dotfiles, managed by [chezmoi](https://chezmoi.io).
-A self-contained, Windows-only companion to my cross-platform (macOS/Linux)
-dotfiles — the PowerShell layer is written natively rather than ported from the
-POSIX shell config.
+A self-contained, Windows-only companion to the cross-platform (macOS/Linux)
+dotfiles at **[daviddwlee84/dotfiles](https://github.com/daviddwlee84/dotfiles)** —
+the PowerShell layer is written natively rather than ported from the POSIX shell config.
+
+> **Which repo do I install from?**
+>
+> | Your machine | Use |
+> |---|---|
+> | **Native Windows** (PowerShell) | **this repo** (`dotfiles-windows`) |
+> | macOS / Linux / WSL | [daviddwlee84/dotfiles](https://github.com/daviddwlee84/dotfiles) |
 
 > Status: work in progress. See [`docs/`](docs/) for the full handbook (bilingual
 > EN / 繁體中文) once built.
