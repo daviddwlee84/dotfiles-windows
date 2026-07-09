@@ -52,3 +52,4 @@ Add new entries here as you create them. Keep alphabetical.
 |---|---|---|
 | [align-windows-backup-with-unix-run-before-unified-dir](align-windows-backup-with-unix-run-before-unified-dir.md) | P? | Align Windows backup with Unix |
 | [specstory-windows-native-cli](specstory-windows-native-cli.md) | P? (blocked on PR #191) | SpecStory Windows-native CLI |
+| [windows-arm64-managed-machine-rough-edges](windows-arm64-managed-machine-rough-edges.md) | P? (environmental) | Windows-on-ARM64 + managed-machine rough edges |
