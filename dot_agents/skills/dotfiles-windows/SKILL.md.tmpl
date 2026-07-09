@@ -50,8 +50,9 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 
 ## What's enabled on THIS machine
 - role: **{{ .role }}**
-- Coding agents: {{ .installCodingAgents }} · GUI apps: {{ .installWindowsApps }} · Utility apps: {{ .installUtilityApps }}
-- Gaming (Steam): {{ .installGamingApps }} · Extra runtimes: {{ .installExtraRuntimes }} · Vim mode: {{ .enableVimMode }}
+- Coding agents: {{ .installCodingAgents }} · GUI apps: {{ .installWindowsApps }} · Utility apps: {{ .installUtilityApps }} · Gaming: {{ .installGamingApps }}
+- Extra runtimes: {{ .installExtraRuntimes }} · Media: {{ .installMediaTools }} · LLM: {{ .installLlmTools }} · Tunnel: {{ .installTunnelTools }} · IaC: {{ .installIacTools }}
+- China mirrors: {{ .useChineseMirror }} · Backup mode: {{ .backupMode }} · Vim mode: {{ .enableVimMode }}
 
 ## just recipes
 `just --list`: `apply`/`diff`/`update`, `upgrade-scoop`/`upgrade-winget`, `lint`/`test`,

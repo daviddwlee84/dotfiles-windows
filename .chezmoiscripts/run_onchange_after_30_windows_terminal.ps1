@@ -21,9 +21,20 @@ if ($s.profiles -isnot [hashtable]) { $s['profiles'] = @{ list = $s.profiles } }
 if (-not $s.profiles.ContainsKey('defaults')) { $s.profiles['defaults'] = @{} }
 
 $s.profiles.defaults['font'] = @{ face = 'Hack Nerd Font Mono'; size = 11 }
-$s.profiles.defaults['colorScheme'] = 'Campbell'
+$s.profiles.defaults['colorScheme'] = 'One Half Dark'
 $s.profiles.defaults['opacity'] = 90
 $s.profiles.defaults['useAcrylic'] = $true
+$s.profiles.defaults['cursorShape'] = 'filledBox'
+$s.profiles.defaults['antialiasingMode'] = 'grayscale'
+$s.profiles.defaults['padding'] = '8'
+
+# Prefer PowerShell 7 as the default profile when a matching profile exists.
+if ($s.profiles.ContainsKey('list')) {
+    $pwshProfile = @($s.profiles.list) |
+        Where-Object { ($_.commandline -match 'pwsh') -or ($_.name -eq 'PowerShell') } |
+        Select-Object -First 1
+    if ($pwshProfile -and $pwshProfile.guid) { $s['defaultProfile'] = $pwshProfile.guid }
+}
 
 $s | ConvertTo-Json -Depth 20 | Set-Content -Path $path -Encoding utf8
 Write-Host "Windows Terminal defaults updated -> $path"

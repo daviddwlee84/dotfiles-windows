@@ -1,0 +1,28 @@
+#Requires -Version 7
+# run_once_before_01_backup.ps1 — snapshot pre-existing config before the first
+# apply overwrites it. backupMode: {{ .backupMode }}
+#   off        skip entirely
+#   smart/full back up the managed targets that already exist (on Windows the two
+#              modes are equivalent — there is no broader allowlist)
+{{ if ne .backupMode "off" -}}
+$ErrorActionPreference = 'Stop'
+
+$targets = @(
+    (Join-Path $HOME 'Documents/PowerShell/Microsoft.PowerShell_profile.ps1'),
+    (Join-Path $HOME '.config/powershell'),
+    (Join-Path $HOME '.config/starship.toml'),
+    (Join-Path $env:APPDATA 'alacritty/alacritty.toml'),
+    (Join-Path $env:APPDATA 'Code/User/settings.json'),
+    (Join-Path $env:APPDATA 'Cursor/User/settings.json')
+)
+$existing = $targets | Where-Object { Test-Path $_ }
+if ($existing) {
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $dir = Join-Path $HOME ".dotfiles-backup/$stamp"
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    foreach ($t in $existing) {
+        Copy-Item -Recurse -Force -LiteralPath $t -Destination (Join-Path $dir (Split-Path $t -Leaf))
+    }
+    Write-Host "backed up $($existing.Count) item(s) -> $dir"
+}
+{{ end -}}

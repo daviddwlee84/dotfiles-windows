@@ -37,6 +37,8 @@ is enabled.
 | PowerToys | `Microsoft.PowerToys` |
 | Raycast | `Raycast.Raycast` |
 | Antigravity | `Google.Antigravity` |
+| Docker Desktop | `Docker.DockerDesktop` |
+| Discord | `Discord.Discord` |
 | Steam (gaming) | `Valve.Steam` |
 
 ## Utility apps (winget)
@@ -72,6 +74,20 @@ Enabled by **Install utility apps**:
 
 - **PSFzf** — fzf key bindings (Ctrl+t files, Ctrl+r history).
 - **AudioDeviceCmdlets** — absolute volume + mute for the `sysvol`/`sysmute` helpers.
+
+## Opt-in dev stacks
+
+Off by default; enable the matching init prompt:
+
+| Toggle | Installs |
+|---|---|
+| Local LLM tools | Ollama (`Ollama.Ollama`) + LiteLLM (`uv tool install 'litellm[proxy]'`) |
+| Tunnel tools | ngrok, cloudflared (scoop) |
+| IaC tools | Terraform, OpenTofu (scoop) + Azure CLI (winget) |
+
+**China mirrors** routes pip / npm / cargo / go / node package fetches through GFW
+mirrors (Tsinghua / npmmirror / goproxy.cn / rsproxy), applied both at install time
+and in the interactive shell (`profile.d/05_mirrors.ps1`).
 
 ## Upgrades
 

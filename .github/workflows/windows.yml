@@ -40,6 +40,11 @@ jobs:
             '--promptBool','Install gaming apps (Steam)=false',
             '--promptBool','Install extra mise runtimes (rust, go, ruby) beyond node/bun/uv=false',
             '--promptBool','Install media CLIs (ffmpeg, imagemagick)=false',
+            '--promptBool','Install local LLM tools (Ollama, LiteLLM)=false',
+            '--promptBool','Install tunnel tools (ngrok, cloudflared)=false',
+            '--promptBool','Install Infrastructure-as-Code tools (Azure CLI, Terraform, OpenTofu)=false',
+            '--promptBool','Use China (GFW) mirrors for pip/npm/cargo/go/node=false',
+            '--promptChoice','Back up existing files before apply (smart|full|off)=off',
             '--promptBool','Enable PSReadLine vi editing mode=true'
           )
           chezmoi init --source $PWD --no-tty @flags

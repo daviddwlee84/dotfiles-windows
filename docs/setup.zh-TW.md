@@ -24,11 +24,16 @@ irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstr
 |---|---|---|
 | Role | `workstation` | `workstation` = 完整桌面；`minimal` = 只有 shell |
 | Coding agents | 開（workstation） | Claude Code、OpenCode、Codex、Copilot CLI、SpecStory |
-| Windows GUI apps | 開（workstation） | VSCode、Cursor、Notepad++、Terminal、Alacritty、PowerToys、Raycast |
+| Windows GUI apps | 開（workstation） | VSCode、Cursor、Notepad++、Terminal、Alacritty、PowerToys、Raycast、Docker Desktop、Discord |
 | Utility apps | 開（workstation） | CPU-Z、GPU-Z、TreeSize、VLC、Everything、ShareX、HWiNFO |
 | Gaming apps | 關 | Steam |
 | Extra runtimes | 開（workstation） | 透過 mise 安裝 rust、go、ruby（node/bun/uv 為基本內建） |
 | Media CLIs | 關 | ffmpeg、imagemagick |
+| Local LLM tools | 關 | Ollama、LiteLLM |
+| Tunnel tools | 關 | ngrok、cloudflared |
+| IaC tools | 關 | Azure CLI、Terraform、OpenTofu |
+| China mirrors | 關 | pip / npm / cargo / go / node 走 GFW 鏡像 |
+| Backup mode | `smart` | 首次 apply 前備份既有檔案（`smart`/`full`/`off`） |
 | PSReadLine vi mode | 開 | shell 的 vi 編輯模式 |
 
 之後可再次執行 `chezmoi init` 重新提問，或直接編輯

@@ -36,6 +36,8 @@ node）。啟用 **Extra runtimes** 時才會加裝 `rust`、`go`、`ruby`。
 | PowerToys | `Microsoft.PowerToys` |
 | Raycast | `Raycast.Raycast` |
 | Antigravity | `Google.Antigravity` |
+| Docker Desktop | `Docker.DockerDesktop` |
+| Discord | `Discord.Discord` |
 | Steam（gaming） | `Valve.Steam` |
 
 ## 工具程式（winget）
@@ -70,6 +72,20 @@ node）。啟用 **Extra runtimes** 時才會加裝 `rust`、`go`、`ruby`。
 
 - **PSFzf** —— fzf 快捷鍵（Ctrl+t 找檔案、Ctrl+r 歷史）。
 - **AudioDeviceCmdlets** —— 提供 `sysvol`/`sysmute` 的絕對音量與靜音控制。
+
+## 選用開發套件
+
+預設關閉；開啟對應的 init 提問即安裝：
+
+| 開關 | 安裝內容 |
+|---|---|
+| Local LLM tools | Ollama（`Ollama.Ollama`）+ LiteLLM（`uv tool install 'litellm[proxy]'`） |
+| Tunnel tools | ngrok、cloudflared（scoop） |
+| IaC tools | Terraform、OpenTofu（scoop）+ Azure CLI（winget） |
+
+**China mirrors** 會把 pip / npm / cargo / go / node 的套件抓取導向 GFW 鏡像
+（清華 / npmmirror / goproxy.cn / rsproxy），安裝時與互動式 shell
+（`profile.d/05_mirrors.ps1`）皆生效。
 
 ## 升級
 

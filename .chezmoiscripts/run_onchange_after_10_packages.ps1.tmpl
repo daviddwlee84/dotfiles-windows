@@ -11,8 +11,20 @@
 #   installGamingApps    = {{ .installGamingApps }}
 #   installExtraRuntimes = {{ .installExtraRuntimes }}
 #   installMediaTools    = {{ .installMediaTools }}
+#   installLlmTools      = {{ .installLlmTools }}
+#   installTunnelTools   = {{ .installTunnelTools }}
+#   installIacTools      = {{ .installIacTools }}
+#   useChineseMirror     = {{ .useChineseMirror }}
 
 $ErrorActionPreference = 'Stop'
+{{ if .useChineseMirror }}
+# China (GFW) mirrors for install-time package fetches.
+$env:PIP_INDEX_URL = 'https://pypi.tuna.tsinghua.edu.cn/simple'
+$env:UV_DEFAULT_INDEX = 'https://pypi.tuna.tsinghua.edu.cn/simple'
+$env:npm_config_registry = 'https://registry.npmmirror.com'
+$env:GOPROXY = 'https://goproxy.cn,direct'
+$env:MISE_NODE_MIRROR_URL = 'https://npmmirror.com/mirrors/node/'
+{{ end }}
 
 function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 function Have($n) { [bool](Get-Command $n -ErrorAction SilentlyContinue) }
@@ -119,7 +131,9 @@ foreach ($id in @(
     'Alacritty.Alacritty',
     'Microsoft.PowerToys',
     'Raycast.Raycast',
-    'Google.Antigravity'
+    'Google.Antigravity',
+    'Docker.DockerDesktop',
+    'Discord.Discord'
 )) { Winget-Install $id }
 
 # A Nerd Font so starship glyphs render.
@@ -147,6 +161,21 @@ foreach ($id in @(
     'Rufus.Rufus',
     'tailscale.tailscale'
 )) { Winget-Install $id }
+{{ end -}}
+
+{{ if .installLlmTools -}}
+# Local LLM tools: Ollama (winget) + LiteLLM (uv tool).
+Winget-Install 'Ollama.Ollama'
+if (Have uv) { Info 'uv tool install litellm'; uv tool install 'litellm[proxy]' }
+{{ end -}}
+
+{{ if .installTunnelTools -}}
+Scoop-Install @('ngrok', 'cloudflared')
+{{ end -}}
+
+{{ if .installIacTools -}}
+Scoop-Install @('terraform', 'opentofu')
+Winget-Install 'Microsoft.AzureCLI'
 {{ end -}}
 
 Info 'package install complete'

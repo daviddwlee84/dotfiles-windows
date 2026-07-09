@@ -21,6 +21,11 @@
     installGamingApps    = {{ promptBoolOnce . "installGamingApps" "Install gaming apps (Steam)" false }}
     installExtraRuntimes = {{ promptBoolOnce . "installExtraRuntimes" "Install extra mise runtimes (rust, go, ruby) beyond node/bun/uv" $full }}
     installMediaTools    = {{ promptBoolOnce . "installMediaTools" "Install media CLIs (ffmpeg, imagemagick)" false }}
+    installLlmTools      = {{ promptBoolOnce . "installLlmTools" "Install local LLM tools (Ollama, LiteLLM)" false }}
+    installTunnelTools   = {{ promptBoolOnce . "installTunnelTools" "Install tunnel tools (ngrok, cloudflared)" false }}
+    installIacTools      = {{ promptBoolOnce . "installIacTools" "Install Infrastructure-as-Code tools (Azure CLI, Terraform, OpenTofu)" false }}
+    useChineseMirror     = {{ promptBoolOnce . "useChineseMirror" "Use China (GFW) mirrors for pip/npm/cargo/go/node" false }}
+    backupMode           = {{ promptChoiceOnce . "backupMode" "Back up existing files before apply (smart|full|off)" (list "smart" "full" "off") "smart" | quote }}
     enableVimMode        = {{ promptBoolOnce . "enableVimMode" "Enable PSReadLine vi editing mode" true }}
 
 # Run .ps1 scripts (.chezmoiscripts + modify_/create_) under PowerShell 7.

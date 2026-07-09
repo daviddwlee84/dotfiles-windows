@@ -1,0 +1,11 @@
+# 05_mirrors.ps1 — China (GFW) package mirrors for interactive sessions.
+# Body renders only when useChineseMirror is set; otherwise this is a no-op.
+{{ if .useChineseMirror -}}
+$env:PIP_INDEX_URL       = 'https://pypi.tuna.tsinghua.edu.cn/simple'
+$env:UV_DEFAULT_INDEX    = 'https://pypi.tuna.tsinghua.edu.cn/simple'
+$env:npm_config_registry = 'https://registry.npmmirror.com'
+$env:GOPROXY             = 'https://goproxy.cn,direct'
+$env:MISE_NODE_MIRROR_URL = 'https://npmmirror.com/mirrors/node/'
+$env:RUSTUP_DIST_SERVER  = 'https://rsproxy.cn'
+$env:RUSTUP_UPDATE_ROOT  = 'https://rsproxy.cn/rustup'
+{{ end -}}
