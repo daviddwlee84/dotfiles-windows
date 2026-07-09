@@ -26,6 +26,24 @@ try {
     if ($realFull -and ($realFull -ine $managedFull)) {
         $dir = Split-Path $realFull -Parent
         if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+
+        # Preserve any PRE-EXISTING real profile before we overwrite it — the
+        # run_once_before backup only guards the literal ~/Documents path, not
+        # this OneDrive-redirected one. Skip if it's already our own stub.
+        $marker = 'Auto-written by chezmoi (dotfiles-windows)'
+        if (Test-Path -LiteralPath $realFull) {
+            $existing = Get-Content -LiteralPath $realFull -Raw -ErrorAction SilentlyContinue
+            if ($existing -and ($existing -notmatch [regex]::Escape($marker))) {
+                $backupDir = Join-Path $HOME '.dotfiles-backup'
+                New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+                $bak = Join-Path $backupDir 'Microsoft.PowerShell_profile.ps1.onedrive.bak'
+                if (-not (Test-Path -LiteralPath $bak)) {
+                    Copy-Item -LiteralPath $realFull -Destination $bak -Force
+                    Write-Host "==> backed up existing profile -> $bak" -ForegroundColor Cyan
+                }
+            }
+        }
+
         $stub = "# Auto-written by chezmoi (dotfiles-windows). Your Documents folder is`n" +
                 "# OneDrive-redirected, so pwsh looks here instead of ~/Documents. Load the`n" +
                 "# real managed profile:`n" +

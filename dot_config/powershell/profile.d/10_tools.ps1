@@ -38,8 +38,12 @@ if (Get-Command direnv -ErrorAction SilentlyContinue) {
     Invoke-Expression (& direnv hook pwsh | Out-String)
 }
 
-# television (tv) — fuzzy picker shell integration (best-effort; some versions
-# have no powershell init, so swallow errors).
+# television (tv) — fuzzy picker shell integration. tv 0.15+ renamed the shell
+# value `powershell` -> `power-shell`; older builds used `powershell`. Try the
+# new spelling first, fall back, and only eval non-empty output so a version
+# mismatch never errors the prompt.
 if (Get-Command tv -ErrorAction SilentlyContinue) {
-    try { tv init powershell | Out-String | Invoke-Expression } catch { $null = $_ }
+    $tvInit = (tv init power-shell 2>$null | Out-String)
+    if (-not $tvInit.Trim()) { $tvInit = (tv init powershell 2>$null | Out-String) }
+    if ($tvInit.Trim()) { try { Invoke-Expression $tvInit } catch { $null = $_ } }
 }

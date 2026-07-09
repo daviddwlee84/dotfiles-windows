@@ -25,6 +25,7 @@ tools; **winget** handles GUI apps.
 | make | GNU make |
 | zig | C compiler for Neovim tree-sitter parsers |
 | win32yank | clipboard provider for Neovim |
+| gnupg | `gpg` — lets mise verify runtime downloads |
 
 Runtimes: `node@lts` + `bun` are installed via mise as a baseline (the npm-based
 coding agents need node). `rust`, `go`, `ruby` are added when **Extra runtimes**
@@ -50,7 +51,6 @@ is enabled.
 | Chrome | `Google.Chrome` |
 | Arc | `TheBrowserCompany.Arc` |
 | Zen Browser | `Zen-Team.Zen-Browser` |
-| Grammarly | `Grammarly.Grammarly` |
 | Steam (gaming) | `Valve.Steam` |
 
 ## Utility apps (winget)

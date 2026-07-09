@@ -25,6 +25,7 @@ GUI 應用程式。
 | make | GNU make |
 | zig | Neovim tree-sitter parser 的 C 編譯器 |
 | win32yank | Neovim 的剪貼簿提供者 |
+| gnupg | `gpg` —— 讓 mise 驗證 runtime 下載 |
 
 Runtime：`node@lts` + `bun` 由 mise 安裝為基本內建（npm-based 的 coding agents 需要
 node）。啟用 **Extra runtimes** 時才會加裝 `rust`、`go`、`ruby`。
@@ -49,7 +50,6 @@ node）。啟用 **Extra runtimes** 時才會加裝 `rust`、`go`、`ruby`。
 | Chrome | `Google.Chrome` |
 | Arc | `TheBrowserCompany.Arc` |
 | Zen Browser | `Zen-Team.Zen-Browser` |
-| Grammarly | `Grammarly.Grammarly` |
 | Steam（gaming） | `Valve.Steam` |
 
 ## 工具程式（winget）

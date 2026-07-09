@@ -1,5 +1,15 @@
 # 00_env.ps1 — environment variables & PATH. Sourced first by $PROFILE.
 
+# UTF-8 console I/O. Without this, native tools that emit UTF-8 (git, winget's
+# localized output, …) render as mojibake on legacy-codepage systems (e.g. GBK /
+# cp936 on zh-* Windows). Guarded so a redirected/headless host can't error the
+# rest of this fragment.
+try {
+    $utf8 = [System.Text.UTF8Encoding]::new($false)
+    [Console]::OutputEncoding = $utf8
+    $OutputEncoding = $utf8
+} catch { $null = $_ }
+
 # XDG-style base dirs. Several tools honor these on Windows (starship, atuin,
 # zoxide state, our own copilot module) so we set them for a tidy $HOME.
 if (-not $env:XDG_CONFIG_HOME) { $env:XDG_CONFIG_HOME = Join-Path $HOME '.config' }

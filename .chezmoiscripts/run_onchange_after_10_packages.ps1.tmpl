@@ -22,6 +22,9 @@
 $ErrorActionPreference = 'Continue'
 if (Test-Path variable:PSNativeCommandUseErrorActionPreference) { $PSNativeCommandUseErrorActionPreference = $false }
 $script:Failures = [System.Collections.Generic.List[string]]::new()
+
+# UTF-8 console so winget's localized output isn't mojibake on zh-* Windows.
+try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch { $null = $_ }
 {{ if .useChineseMirror }}
 # China (GFW) mirrors for install-time package fetches.
 $env:PIP_INDEX_URL = 'https://pypi.tuna.tsinghua.edu.cn/simple'
@@ -115,7 +118,8 @@ Scoop-Install @(
     'git', 'gh', '7zip', 'make', 'just',
     'starship', 'zoxide', 'fzf', 'fd', 'ripgrep', 'bat', 'eza', 'jq',
     'delta', 'lazygit', 'neovim', 'yazi', 'btop', 'television',
-    'mise', 'uv',
+    # gnupg lets mise gpg-verify its runtime downloads (else: "gpg not found").
+    'mise', 'uv', 'gnupg',
     # LazyVim needs a C compiler for tree-sitter parsers (zig) and a clipboard
     # provider so `unnamedplus` yanks reach the Windows clipboard (win32yank).
     'zig', 'win32yank'
@@ -176,12 +180,11 @@ foreach ($id in @(
     'Google.Antigravity',
     'Docker.DockerDesktop',
     'Discord.Discord',
-    # AI desktop app + browsers + writing assistant.
+    # AI desktop app + browsers.
     'Anthropic.Claude',
     'Google.Chrome',
     'TheBrowserCompany.Arc',
-    'Zen-Team.Zen-Browser',
-    'Grammarly.Grammarly'
+    'Zen-Team.Zen-Browser'
 )) { Winget-Install $id }
 
 # Official ChatGPT + Codex desktop apps ship only on the Microsoft Store.
