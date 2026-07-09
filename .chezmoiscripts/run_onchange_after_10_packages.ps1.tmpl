@@ -15,6 +15,7 @@
 #   installTunnelTools   = {{ .installTunnelTools }}
 #   installIacTools      = {{ .installIacTools }}
 #   useChineseMirror     = {{ .useChineseMirror }}
+#   managedMachine       = {{ .managedMachine }}
 
 # Resilient by design: individual package failures are collected and reported at
 # the end, never fatal — one bad manifest must not abort the rest of the install
@@ -195,6 +196,9 @@ foreach ($id in @(
     'Google.Chrome',
     'TheBrowserCompany.Arc',
     'Zen-Team.Zen-Browser'
+{{- if not .managedMachine }},
+    'Grammarly.Grammarly'   # skipped on managed machines (often policy-blocked)
+{{- end }}
 )) { Winget-Install $id }
 
 # Store-only apps: Raycast (default launcher) + the official ChatGPT / Codex
@@ -228,8 +232,10 @@ foreach ($id in @(
     'ShareX.ShareX',
     'VideoLAN.VLC',
     'OBSProject.OBSStudio',
-    'Rufus.Rufus',
-    'Tailscale.Tailscale'
+    'Rufus.Rufus'
+{{- if not .managedMachine }},
+    'Tailscale.Tailscale'   # skipped on managed machines (org policy blocks the MSI, exit 1625)
+{{- end }}
 )) { Winget-Install $id }
 {{ end -}}
 

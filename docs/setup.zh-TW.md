@@ -38,6 +38,7 @@ irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstr
 | Tunnel tools | 關 | ngrok、cloudflared |
 | IaC tools | 關 | Azure CLI、Terraform、OpenTofu |
 | China mirrors | 關 | pip / npm / cargo / go / node 走 GFW 鏡像 |
+| Managed machine | 關 | 略過 org 政策常擋的 app（Tailscale、Grammarly） |
 | Backup mode | `smart` | 首次 apply 前備份既有檔案（`smart`/`full`/`off`） |
 | PSReadLine vi mode | 開 | shell 的 vi 編輯模式 |
 

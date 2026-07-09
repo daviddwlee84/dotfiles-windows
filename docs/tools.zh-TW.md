@@ -49,6 +49,7 @@ node）。啟用 **Extra runtimes** 時才會加裝 `rust`、`go`、`ruby`。
 | Chrome | `Google.Chrome` |
 | Arc | `TheBrowserCompany.Arc` |
 | Zen Browser | `Zen-Team.Zen-Browser` |
+| Grammarly | `Grammarly.Grammarly` |
 | Steam（gaming） | `Valve.Steam` |
 
 ## 工具程式（winget）
@@ -81,6 +82,11 @@ node）。啟用 **Extra runtimes** 時才會加裝 `rust`、`go`、`ruby`。
     Windows Defender / SmartScreen 誤判為 PUA（受管機器的 PUA 防護更嚴），且與
     VSCode / Cursor / nvim 功能重疊。想要的話自行安裝：
     `winget install Notepad++.Notepad++` 或 `scoop install notepadplusplus`。
+
+!!! note "受管／公司機器"
+    **Managed machine** 初始化開關會略過 org 政策常擋的 app —— **Grammarly** 與
+    **Tailscale**（其 MSI 在政策下以 exit `1625` 失敗）。個人機器把開關關掉即可
+    照常安裝。
 
 ## AI agents（npm）
 

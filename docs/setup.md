@@ -38,6 +38,7 @@ irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstr
 | Tunnel tools | off | ngrok, cloudflared |
 | IaC tools | off | Azure CLI, Terraform, OpenTofu |
 | China mirrors | off | pip / npm / cargo / go / node via GFW mirrors |
+| Managed machine | off | skip apps org policy usually blocks (Tailscale, Grammarly) |
 | Backup mode | `smart` | snapshot existing files before the first apply (`smart`/`full`/`off`) |
 | PSReadLine vi mode | on | vi editing in the shell |
 

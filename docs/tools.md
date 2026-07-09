@@ -50,6 +50,7 @@ is enabled.
 | Chrome | `Google.Chrome` |
 | Arc | `TheBrowserCompany.Arc` |
 | Zen Browser | `Zen-Team.Zen-Browser` |
+| Grammarly | `Grammarly.Grammarly` |
 | Steam (gaming) | `Valve.Steam` |
 
 ## Utility apps (winget)
@@ -84,6 +85,11 @@ Enabled by **Install utility apps**:
     (a false positive, aggravated by managed-machine PUA protection), and it's
     redundant with VSCode / Cursor / nvim. Add it yourself if you want it:
     `winget install Notepad++.Notepad++` or `scoop install notepadplusplus`.
+
+!!! note "Managed / corporate machines"
+    The **Managed machine** init toggle skips apps that org policy commonly
+    blocks — **Grammarly** and **Tailscale** (its MSI fails with exit `1625`
+    under policy). Leave the toggle off on a personal machine to install them.
 
 ## AI agents (npm)
 

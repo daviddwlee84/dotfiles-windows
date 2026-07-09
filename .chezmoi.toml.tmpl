@@ -25,6 +25,7 @@
     installTunnelTools   = {{ promptBoolOnce . "installTunnelTools" "Install tunnel tools (ngrok, cloudflared)" false }}
     installIacTools      = {{ promptBoolOnce . "installIacTools" "Install Infrastructure-as-Code tools (Azure CLI, Terraform, OpenTofu)" false }}
     useChineseMirror     = {{ promptBoolOnce . "useChineseMirror" "Use China (GFW) mirrors for pip/npm/cargo/go/node" false }}
+    managedMachine       = {{ promptBoolOnce . "managedMachine" "Managed or corporate machine (skip org-policy-blocked apps like Tailscale and Grammarly)" false }}
     backupMode           = {{ promptChoiceOnce . "backupMode" "Back up existing files before apply (smart|full|off)" (list "smart" "full" "off") "smart" | quote }}
     enableVimMode        = {{ promptBoolOnce . "enableVimMode" "Enable PSReadLine vi editing mode" true }}
 

@@ -53,7 +53,7 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 - role: **{{ .role }}**
 - Coding agents: {{ .installCodingAgents }} · GUI apps: {{ .installWindowsApps }} · Utility apps: {{ .installUtilityApps }} · Gaming: {{ .installGamingApps }}
 - Extra runtimes: {{ .installExtraRuntimes }} · Media: {{ .installMediaTools }} · LLM: {{ .installLlmTools }} · Tunnel: {{ .installTunnelTools }} · IaC: {{ .installIacTools }}
-- China mirrors: {{ .useChineseMirror }} · Backup mode: {{ .backupMode }} · Vim mode: {{ .enableVimMode }}
+- China mirrors: {{ .useChineseMirror }} · Backup mode: {{ .backupMode }} · Vim mode: {{ .enableVimMode }} · Managed machine: {{ .managedMachine }}
 
 ## just recipes
 `just --list`: `apply`/`diff`/`update`, `upgrade-scoop`/`upgrade-winget`, `lint`/`test`,
