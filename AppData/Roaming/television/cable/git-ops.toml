@@ -1,0 +1,22 @@
+# git-ops — common git commands; Enter copies to clipboard.
+# Fields are "cmd|desc" then | is turned into a TAB for split addressing.
+
+[metadata]
+name = "git-ops"
+description = "Common git commands: fuzzy search, copy to clipboard"
+
+[source]
+command = '''pwsh -NoProfile -Command "@('git status|working tree status','git add -A|stage all changes','git commit|record staged changes','git pull --rebase|pull, rebasing local commits','git push|push current branch','git push -u origin HEAD|push a new branch','git switch -c |create + switch branch','git restore |discard file changes','git restore --staged |unstage','git log --oneline --graph --decorate --all|graph log','git stash|stash changes','git stash pop|restore stash','git reset --hard HEAD|discard everything (destructive)','git reset --soft HEAD~1|undo last commit, keep changes','git rebase -i HEAD~3|interactive rebase last 3','git cherry-pick |apply a commit','git diff|unstaged diff','git diff --staged|staged diff','git branch -a|list all branches','git fetch --all --prune|fetch + prune') | ForEach-Object { $_ -replace '\|', [char]9 }"'''
+display = '{split:\t:0}   —   {split:\t:1}'
+output = '{split:\t:0}'
+
+[preview]
+command = '''pwsh -NoProfile -Command "$c='{split:\t:0}'; $sub=($c -split ' ')[1]; git help $sub 2>$null | Select-Object -First 60 | Out-String"'''
+
+[keybindings]
+enter = "actions:copy"
+
+[actions.copy]
+description = "Copy command to clipboard"
+command = '''pwsh -NoProfile -Command "Set-Clipboard -Value '{split:\t:0}'"'''
+mode = "fork"

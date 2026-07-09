@@ -92,6 +92,19 @@ Off by default; enable the matching init prompt:
 mirrors (Tsinghua / npmmirror / goproxy.cn / rsproxy), applied both at install time
 and in the interactive shell (`profile.d/05_mirrors.ps1`).
 
+## Television (tv) channels
+
+Custom pickers under `%APPDATA%\television\cable\` (run `tv` to browse, or `tv <name>`):
+
+| Channel | What |
+|---|---|
+| `aliases` | PowerShell aliases & functions (cached at shell startup) |
+| `git-ops` | common git commands → Enter copies to clipboard |
+| `ports` | listening TCP ports → Ctrl+K kills the owning process |
+| `kill-process` | processes by memory → Enter/Ctrl+K kill, Ctrl+D force-kill |
+| `scoop-apps` | installed scoop apps → Enter info, Ctrl+U update, Ctrl+X uninstall |
+| `apps` | launch an app from Start Menu shortcuts |
+
 ## Upgrades
 
 Install and upgrade are separate. `chezmoi apply` only installs what's missing;

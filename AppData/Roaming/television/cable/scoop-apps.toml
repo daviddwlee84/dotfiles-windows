@@ -1,0 +1,31 @@
+# scoop-apps — installed scoop apps; Enter=info, Ctrl+U=update, Ctrl+X=uninstall.
+
+[metadata]
+name = "scoop-apps"
+description = "Installed scoop apps: info, update, uninstall"
+
+[source]
+command = '''pwsh -NoProfile -Command "(scoop export | ConvertFrom-Json).apps.name | Sort-Object"'''
+
+[preview]
+command = '''pwsh -NoProfile -Command "scoop info '{split: :0}' 2>$null | Out-String"'''
+
+[keybindings]
+enter = "actions:info"
+ctrl-u = ["actions:update", "reload_source"]
+ctrl-x = ["actions:uninstall", "reload_source"]
+
+[actions.info]
+description = "Show app info"
+command = '''pwsh -NoProfile -Command "scoop info '{split: :0}'; Read-Host 'Enter to close'"'''
+mode = "execute"
+
+[actions.update]
+description = "Update app"
+command = '''pwsh -NoProfile -Command "scoop update '{split: :0}'"'''
+mode = "execute"
+
+[actions.uninstall]
+description = "Uninstall app"
+command = '''pwsh -NoProfile -Command "scoop uninstall '{split: :0}'"'''
+mode = "execute"

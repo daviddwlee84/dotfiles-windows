@@ -1,0 +1,13 @@
+# Television (tv) config — Windows. Deployed to %APPDATA%\television\config.toml.
+# Cable channels live in %APPDATA%\television\cable\*.toml.
+tick_rate = 50
+default_channel = "files"
+history_size = 200
+global_history = false
+
+[ui]
+ui_scale = 100
+orientation = "landscape"
+
+[ui.input_bar]
+position = "top"

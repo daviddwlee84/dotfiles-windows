@@ -90,6 +90,19 @@ node）。啟用 **Extra runtimes** 時才會加裝 `rust`、`go`、`ruby`。
 （清華 / npmmirror / goproxy.cn / rsproxy），安裝時與互動式 shell
 （`profile.d/05_mirrors.ps1`）皆生效。
 
+## Television（tv）channels
+
+自訂選擇器放在 `%APPDATA%\television\cable\`（執行 `tv` 瀏覽，或 `tv <name>`）：
+
+| Channel | 用途 |
+|---|---|
+| `aliases` | PowerShell aliases 與函式（shell 啟動時快取） |
+| `git-ops` | 常用 git 指令 → Enter 複製到剪貼簿 |
+| `ports` | 監聽中的 TCP ports → Ctrl+K 結束佔用的行程 |
+| `kill-process` | 依記憶體排序的行程 → Enter/Ctrl+K 結束、Ctrl+D 強制結束 |
+| `scoop-apps` | 已安裝的 scoop apps → Enter 資訊、Ctrl+U 更新、Ctrl+X 移除 |
+| `apps` | 從開始功能表捷徑啟動應用程式 |
+
 ## 升級
 
 安裝與升級刻意分開。`chezmoi apply` 只安裝缺少的東西；升級要明確執行：

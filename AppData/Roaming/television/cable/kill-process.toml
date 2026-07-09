@@ -1,0 +1,26 @@
+# kill-process — processes by memory (desc); Enter/Ctrl+K kill, Ctrl+D force.
+
+[metadata]
+name = "kill-process"
+description = "Kill process: fuzzy search by name with memory usage"
+
+[source]
+command = '''pwsh -NoProfile -Command "Get-Process | Sort-Object WS -Descending | ForEach-Object { '{0,-6} {1,-32} {2,8:N0} MB' -f $_.Id, $_.ProcessName, ($_.WS/1MB) }"'''
+
+[preview]
+command = '''pwsh -NoProfile -Command "Get-Process -Id '{split: :0}' -EA SilentlyContinue | Format-List Id,ProcessName,Path,Company,StartTime,WS | Out-String"'''
+
+[keybindings]
+enter = ["actions:kill", "reload_source"]
+ctrl-k = ["actions:kill", "reload_source"]
+ctrl-d = ["actions:force_kill", "reload_source"]
+
+[actions.kill]
+description = "Kill process"
+command = '''pwsh -NoProfile -Command "Stop-Process -Id '{split: :0}' -EA SilentlyContinue"'''
+mode = "fork"
+
+[actions.force_kill]
+description = "Force kill process"
+command = '''pwsh -NoProfile -Command "Stop-Process -Id '{split: :0}' -Force -EA SilentlyContinue"'''
+mode = "fork"

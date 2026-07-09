@@ -1,0 +1,21 @@
+# aliases — PowerShell aliases & functions.
+# tv runs channel commands in a fresh shell without our $PROFILE, so the list is
+# precomputed into ~/.cache/tv/aliases.txt by profile.d/98_tv_cache.ps1.
+
+[metadata]
+name = "aliases"
+description = "PowerShell aliases & functions: fuzzy search"
+
+[source]
+command = '''pwsh -NoProfile -Command "Get-Content -EA SilentlyContinue $HOME/.cache/tv/aliases.txt"'''
+
+[preview]
+command = '''pwsh -NoProfile -Command "Get-Command '{split: :0}' -EA SilentlyContinue | Format-List | Out-String"'''
+
+[keybindings]
+enter = "actions:copy"
+
+[actions.copy]
+description = "Copy name to clipboard"
+command = '''pwsh -NoProfile -Command "Set-Clipboard -Value '{split: :0}'"'''
+mode = "fork"

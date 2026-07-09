@@ -1,0 +1,21 @@
+# apps — launch an installed app from Start Menu shortcuts (Raycast-style).
+
+[metadata]
+name = "apps"
+description = "Launch an installed app (Start Menu shortcuts)"
+
+[source]
+command = '''pwsh -NoProfile -Command "$d = @((Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'), (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs')); Get-ChildItem -Path $d -Recurse -Filter *.lnk -EA SilentlyContinue | Sort-Object BaseName -Unique | ForEach-Object { $_.BaseName + [char]9 + $_.FullName }"'''
+display = '{split:\t:0}'
+output = '{split:\t:1}'
+
+[preview]
+command = '''pwsh -NoProfile -Command "Write-Output '{split:\t:1}'"'''
+
+[keybindings]
+enter = "actions:launch"
+
+[actions.launch]
+description = "Launch app"
+command = '''pwsh -NoProfile -Command "Start-Process -FilePath '{split:\t:1}'"'''
+mode = "fork"

@@ -1,0 +1,25 @@
+# ports — listening TCP ports with PID + process name; Ctrl+K kills.
+
+[metadata]
+name = "ports"
+description = "Listening ports: PID, port, process"
+
+[source]
+command = '''pwsh -NoProfile -Command "Get-NetTCPConnection -State Listen -EA SilentlyContinue | Sort-Object LocalPort -Unique | ForEach-Object { $n=(Get-Process -Id $_.OwningProcess -EA SilentlyContinue).ProcessName; '{0,-6} {1,-8} {2}' -f $_.OwningProcess, $_.LocalPort, $n }"'''
+
+[preview]
+command = '''pwsh -NoProfile -Command "Get-Process -Id '{split: :0}' -EA SilentlyContinue | Format-List Id,ProcessName,Path,StartTime | Out-String"'''
+
+[keybindings]
+enter = "actions:details"
+ctrl-k = ["actions:kill", "reload_source"]
+
+[actions.details]
+description = "Show process details"
+command = '''pwsh -NoProfile -Command "Get-Process -Id '{split: :0}' -EA SilentlyContinue | Format-List * | Out-String"'''
+mode = "execute"
+
+[actions.kill]
+description = "Kill the owning process"
+command = '''pwsh -NoProfile -Command "Stop-Process -Id '{split: :0}' -Force -EA SilentlyContinue"'''
+mode = "fork"
