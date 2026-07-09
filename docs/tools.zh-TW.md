@@ -36,7 +36,6 @@ node）。啟用 **Extra runtimes** 時才會加裝 `rust`、`go`、`ruby`。
 |---|---|
 | VSCode | `Microsoft.VisualStudioCode` |
 | Cursor | `Anysphere.Cursor` |
-| Notepad++ | `Notepad++.Notepad++` |
 | Windows Terminal | `Microsoft.WindowsTerminal` |
 | Alacritty | `Alacritty.Alacritty` |
 | PowerToys | `Microsoft.PowerToys` |
@@ -76,6 +75,12 @@ node）。啟用 **Extra runtimes** 時才會加裝 `rust`、`go`、`ruby`。
     不穩定，故改為選用：`winget install raycast`。Flow Launcher、Raycast 與
     **PowerToys Run** 都預設 **Alt+Space** —— 擇一使用，其餘改鍵或停用。
 
+!!! note "Notepad++ 改為選用"
+    已從預設清單移除：在 Windows-on-ARM 上其安裝程式屬低信譽二進位，會被
+    Windows Defender / SmartScreen 誤判為 PUA（受管機器的 PUA 防護更嚴），且與
+    VSCode / Cursor / nvim 功能重疊。想要的話自行安裝：
+    `winget install Notepad++.Notepad++` 或 `scoop install notepadplusplus`。
+
 ## AI agents（npm）
 
 `@anthropic-ai/claude-code`、`opencode-ai`、`@openai/codex`、`@github/copilot`
@@ -114,6 +119,7 @@ CLI 套件，故此處略過。
 | `kill-process` | 依記憶體排序的行程 → Enter/Ctrl+K 結束、Ctrl+D 強制結束 |
 | `scoop-apps` | 已安裝的 scoop apps → Enter 資訊、Ctrl+U 更新、Ctrl+X 移除 |
 | `apps` | 從開始功能表捷徑啟動應用程式 |
+| `channels` | 依描述瀏覽所有 tv channel → Enter 開啟選定的 channel |
 
 ## 升級
 

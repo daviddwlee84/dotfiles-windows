@@ -1,0 +1,24 @@
+# channels — meta-channel: browse every tv channel with its description.
+# Windows port of the Unix awk version (parses each cable/*.toml [metadata] with
+# pwsh; [char]34 = " so the regex never breaks the -Command "..." quoting).
+# Enter opens the selected channel; the preview bats its TOML.
+
+[metadata]
+name = "channels"
+description = "Browse all available tv channels with descriptions"
+
+[source]
+command = '''pwsh -NoProfile -Command "$q=[char]34; Get-ChildItem (Join-Path $env:APPDATA 'television\cable\*.toml') | ForEach-Object { $c=Get-Content $_.FullName -Raw; $n=''; $d=''; if ($c -match ('(?m)^\s*name\s*=\s*'+$q+'([^'+$q+']*)'+$q)) { $n=$matches[1] }; if ($c -match ('(?m)^\s*description\s*=\s*'+$q+'([^'+$q+']*)'+$q)) { $d=$matches[1] }; if ($n) { $n+[char]9+$d } }"'''
+display = '{split:\t:0}   —   {split:\t:1}'
+output = '{split:\t:0}'
+
+[preview]
+command = '''pwsh -NoProfile -Command "bat -n --color=always (Join-Path $env:APPDATA 'television\cable\{split:\t:0}.toml')"'''
+
+[keybindings]
+enter = "actions:open"
+
+[actions.open]
+description = "Open selected channel in tv"
+command = '''pwsh -NoProfile -Command "tv {split:\t:0}"'''
+mode = "execute"

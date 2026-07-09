@@ -132,7 +132,19 @@ if (Have mise) {
     if ($LASTEXITCODE -ne 0) { Register-Failure 'mise:node/bun' }
 }
 
-# PSReadLine ships with pwsh; PSFzf powers the fzf key bindings in profile.d.
+# Make PSGallery usable non-interactively before Install-Module (NuGet provider
+# + trust) so the fzf key bindings / audio cmdlets install reliably.
+try {
+    if (-not (Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue)) {
+        Install-PackageProvider -Name NuGet -Scope CurrentUser -Force -ErrorAction SilentlyContinue | Out-Null
+    }
+    if ((Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue).InstallationPolicy -ne 'Trusted') {
+        Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue
+    }
+} catch { Write-Warning "PSGallery prep failed (non-fatal): $_" }
+
+# PSReadLine ships with pwsh; PSFzf powers the fzf key bindings in profile.d
+# (Ctrl+t = files, Ctrl+r = fuzzy history search).
 if (-not (Get-Module -ListAvailable -Name PSFzf)) {
     Info 'Install-Module PSFzf'
     Install-Module PSFzf -Scope CurrentUser -Force -AcceptLicense -ErrorAction SilentlyContinue
@@ -172,7 +184,6 @@ Npm-InstallGlobal @(
 foreach ($id in @(
     'Microsoft.VisualStudioCode',
     'Anysphere.Cursor',
-    'Notepad++.Notepad++',
     'Microsoft.WindowsTerminal',
     'Alacritty.Alacritty',
     'Microsoft.PowerToys',

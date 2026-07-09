@@ -37,7 +37,6 @@ is enabled.
 |---|---|
 | VSCode | `Microsoft.VisualStudioCode` |
 | Cursor | `Anysphere.Cursor` |
-| Notepad++ | `Notepad++.Notepad++` |
 | Windows Terminal | `Microsoft.WindowsTerminal` |
 | Alacritty | `Alacritty.Alacritty` |
 | PowerToys | `Microsoft.PowerToys` |
@@ -78,6 +77,13 @@ Enabled by **Install utility apps**:
     `winget install raycast`. Flow Launcher, Raycast, and **PowerToys Run** all
     default to **Alt+Space** — pick one and rebind or disable the others.
 
+!!! note "Notepad++ is opt-in"
+    Dropped from the default set: on Windows-on-ARM its installer is a
+    low-reputation binary that Windows Defender / SmartScreen flags as PUA
+    (a false positive, aggravated by managed-machine PUA protection), and it's
+    redundant with VSCode / Cursor / nvim. Add it yourself if you want it:
+    `winget install Notepad++.Notepad++` or `scoop install notepadplusplus`.
+
 ## AI agents (npm)
 
 `@anthropic-ai/claude-code`, `opencode-ai`, `@openai/codex`, `@github/copilot`
@@ -116,6 +122,7 @@ Custom pickers under `%APPDATA%\television\cable\` (run `tv` to browse, or `tv <
 | `kill-process` | processes by memory → Enter/Ctrl+K kill, Ctrl+D force-kill |
 | `scoop-apps` | installed scoop apps → Enter info, Ctrl+U update, Ctrl+X uninstall |
 | `apps` | launch an app from Start Menu shortcuts |
+| `channels` | browse every tv channel by description → Enter opens the selected one |
 
 ## Upgrades
 

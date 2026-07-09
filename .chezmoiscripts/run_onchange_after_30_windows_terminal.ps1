@@ -13,6 +13,19 @@ $path = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $path) { Write-Host 'Windows Terminal settings.json not found — launch WT once, then re-apply.'; return }
 
 $raw = Get-Content -Raw $path
+
+# Back up the pre-merge settings.json ONCE before we rewrite it. This merge is
+# non-destructive (only profiles.defaults + defaultProfile change; your profile
+# list / schemes / keybindings are preserved), but ConvertTo-Json reformats the
+# file and strips comments, so keep an escape hatch. The run_once_before backup
+# doesn't cover this package-versioned %LOCALAPPDATA% path.
+$bak = Join-Path (Join-Path $HOME '.dotfiles-backup') 'windows-terminal-settings.json.bak'
+if (-not (Test-Path -LiteralPath $bak)) {
+    New-Item -ItemType Directory -Force -Path (Split-Path $bak -Parent) | Out-Null
+    Copy-Item -LiteralPath $path -Destination $bak -Force -ErrorAction SilentlyContinue
+    Write-Host "backed up Windows Terminal settings -> $bak"
+}
+
 $raw = [regex]::Replace($raw, '(?m)^\s*//.*$', '')   # drop whole-line comments
 try { $s = $raw | ConvertFrom-Json -AsHashtable } catch { Write-Warning "could not parse $path — skipping"; return }
 

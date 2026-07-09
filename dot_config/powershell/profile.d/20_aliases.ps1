@@ -39,6 +39,19 @@ function which {
     }
 }
 
+# unix / mac command names → Windows equivalents (muscle memory)
+function ifconfig { ipconfig @args }
+function open { Invoke-Item @args }          # open a file/dir in its default app
+function pbcopy { $input | Set-Clipboard }   # pipe into it: some-cmd | pbcopy
+function pbpaste { Get-Clipboard }
+function touch {
+    param([Parameter(Mandatory, ValueFromRemainingArguments)][string[]]$Path)
+    foreach ($p in $Path) {
+        if (Test-Path -LiteralPath $p) { (Get-Item -LiteralPath $p).LastWriteTime = Get-Date }
+        else { New-Item -ItemType File -Path $p -Force | Out-Null }
+    }
+}
+
 # --- git shortcuts ---
 function gs { git status @args }
 function gd { git diff @args }
