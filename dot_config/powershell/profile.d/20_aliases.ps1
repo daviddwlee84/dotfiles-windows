@@ -39,13 +39,16 @@ function chezmoi-cd { Set-Location (chezmoi source-path) }
 function cas { chezmoi apply @args; . $PROFILE }
 function cau { chezmoi update @args; . $PROFILE }
 
-# --- run-for: time-box a command (e.g. `run-for 5 ping example.com`) ---
+# --- run-for: time-box an external command (e.g. `run-for 5 ping example.com`) ---
 function run-for {
     param(
         [Parameter(Mandatory)][int]$Seconds,
         [Parameter(Mandatory, ValueFromRemainingArguments)][string[]]$Command
     )
-    $job = Start-Job -ScriptBlock { param($c) & $c[0] @($c[1..($c.Length-1)]) } -ArgumentList (,$Command)
-    if (Wait-Job $job -Timeout $Seconds) { Receive-Job $job } else { Stop-Job $job; Write-Warning "run-for: timed out after ${Seconds}s" }
-    Remove-Job $job -Force
+    $rest = if ($Command.Count -gt 1) { $Command[1..($Command.Count - 1)] } else { @() }
+    $p = Start-Process -FilePath $Command[0] -ArgumentList $rest -PassThru -NoNewWindow
+    if (-not $p.WaitForExit($Seconds * 1000)) {
+        $p.Kill()
+        Write-Warning "run-for: timed out after ${Seconds}s"
+    }
 }

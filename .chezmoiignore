@@ -9,6 +9,7 @@ bootstrap.ps1
 mkdocs.yml
 pyproject.toml
 uv.lock
+PSScriptAnalyzerSettings.psd1
 
 docs
 docs/**

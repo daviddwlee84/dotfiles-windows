@@ -37,7 +37,7 @@ upgrade: upgrade-scoop upgrade-winget
 
 # lint PowerShell with PSScriptAnalyzer
 lint:
-    Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error,Warning | Format-Table -AutoSize
+    Invoke-ScriptAnalyzer -Path . -Recurse -Settings ./PSScriptAnalyzerSettings.psd1 | Format-Table -AutoSize
 
 # run Pester tests
 test:

@@ -23,8 +23,7 @@ jobs:
       - name: Lint PowerShell (PSScriptAnalyzer)
         shell: pwsh
         run: |
-          $rules = @('PSAvoidUsingWriteHost','PSAvoidUsingInvokeExpression','PSUseShouldProcessForStateChangingFunctions','PSUseApprovedVerbs')
-          $issues = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error,Warning -ExcludeRule $rules
+          $issues = Invoke-ScriptAnalyzer -Path . -Recurse -Settings ./PSScriptAnalyzerSettings.psd1
           $issues | Format-Table -AutoSize
           if ($issues | Where-Object Severity -eq 'Error') { throw "PSScriptAnalyzer found $(($issues | Where-Object Severity -eq 'Error').Count) error(s)" }
 
