@@ -121,9 +121,10 @@ Scoop-Install @(
     'delta', 'lazygit', 'neovim', 'yazi', 'btop', 'television',
     # gnupg lets mise gpg-verify its runtime downloads (else: "gpg not found").
     'mise', 'uv', 'gnupg',
-    # LazyVim needs a C compiler for tree-sitter parsers (zig) and a clipboard
-    # provider so `unnamedplus` yanks reach the Windows clipboard (win32yank).
-    'zig', 'win32yank'
+    # LazyVim needs a C compiler for tree-sitter parsers (zig), the tree-sitter
+    # CLI the nvim-treesitter `main` branch requires, and a clipboard provider so
+    # `unnamedplus` yanks reach the Windows clipboard (win32yank).
+    'zig', 'tree-sitter', 'win32yank'
 )
 
 # Node + bun via mise (node is a hard dep for the npm-based coding agents).
