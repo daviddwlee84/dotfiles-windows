@@ -13,6 +13,7 @@ PSScriptAnalyzerSettings.psd1
 
 # project-knowledge-harness (maintainer-facing repo metadata, never shipped).
 AGENTS.md
+CLAUDE.md
 TODO.md
 backlog
 backlog/**
