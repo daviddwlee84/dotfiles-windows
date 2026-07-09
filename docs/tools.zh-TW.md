@@ -39,7 +39,7 @@ node）。啟用 **Extra runtimes** 時才會加裝 `rust`、`go`、`ruby`。
 | Windows Terminal | `Microsoft.WindowsTerminal` |
 | Alacritty | `Alacritty.Alacritty` |
 | PowerToys | `Microsoft.PowerToys` |
-| Flow Launcher | `Flow-Launcher.Flow-Launcher` |
+| Raycast | `9PFXXSHC64H3`（msstore） |
 | Antigravity | `Google.Antigravity` |
 | Docker Desktop | `Docker.DockerDesktop` |
 | Discord | `Discord.Discord` |
@@ -70,10 +70,11 @@ node）。啟用 **Extra runtimes** 時才會加裝 `rust`、`go`、`ruby`。
 | Tailscale | `Tailscale.Tailscale` | mesh VPN |
 
 !!! note "啟動器與 Alt+Space 撞鍵"
-    [Flow Launcher](https://www.flowlauncher.com/) 是預設的鍵盤啟動器（x64 與
-    ARM64 都穩定）。**Raycast for Windows** 是 Microsoft Store 測試版、winget id
-    不穩定，故改為選用：`winget install raycast`。Flow Launcher、Raycast 與
-    **PowerToys Run** 都預設 **Alt+Space** —— 擇一使用，其餘改鍵或停用。
+    **Raycast**（Microsoft Store，id `9PFXXSHC64H3`）是預設啟動器，與
+    **PowerToys Run** 共用 **Alt+Space** —— 停用 PowerToys Run（PowerToys
+    Settings › PowerToys Run › off）或改鍵其一。Raycast for Windows 仍是 Store
+    測試版；若裝不起來，改用 [Flow Launcher](https://www.flowlauncher.com/) 備援：
+    `winget install Flow-Launcher.Flow-Launcher`。
 
 !!! note "Notepad++ 改為選用"
     已從預設清單移除：在 Windows-on-ARM 上其安裝程式屬低信譽二進位，會被

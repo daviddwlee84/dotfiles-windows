@@ -40,7 +40,7 @@ is enabled.
 | Windows Terminal | `Microsoft.WindowsTerminal` |
 | Alacritty | `Alacritty.Alacritty` |
 | PowerToys | `Microsoft.PowerToys` |
-| Flow Launcher | `Flow-Launcher.Flow-Launcher` |
+| Raycast | `9PFXXSHC64H3` (msstore) |
 | Antigravity | `Google.Antigravity` |
 | Docker Desktop | `Docker.DockerDesktop` |
 | Discord | `Discord.Discord` |
@@ -71,11 +71,12 @@ Enabled by **Install utility apps**:
 | Tailscale | `Tailscale.Tailscale` | mesh VPN |
 
 !!! note "Launchers & the Alt+Space clash"
-    [Flow Launcher](https://www.flowlauncher.com/) is the default keyboard
-    launcher (reliable on x64 **and** ARM64). **Raycast for Windows** is a
-    Microsoft Store beta with a finicky winget id, so it's opt-in:
-    `winget install raycast`. Flow Launcher, Raycast, and **PowerToys Run** all
-    default to **Alt+Space** — pick one and rebind or disable the others.
+    **Raycast** (Microsoft Store, id `9PFXXSHC64H3`) is the default launcher.
+    It shares **Alt+Space** with **PowerToys Run** — disable PowerToys Run
+    (PowerToys Settings › PowerToys Run › off) or rebind one. Raycast for Windows
+    is still a Store beta; if it won't install, fall back to
+    [Flow Launcher](https://www.flowlauncher.com/):
+    `winget install Flow-Launcher.Flow-Launcher`.
 
 !!! note "Notepad++ is opt-in"
     Dropped from the default set: on Windows-on-ARM its installer is a

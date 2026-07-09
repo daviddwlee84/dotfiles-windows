@@ -187,7 +187,6 @@ foreach ($id in @(
     'Microsoft.WindowsTerminal',
     'Alacritty.Alacritty',
     'Microsoft.PowerToys',
-    'Flow-Launcher.Flow-Launcher',
     'Google.Antigravity',
     'Docker.DockerDesktop',
     'Discord.Discord',
@@ -198,7 +197,10 @@ foreach ($id in @(
     'Zen-Team.Zen-Browser'
 )) { Winget-Install $id }
 
-# Official ChatGPT + Codex desktop apps ship only on the Microsoft Store.
+# Store-only apps: Raycast (default launcher) + the official ChatGPT / Codex
+# desktop apps. All ship via the Microsoft Store; there's no Raycast.Raycast
+# winget manifest, so it installs by Store product id.
+Winget-InstallStore '9PFXXSHC64H3'   # Raycast
 Winget-InstallStore '9NT1R1C2HH7J'   # ChatGPT
 Winget-InstallStore '9PLM9XGG6VKS'   # Codex
 
@@ -207,7 +209,7 @@ Winget-InstallStore '9PLM9XGG6VKS'   # Codex
 # configs reference; Hack-NF ("Hack Nerd Font") is the proportional companion.
 Scoop-Install @('Hack-NF', 'Hack-NF-Mono')
 
-Write-Warning 'Flow Launcher and PowerToys Run both default to Alt+Space. Pick one: disable PowerToys Run (PowerToys Settings > PowerToys Run > off) or rebind a hotkey. Raycast for Windows is a Microsoft Store beta -- `winget install raycast` if you want it, then resolve the same clash.'
+Write-Warning 'Raycast is the default launcher but shares Alt+Space with PowerToys Run -- disable PowerToys Run (PowerToys Settings > PowerToys Run > off) or rebind a hotkey. Raycast for Windows is a Store beta; if it fails to install, Flow Launcher is the fallback: winget install Flow-Launcher.Flow-Launcher.'
 {{ end -}}
 
 {{ if .installGamingApps -}}
