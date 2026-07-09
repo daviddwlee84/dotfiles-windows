@@ -5,7 +5,7 @@
 #   smart/full back up the managed targets that already exist (on Windows the two
 #              modes are equivalent — there is no broader allowlist)
 {{ if ne .backupMode "off" -}}
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'   # best-effort; never block the apply
 
 $targets = @(
     (Join-Path $HOME 'Documents/PowerShell/Microsoft.PowerShell_profile.ps1'),

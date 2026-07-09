@@ -1,0 +1,28 @@
+# ~/.config/yazi/yazi.toml (Windows). Resolved via $YAZI_CONFIG_HOME, set in
+# profile.d/00_env.ps1. Adapted from the macOS/Linux dotfiles: the layout/sort
+# settings port verbatim; openers use Windows-native commands.
+#
+# yazi 25/26 uses the [mgr] table (older versions used [manager]).
+
+[mgr]
+ratio = [1, 4, 3]          # 1/8 parent, 4/8 current, 3/8 preview
+sort_by = "natural"
+sort_dir_first = true
+linemode = "size"
+show_hidden = true
+show_symlink = true
+
+[open]
+rules = [
+  # edit / open / reveal come from yazi's built-in Windows preset; `git` is ours.
+  { url = "*/", use = ["edit", "git", "reveal", "open"] },
+  { mime = "text/*", use = ["edit", "open"] },
+  { mime = "*", use = ["open"] },
+]
+
+[opener]
+# Open lazygit in the hovered directory. %* is the selected path on Windows;
+# adjust the placeholder if your yazi version differs.
+git = [
+  { run = 'cmd /c cd /d "%*" && lazygit', block = true, desc = "Lazygit (here)" },
+]

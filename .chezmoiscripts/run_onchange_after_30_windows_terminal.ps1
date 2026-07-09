@@ -3,7 +3,7 @@
 # profile defaults (font, color, opacity) without touching individual profiles.
 # No-op if WT isn't installed / hasn't created its settings.json yet.
 
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'   # best-effort; never abort the apply
 
 $candidates = @()
 $candidates += Get-ChildItem "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal*\LocalState\settings.json" -ErrorAction SilentlyContinue | ForEach-Object FullName

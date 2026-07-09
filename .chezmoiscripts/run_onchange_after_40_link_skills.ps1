@@ -3,7 +3,7 @@
 # Code by linking ~/.claude/skills/<name> -> ~/.agents/skills/<name>.
 # Uses a directory JUNCTION (not a symlink) so it needs no elevation /
 # Developer Mode on Windows.
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'   # best-effort; never abort the apply
 
 $src = Join-Path $HOME '.agents/skills/dotfiles-windows'
 $dst = Join-Path $HOME '.claude/skills/dotfiles-windows'

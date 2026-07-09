@@ -16,7 +16,12 @@
 #   installIacTools      = {{ .installIacTools }}
 #   useChineseMirror     = {{ .useChineseMirror }}
 
-$ErrorActionPreference = 'Stop'
+# Resilient by design: individual package failures are collected and reported at
+# the end, never fatal — one bad manifest must not abort the rest of the install
+# (nor the rest of `chezmoi apply`). Mirrors ansible allow-partial-failure.
+$ErrorActionPreference = 'Continue'
+if (Test-Path variable:PSNativeCommandUseErrorActionPreference) { $PSNativeCommandUseErrorActionPreference = $false }
+$script:Failures = [System.Collections.Generic.List[string]]::new()
 {{ if .useChineseMirror }}
 # China (GFW) mirrors for install-time package fetches.
 $env:PIP_INDEX_URL = 'https://pypi.tuna.tsinghua.edu.cn/simple'
@@ -28,6 +33,7 @@ $env:MISE_NODE_MIRROR_URL = 'https://npmmirror.com/mirrors/node/'
 
 function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 function Have($n) { [bool](Get-Command $n -ErrorAction SilentlyContinue) }
+function Register-Failure($what) { $script:Failures.Add($what); Write-Warning "FAILED (skipped): $what" }
 
 # --- scoop -----------------------------------------------------------------
 function Ensure-Scoop {
@@ -46,15 +52,21 @@ function Get-ScoopInstalled {
 
 function Scoop-Install([string[]]$apps) {
     if (-not $apps) { return }
-    $have = Get-ScoopInstalled
-    $missing = $apps | Where-Object { $_ -notin $have }
-    if ($missing) { Info "scoop install: $($missing -join ', ')"; scoop install @missing }
-    else { Info 'scoop: all requested CLI tools already present' }
+    $missing = $apps | Where-Object { ($_ -split '/')[-1] -notin (Get-ScoopInstalled) }
+    if (-not $missing) { Info 'scoop: all requested tools already present'; return }
+    Info "scoop install: $($missing -join ', ')"
+    try { scoop install @missing } catch { Write-Warning "scoop batch error: $_" }
+    # Anything still absent after the batch = failed (scoop keeps going past a bad one).
+    $after = Get-ScoopInstalled
+    foreach ($app in $missing) {
+        $name = ($app -split '/')[-1]
+        if ($name -notin $after) { Register-Failure "scoop:$name" }
+    }
 }
 
 # --- winget ----------------------------------------------------------------
 function Winget-Install([string]$id) {
-    if (-not (Have winget)) { Write-Warning "winget unavailable — skipping $id"; return }
+    if (-not (Have winget)) { Register-Failure "winget:$id (winget unavailable)"; return }
     winget list --id $id -e --accept-source-agreements *> $null
     if ($LASTEXITCODE -eq 0) { return }   # already installed
     Info "winget install $id"
@@ -65,12 +77,17 @@ function Winget-Install([string]$id) {
         winget install --id $id -e --silent `
             --accept-source-agreements --accept-package-agreements 2>&1 | Out-Host
     }
+    if ($LASTEXITCODE -ne 0) { Register-Failure "winget:$id" }
 }
 
 # --- npm CLI agents --------------------------------------------------------
 function Npm-InstallGlobal([string[]]$pkgs) {
-    if (-not (Have npm)) { Write-Warning 'npm unavailable (node not installed?) — skipping npm agents'; return }
-    foreach ($p in $pkgs) { Info "npm i -g $p"; npm install -g $p }
+    if (-not (Have npm)) { foreach ($p in $pkgs) { Register-Failure "npm:$p (npm unavailable)" }; return }
+    foreach ($p in $pkgs) {
+        Info "npm i -g $p"
+        npm install -g $p 2>&1 | Out-Host
+        if ($LASTEXITCODE -ne 0) { Register-Failure "npm:$p" }
+    }
 }
 
 # ===========================================================================
@@ -88,6 +105,7 @@ Scoop-Install @(
 if (Have mise) {
     Info 'mise: node@lts, bun@latest'
     mise use -g node@lts bun@latest
+    if ($LASTEXITCODE -ne 0) { Register-Failure 'mise:node/bun' }
 }
 
 # PSReadLine ships with pwsh; PSFzf powers the fzf key bindings in profile.d.
@@ -103,7 +121,7 @@ if (-not (Get-Module -ListAvailable -Name AudioDeviceCmdlets)) {
 
 {{ if .installExtraRuntimes -}}
 # Extra language runtimes via mise (rust/go/ruby). node/bun/uv are baseline.
-if (Have mise) { Info 'mise: rust, go, ruby'; mise use -g rust@latest go@latest ruby@latest }
+if (Have mise) { Info 'mise: rust, go, ruby'; mise use -g rust@latest go@latest ruby@latest; if ($LASTEXITCODE -ne 0) { Register-Failure 'mise:rust/go/ruby' } }
 {{ end -}}
 
 {{ if .installMediaTools -}}
@@ -166,7 +184,7 @@ foreach ($id in @(
 {{ if .installLlmTools -}}
 # Local LLM tools: Ollama (winget) + LiteLLM (uv tool).
 Winget-Install 'Ollama.Ollama'
-if (Have uv) { Info 'uv tool install litellm'; uv tool install 'litellm[proxy]' }
+if (Have uv) { Info 'uv tool install litellm'; uv tool install 'litellm[proxy]'; if ($LASTEXITCODE -ne 0) { Register-Failure 'uv:litellm' } }
 {{ end -}}
 
 {{ if .installTunnelTools -}}
@@ -178,4 +196,10 @@ Scoop-Install @('terraform', 'opentofu')
 Winget-Install 'Microsoft.AzureCLI'
 {{ end -}}
 
-Info 'package install complete'
+if ($script:Failures.Count -gt 0) {
+    Write-Warning ("package install: {0} item(s) failed and were skipped:" -f $script:Failures.Count)
+    $script:Failures | ForEach-Object { Write-Warning "  - $_" }
+    Write-Warning "Re-run 'just apply' (or 'chezmoi apply') to retry, or install them manually."
+} else {
+    Info 'package install complete — no failures'
+}

@@ -3,7 +3,7 @@
 # into VSCode + Cursor, and seed keybindings once. Re-runs when either embedded
 # source file changes. Skips an editor whose User dir doesn't exist (not installed).
 
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'   # best-effort; never abort the apply
 
 # Embedded at render time from the (chezmoi-ignored) editors/ sources — so this
 # script is self-contained and re-runs when they change.

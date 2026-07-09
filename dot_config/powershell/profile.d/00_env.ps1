@@ -8,6 +8,8 @@ if (-not $env:XDG_STATE_HOME)  { $env:XDG_STATE_HOME  = Join-Path $HOME '.local/
 if (-not $env:XDG_CACHE_HOME)  { $env:XDG_CACHE_HOME  = Join-Path $HOME '.cache' }
 
 $env:STARSHIP_CONFIG = Join-Path $env:XDG_CONFIG_HOME 'starship.toml'
+# yazi looks in %APPDATA%\yazi\config by default; keep it XDG-consistent instead.
+$env:YAZI_CONFIG_HOME = Join-Path $env:XDG_CONFIG_HOME 'yazi'
 
 # Default editor
 if (Get-Command nvim -ErrorAction SilentlyContinue) { $env:EDITOR = 'nvim' }
