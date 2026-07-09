@@ -62,13 +62,13 @@ chezmoi execute-template --config="$TMPD/c.toml" --source="$PWD" < some.ps1.tmpl
 3. **Preserve raw escapes when authoring config with control chars.** Alacritty CSI-u (`[…u`), VSCode `sendSequence`, tv `\t` — hand-typing tends to drop them. Generate via a throwaway Python script and re-parse (`tomllib` / `json`) to confirm the escape landed.
 4. **tv channel commands are `pwsh -NoProfile -Command "…"` inside TOML literal (`'''…'''`) strings** — runs regardless of tv's shell, sidesteps nested-quote escaping; placeholders `{split: :0}` (space) / `{split:\t:0}` (tab). tv reads config from `%APPDATA%\television\` on Windows.
 5. **Editors use a run_onchange pwsh merger, not `modify_`** (`modify_` interpreter selection is unreliable on Windows). Overlay sources live in `editors/` (chezmoi-ignored, embedded via `{{ include }}`).
-6. **The agent skill** is canonical at `dot_agents/skills/dotfiles-windows/` (→ `~/.agents/skills/`); `run_onchange_after_40_link_skills.ps1` **junctions** it into `~/.claude/skills/` (a directory junction — symlinks need elevation/Developer Mode on Windows).
+6. **The agent skill body lives once** in `.chezmoitemplates/dotfiles-windows-skill.md`; both `dot_agents/skills/dotfiles-windows/SKILL.md.tmpl` and `dot_claude/skills/dotfiles-windows/SKILL.md.tmpl` render it via `{{ "{{" }} template … {{ "}}" }}` → real files at `~/.agents/skills/` and `~/.claude/skills/`. Edit the shared template, not the two one-line renderers (no symlink/junction — those need elevation/Developer Mode on Windows).
 7. **PSScriptAnalyzer exclusions are intentional** (`PSScriptAnalyzerSettings.psd1`): hyphenated command names, `Write-Host`, `Invoke-Expression` for tool init, no-BOM UTF-8. Don't "fix" these; do fix real Errors.
 
 ### Cross-file mirrors (same commit)
 
 - New installer tool → `docs/tools.md` **and** `docs/tools.zh-TW.md`.
-- New init prompt → `.chezmoi.toml.tmpl` + `windows.yml` flags + `docs/setup.md`/`setup.zh-TW.md` tables + the "What's enabled" block in `dot_agents/skills/dotfiles-windows/SKILL.md.tmpl`.
+- New init prompt → `.chezmoi.toml.tmpl` + `windows.yml` flags + `docs/setup.md`/`setup.zh-TW.md` tables + the "What's enabled" block in `.chezmoitemplates/dotfiles-windows-skill.md`.
 - New `docs/**/*.md` → its `.zh-TW.md` twin + `nav` + `nav_translations` in `mkdocs.yml`; `just docs-build` must stay green.
 
 <!-- project-knowledge-harness:agent-guidance -->
