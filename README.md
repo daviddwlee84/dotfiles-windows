@@ -1,4 +1,4 @@
-# windows-dotfiles
+# dotfiles-windows
 
 Native **Windows + PowerShell 7** dotfiles, managed by [chezmoi](https://chezmoi.io).
 A self-contained, Windows-only companion to my cross-platform (macOS/Linux)
@@ -13,7 +13,7 @@ POSIX shell config.
 From a fresh Windows PowerShell (or pwsh) session:
 
 ```powershell
-irm https://raw.githubusercontent.com/daviddwlee84/windows-dotfiles/main/bootstrap.ps1 | iex
+irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex
 ```
 
 This installs [scoop](https://scoop.sh) (CLI tools) + [winget](https://learn.microsoft.com/windows/package-manager/)

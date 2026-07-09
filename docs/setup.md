@@ -5,7 +5,7 @@
 From a fresh Windows PowerShell (or PowerShell 7) session:
 
 ```powershell
-irm https://raw.githubusercontent.com/daviddwlee84/windows-dotfiles/main/bootstrap.ps1 | iex
+irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex
 ```
 
 `bootstrap.ps1` does the following, idempotently:

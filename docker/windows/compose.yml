@@ -4,7 +4,7 @@
 services:
   windows:
     image: dockurr/windows
-    container_name: windows-dotfiles-test
+    container_name: dotfiles-windows-test
     environment:
       VERSION: "11"
       USERNAME: "dev"

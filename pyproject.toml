@@ -1,5 +1,5 @@
 [project]
-name = "windows-dotfiles-docs"
+name = "dotfiles-windows-docs"
 version = "0.1.0"
 description = "Docs site for the Windows (pwsh) chezmoi dotfiles."
 requires-python = ">=3.11"

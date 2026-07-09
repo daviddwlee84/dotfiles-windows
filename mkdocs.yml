@@ -1,7 +1,7 @@
 site_name: Windows dotfiles
 site_description: Native Windows + PowerShell 7 dotfiles, managed by chezmoi
-site_url: https://daviddwlee84.github.io/windows-dotfiles/
-repo_url: https://github.com/daviddwlee84/windows-dotfiles
+site_url: https://daviddwlee84.github.io/dotfiles-windows/
+repo_url: https://github.com/daviddwlee84/dotfiles-windows
 docs_dir: docs
 
 theme:

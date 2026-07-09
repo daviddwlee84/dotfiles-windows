@@ -9,7 +9,7 @@
 
 .EXAMPLE
     # From a fresh Windows PowerShell / pwsh session:
-    irm https://raw.githubusercontent.com/daviddwlee84/windows-dotfiles/main/bootstrap.ps1 | iex
+    irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex
 
 .EXAMPLE
     # Local testing against a checked-out copy:
@@ -18,7 +18,7 @@
 [CmdletBinding()]
 param(
     # Remote repo (default) — chezmoi shorthand or full URL.
-    [string]$Repo = 'daviddwlee84/windows-dotfiles',
+    [string]$Repo = 'daviddwlee84/dotfiles-windows',
     [string]$Branch = 'main',
     # Local source dir; when set, overrides -Repo (for testing an unpushed tree).
     [string]$Source

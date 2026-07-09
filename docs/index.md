@@ -23,7 +23,7 @@ from the POSIX shell config.
 ## Quick start
 
 ```powershell
-irm https://raw.githubusercontent.com/daviddwlee84/windows-dotfiles/main/bootstrap.ps1 | iex
+irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex
 ```
 
 Full walkthrough: [Setup](setup.md). Design choices (why scoop, why starship, why

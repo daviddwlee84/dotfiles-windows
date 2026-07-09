@@ -22,7 +22,7 @@
 ## 快速開始
 
 ```powershell
-irm https://raw.githubusercontent.com/daviddwlee84/windows-dotfiles/main/bootstrap.ps1 | iex
+irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex
 ```
 
 完整步驟：[安裝](setup.md)。設計取捨（為何用 scoop、starship、pwsh）：

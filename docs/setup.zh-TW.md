@@ -5,7 +5,7 @@
 在全新的 Windows PowerShell（或 PowerShell 7）視窗執行：
 
 ```powershell
-irm https://raw.githubusercontent.com/daviddwlee84/windows-dotfiles/main/bootstrap.ps1 | iex
+irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex
 ```
 
 `bootstrap.ps1` 會依序（且可重複執行）完成：
