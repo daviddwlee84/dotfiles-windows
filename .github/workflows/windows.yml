@@ -1,0 +1,74 @@
+name: windows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install chezmoi + PowerShell modules
+        shell: pwsh
+        run: |
+          winget install --id twpayne.chezmoi -e --silent --accept-source-agreements --accept-package-agreements
+          echo "$env:LOCALAPPDATA\Microsoft\WinGet\Links" >> $env:GITHUB_PATH
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          Install-Module Pester -Force -Scope CurrentUser -SkipPublisherCheck
+
+      - name: Lint PowerShell (PSScriptAnalyzer)
+        shell: pwsh
+        run: |
+          $rules = @('PSAvoidUsingWriteHost','PSAvoidUsingInvokeExpression','PSUseShouldProcessForStateChangingFunctions','PSUseApprovedVerbs')
+          $issues = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error,Warning -ExcludeRule $rules
+          $issues | Format-Table -AutoSize
+          if ($issues | Where-Object Severity -eq 'Error') { throw "PSScriptAnalyzer found $(($issues | Where-Object Severity -eq 'Error').Count) error(s)" }
+
+      - name: chezmoi init (writes config from prompt answers)
+        shell: pwsh
+        run: |
+          $flags = @(
+            '--promptChoice','Role: workstation (full desktop) or minimal (shell only)=minimal',
+            '--promptString','Your full name (git)=CI Runner',
+            '--promptString','Your git email=ci@example.com',
+            '--promptBool','Install coding agents (Claude Code, OpenCode, Codex, Copilot CLI, SpecStory)=false',
+            '--promptBool','Install GUI apps via winget (VSCode, Cursor, Notepad++, Terminal, Alacritty, PowerToys, Raycast)=false',
+            '--promptBool','Install gaming apps (Steam)=false',
+            '--promptBool','Install extra mise runtimes (rust, go, ruby) beyond node/bun/uv=false',
+            '--promptBool','Install media CLIs (ffmpeg, imagemagick)=false',
+            '--promptBool','Enable PSReadLine vi editing mode=true'
+          )
+          chezmoi init --source $PWD --no-tty @flags
+
+      - name: Parse-check rendered .ps1.tmpl scripts
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem -Recurse -Filter *.ps1.tmpl | ForEach-Object {
+            $rendered = Get-Content -Raw $_.FullName | chezmoi execute-template
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseInput($rendered, [ref]$null, [ref]$errors) | Out-Null
+            if ($errors) { Write-Host "FAIL: $($_.Name)"; $errors | ForEach-Object { Write-Host "  $_" }; $failed = $true }
+            else { Write-Host "OK:   $($_.Name)" }
+          }
+          if ($failed) { throw 'A rendered template has a PowerShell syntax error' }
+
+      - name: chezmoi apply (files only, no package scripts)
+        shell: pwsh
+        run: |
+          $dest = Join-Path $env:RUNNER_TEMP 'dothome'
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          chezmoi apply --source $PWD --destination $dest --exclude scripts --verbose
+          Write-Host '--- deployed tree ---'
+          Get-ChildItem -Recurse -File $dest | ForEach-Object { $_.FullName.Replace($dest,'') }
+
+      - name: Pester tests
+        shell: pwsh
+        run: |
+          if (Get-ChildItem -Recurse -Filter *.Tests.ps1) {
+            Invoke-Pester -CI -Path . -Output Detailed
+          } else { Write-Host 'no Pester tests yet' }

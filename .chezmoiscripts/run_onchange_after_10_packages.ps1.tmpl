@@ -1,0 +1,129 @@
+#Requires -Version 7
+# run_onchange_after_10_packages.ps1 — install the toolset with scoop (CLI) +
+# winget (GUI). Idempotent: only missing packages are installed. This script is
+# the SINGLE SOURCE OF TRUTH for what gets installed; re-runs whenever the
+# rendered content (i.e. any toggle below) changes.
+#
+# Toggles (from .chezmoi.toml.tmpl):
+#   installCodingAgents  = {{ .installCodingAgents }}
+#   installWindowsApps   = {{ .installWindowsApps }}
+#   installGamingApps    = {{ .installGamingApps }}
+#   installExtraRuntimes = {{ .installExtraRuntimes }}
+#   installMediaTools    = {{ .installMediaTools }}
+
+$ErrorActionPreference = 'Stop'
+
+function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
+function Have($n) { [bool](Get-Command $n -ErrorAction SilentlyContinue) }
+
+# --- scoop -----------------------------------------------------------------
+function Ensure-Scoop {
+    if (-not (Have scoop)) {
+        Info 'scoop not found — installing (user-scoped, no admin)'
+        Invoke-RestMethod get.scoop.sh | Invoke-Expression
+    }
+    foreach ($b in 'main', 'extras', 'versions', 'nerd-fonts') {
+        scoop bucket add $b *> $null
+    }
+}
+
+function Get-ScoopInstalled {
+    try { return @((scoop export | ConvertFrom-Json).apps.name) } catch { return @() }
+}
+
+function Scoop-Install([string[]]$apps) {
+    if (-not $apps) { return }
+    $have = Get-ScoopInstalled
+    $missing = $apps | Where-Object { $_ -notin $have }
+    if ($missing) { Info "scoop install: $($missing -join ', ')"; scoop install @missing }
+    else { Info 'scoop: all requested CLI tools already present' }
+}
+
+# --- winget ----------------------------------------------------------------
+function Winget-Install([string]$id) {
+    if (-not (Have winget)) { Write-Warning "winget unavailable — skipping $id"; return }
+    winget list --id $id -e --accept-source-agreements *> $null
+    if ($LASTEXITCODE -eq 0) { return }   # already installed
+    Info "winget install $id"
+    winget install --id $id -e --silent --scope user `
+        --accept-source-agreements --accept-package-agreements 2>&1 | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        # some packages don't support --scope user; retry machine scope.
+        winget install --id $id -e --silent `
+            --accept-source-agreements --accept-package-agreements 2>&1 | Out-Host
+    }
+}
+
+# --- npm CLI agents --------------------------------------------------------
+function Npm-InstallGlobal([string[]]$pkgs) {
+    if (-not (Have npm)) { Write-Warning 'npm unavailable (node not installed?) — skipping npm agents'; return }
+    foreach ($p in $pkgs) { Info "npm i -g $p"; npm install -g $p }
+}
+
+# ===========================================================================
+Ensure-Scoop
+
+# Core CLI toolset — the shell baseline, always installed.
+Scoop-Install @(
+    'git', 'gh', '7zip',
+    'starship', 'zoxide', 'fzf', 'fd', 'ripgrep', 'bat', 'eza', 'jq',
+    'delta', 'lazygit', 'neovim', 'yazi', 'btop',
+    'mise', 'uv'
+)
+
+# Node + bun via mise (node is a hard dep for the npm-based coding agents).
+if (Have mise) {
+    Info 'mise: node@lts, bun@latest'
+    mise use -g node@lts bun@latest
+}
+
+# PSReadLine ships with pwsh; PSFzf powers the fzf key bindings in profile.d.
+if (-not (Get-Module -ListAvailable -Name PSFzf)) {
+    Info 'Install-Module PSFzf'
+    Install-Module PSFzf -Scope CurrentUser -Force -AcceptLicense -ErrorAction SilentlyContinue
+}
+
+{{ if .installExtraRuntimes -}}
+# Extra language runtimes via mise (rust/go/ruby). node/bun/uv are baseline.
+if (Have mise) { Info 'mise: rust, go, ruby'; mise use -g rust@latest go@latest ruby@latest }
+{{ end -}}
+
+{{ if .installMediaTools -}}
+Scoop-Install @('ffmpeg', 'imagemagick')
+{{ end -}}
+
+{{ if .installCodingAgents -}}
+# AI coding agents (npm-based CLIs; Antigravity IDE goes via winget below).
+Npm-InstallGlobal @(
+    '@anthropic-ai/claude-code',
+    'opencode-ai',
+    '@openai/codex',
+    '@github/copilot',
+    '@specstory/cli'
+)
+{{ end -}}
+
+{{ if .installWindowsApps -}}
+# GUI apps + editors via winget.
+foreach ($id in @(
+    'Microsoft.VisualStudioCode',
+    'Anysphere.Cursor',
+    'Notepad++.Notepad++',
+    'Microsoft.WindowsTerminal',
+    'Alacritty.Alacritty',
+    'Microsoft.PowerToys',
+    'Raycast.Raycast',
+    'Google.Antigravity'
+)) { Winget-Install $id }
+
+# A Nerd Font so starship glyphs render.
+Scoop-Install @('Hack-NF')
+
+Write-Warning 'Raycast and PowerToys Run both default to Alt+Space. Pick one launcher: disable PowerToys Run (PowerToys Settings > PowerToys Run > off) or rebind its hotkey.'
+{{ end -}}
+
+{{ if .installGamingApps -}}
+Winget-Install 'Valve.Steam'
+{{ end -}}
+
+Info 'package install complete'
