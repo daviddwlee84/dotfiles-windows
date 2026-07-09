@@ -2,8 +2,9 @@
 # https://starship.rs/config/
 #
 # Cross-platform (shared verbatim with the macOS/Linux dotfiles). Needs a Nerd
-# Font for the glyphs — installed via scoop `nerd-fonts/Hack-NF`. For a plain
-# terminal: `starship preset plain-text-symbols -o ~/.config/starship.toml`.
+# Font for the glyphs — this repo installs Hack Nerd Font Mono (scoop
+# `nerd-fonts/Hack-NF-Mono`). For a plain terminal:
+# `starship preset plain-text-symbols -o ~/.config/starship.toml`.
 
 # Timeout for commands that starship runs (in milliseconds)
 command_timeout = 1000

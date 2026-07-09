@@ -154,8 +154,10 @@ foreach ($id in @(
     'Discord.Discord'
 )) { Winget-Install $id }
 
-# A Nerd Font so starship glyphs render.
-Scoop-Install @('Hack-NF')
+# Nerd Fonts so starship glyphs render. Hack-NF-Mono supplies the
+# "Hack Nerd Font Mono" family the Alacritty / Windows Terminal / editor
+# configs reference; Hack-NF ("Hack Nerd Font") is the proportional companion.
+Scoop-Install @('Hack-NF', 'Hack-NF-Mono')
 
 Write-Warning 'Raycast and PowerToys Run both default to Alt+Space. Pick one launcher: disable PowerToys Run (PowerToys Settings > PowerToys Run > off) or rebind its hotkey.'
 {{ end -}}

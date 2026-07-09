@@ -1,6 +1,14 @@
 # Alacritty - Windows config. Read from %APPDATA%\alacritty\alacritty.toml.
 # Shares styling + CSI-u keybindings with the macOS/Linux dotfiles; the
 # macOS-only bits (option_as_alt, window blur) are dropped and the shell is pwsh.
+#
+# Templated by chezmoi for one reason: working_directory. Alacritty does NOT
+# expand ~ / $HOME (that breaks launch), and on Windows a Start Menu / shim
+# launch otherwise lands the shell in C:\Windows\System32, so we bake in the
+# absolute home path. A literal (single-quoted) string keeps the backslashes.
+
+[general]
+working_directory = '{{ .chezmoi.homeDir }}'
 
 [terminal.shell]
 program = "pwsh"
@@ -97,4 +105,3 @@ action = "SpawnNewInstance"
 key = "N"
 mods = "Control|Shift"
 action = "SpawnNewInstance"
-
