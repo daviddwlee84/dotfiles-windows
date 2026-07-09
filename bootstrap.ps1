@@ -65,14 +65,31 @@ if (-not (Get-Command chezmoi -ErrorAction SilentlyContinue)) {
     throw 'chezmoi not found on PATH after install — open a new terminal and re-run bootstrap.'
 }
 
-# 4. chezmoi init --apply. No need to re-launch under pwsh 7: chezmoi invokes the
+# 4. chezmoi init/update. No need to re-launch under pwsh 7: chezmoi invokes the
 #    repo's .ps1 run-scripts with pwsh itself (per [interpreters.ps1]).
+#
+#    Re-run behaviour: `chezmoi init` clones on a fresh box but does NOT git-pull
+#    an already-cloned source, so a second bootstrap would not see new commits.
+#    When a source repo already exists we therefore `chezmoi update` (git pull +
+#    apply) so re-running the one-liner always pulls the latest. run_onchange
+#    package/config scripts still only re-fire when their rendered content
+#    actually changes -- that is by design (see docs/setup.md).
 if ($Source) {
     Info "chezmoi init --apply --source $Source"
     chezmoi init --apply --source $Source
 } else {
-    Info "chezmoi init --apply --branch $Branch $Repo"
-    chezmoi init --apply --branch $Branch $Repo
+    $srcExists = $false
+    try {
+        $sp = chezmoi source-path 2>$null
+        if ($sp -and (Test-Path (Join-Path $sp '.git'))) { $srcExists = $true }
+    } catch { }
+    if ($srcExists) {
+        Info 'chezmoi update (git pull + apply — picks up new commits)'
+        chezmoi update
+    } else {
+        Info "chezmoi init --apply --branch $Branch $Repo"
+        chezmoi init --apply --branch $Branch $Repo
+    }
 }
 
 Ok 'Done. Open a new pwsh session to load the managed profile.'

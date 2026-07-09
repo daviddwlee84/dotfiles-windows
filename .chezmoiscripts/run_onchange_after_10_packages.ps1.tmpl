@@ -52,7 +52,11 @@ function Get-ScoopInstalled {
 
 function Scoop-Install([string[]]$apps) {
     if (-not $apps) { return }
-    $missing = $apps | Where-Object { ($_ -split '/')[-1] -notin (Get-ScoopInstalled) }
+    # Wrap in @() so a lone survivor stays an array. Without it PowerShell
+    # unwraps a single match to a bare string, and `scoop install @missing`
+    # then splats it one CHARACTER per arg => "Couldn't find manifest for 'm'"
+    # when only "mise" was missing.
+    $missing = @($apps | Where-Object { ($_ -split '/')[-1] -notin (Get-ScoopInstalled) })
     if (-not $missing) { Info 'scoop: all requested tools already present'; return }
     Info "scoop install: $($missing -join ', ')"
     try { scoop install @missing } catch { Write-Warning "scoop batch error: $_" }
@@ -134,9 +138,12 @@ Npm-InstallGlobal @(
     '@anthropic-ai/claude-code',
     'opencode-ai',
     '@openai/codex',
-    '@github/copilot',
-    '@specstory/cli'
+    '@github/copilot'
 )
+# NOTE: SpecStory ships no native-Windows CLI (macOS: brew; Linux/WSL: GitHub
+# release binaries only), so it is intentionally omitted -- `npm i -g
+# @specstory/cli` 404s. The Copilot module already no-ops when `specstory` is
+# absent. Track a Windows install path in TODO.md if it's wanted.
 {{ end -}}
 
 {{ if .installWindowsApps -}}
@@ -148,7 +155,7 @@ foreach ($id in @(
     'Microsoft.WindowsTerminal',
     'Alacritty.Alacritty',
     'Microsoft.PowerToys',
-    'Raycast.Raycast',
+    'Flow-Launcher.Flow-Launcher',
     'Google.Antigravity',
     'Docker.DockerDesktop',
     'Discord.Discord'
@@ -159,7 +166,7 @@ foreach ($id in @(
 # configs reference; Hack-NF ("Hack Nerd Font") is the proportional companion.
 Scoop-Install @('Hack-NF', 'Hack-NF-Mono')
 
-Write-Warning 'Raycast and PowerToys Run both default to Alt+Space. Pick one launcher: disable PowerToys Run (PowerToys Settings > PowerToys Run > off) or rebind its hotkey.'
+Write-Warning 'Flow Launcher and PowerToys Run both default to Alt+Space. Pick one: disable PowerToys Run (PowerToys Settings > PowerToys Run > off) or rebind a hotkey. Raycast for Windows is a Microsoft Store beta -- `winget install raycast` if you want it, then resolve the same clash.'
 {{ end -}}
 
 {{ if .installGamingApps -}}
@@ -179,7 +186,7 @@ foreach ($id in @(
     'VideoLAN.VLC',
     'OBSProject.OBSStudio',
     'Rufus.Rufus',
-    'tailscale.tailscale'
+    'Tailscale.Tailscale'
 )) { Winget-Install $id }
 {{ end -}}
 
