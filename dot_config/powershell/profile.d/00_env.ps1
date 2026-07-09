@@ -40,7 +40,8 @@ $UserPaths = @(
     (Join-Path $HOME 'scoop/shims'),
     (Join-Path $env:XDG_DATA_HOME 'mise/shims'),
     (Join-Path $env:LOCALAPPDATA 'mise/shims')
-) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+) | Where-Object { $_ -and (Test-Path $_) } |
+    ForEach-Object { [System.IO.Path]::GetFullPath($_) } | Select-Object -Unique
 
 $SepPaths = $env:PATH -split ';'
 foreach ($p in $UserPaths) {
