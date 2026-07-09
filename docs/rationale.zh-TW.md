@@ -46,3 +46,14 @@ macOS/Linux dotfiles 有一大層 POSIX `shell/*.sh`。把它機械式翻成 Pow
 `copilot-proxy` 工具系列被改寫為真正的 PowerShell 模組（`Invoke-RestMethod`、
 `Start-Process`、`ConvertFrom-Json`），而不是去呼叫原本的 bash。只有 Bun 節流 shim
 （純 JS）原封不動沿用。見 [copilot-proxy](copilot-proxy.md)。
+
+## XDG 路徑，而非 `%APPDATA%`
+
+Windows 與 XDG 用不同的軸切目錄 —— Windows 看資料夾是否*漫遊*
+（`AppData\Roaming` vs `AppData\Local`），XDG 看*用途*（config / data / state /
+cache）—— 所以 `%APPDATA%` 並不是乾淨的「Windows 版 XDG」。與其硬對應，
+`profile.d/00_env.ps1` 直接把 `XDG_CONFIG_HOME` 等設成 Unix 風格的
+`~/.config` / `~/.local/share`。吃 XDG 的工具（starship、atuin、zoxide、yazi）
+於是維持乾淨的 `$HOME`，與 macOS/Linux dotfiles 一致 —— 一套心智模型、共用設定。
+那些忽略 XDG、硬寫死 `%APPDATA%` 的 app（VSCode、Cursor、Alacritty）就留在原處、
+於該路徑管理。完整對照與 `PATH` 機制見 [Shell 環境](shell.md)。

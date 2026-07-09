@@ -38,6 +38,7 @@ plugins:
             Home: 首頁
             Setup: 安裝
             Tools: 工具索引
+            Shell: Shell 環境
             Rationale: 設計取捨
             copilot-proxy: copilot-proxy
 
@@ -56,5 +57,6 @@ nav:
   - Home: index.md
   - Setup: setup.md
   - Tools: tools.md
+  - Shell: shell.md
   - Rationale: rationale.md
   - copilot-proxy: copilot-proxy.md

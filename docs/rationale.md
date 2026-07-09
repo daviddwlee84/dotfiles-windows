@@ -53,3 +53,16 @@ The `copilot-proxy` tool series is reimplemented as a real PowerShell module
 (`Invoke-RestMethod`, `Start-Process`, `ConvertFrom-Json`) rather than shelling out
 to the original bash. Only the Bun throttle shim (pure JS) is reused verbatim. See
 [copilot-proxy](copilot-proxy.md).
+
+## XDG paths, not `%APPDATA%`
+
+Windows and XDG split directories on different axes — Windows by whether a
+folder *roams* (`AppData\Roaming` vs `AppData\Local`), XDG by *purpose*
+(config / data / state / cache) — so `%APPDATA%` is not a clean "Windows XDG".
+Rather than map onto it, `profile.d/00_env.ps1` sets `XDG_CONFIG_HOME` and
+friends to Unix-style `~/.config` / `~/.local/share` paths. XDG-aware tools
+(starship, atuin, zoxide, yazi) then keep a tidy `$HOME` that mirrors the
+macOS/Linux dotfiles — one mental model, shared configs. Apps that ignore XDG
+and hard-code `%APPDATA%` (VSCode, Cursor, Alacritty) stay there and are managed
+at that path. Full mapping, plus the `PATH` mechanics, are in
+[Shell & environment](shell.md).
