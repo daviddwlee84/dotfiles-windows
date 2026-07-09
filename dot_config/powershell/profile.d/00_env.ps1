@@ -21,6 +21,11 @@ $env:STARSHIP_CONFIG = Join-Path $env:XDG_CONFIG_HOME 'starship.toml'
 # yazi looks in %APPDATA%\yazi\config by default; keep it XDG-consistent instead.
 $env:YAZI_CONFIG_HOME = Join-Path $env:XDG_CONFIG_HOME 'yazi'
 
+# uv-managed Python: `uv python install --default` drops python/python3 here.
+# ~/.local/bin is prepended to PATH below, so they win over the Windows Store
+# `python.exe` app-execution-alias.
+$env:UV_PYTHON_BIN_DIR = Join-Path $HOME '.local/bin'
+
 # Default editor
 if (Get-Command nvim -ErrorAction SilentlyContinue) { $env:EDITOR = 'nvim' }
 

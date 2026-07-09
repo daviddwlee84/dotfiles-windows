@@ -32,7 +32,10 @@ GUI 應用程式。
 
 Runtime：`node@lts` 由 mise 安裝（npm-based 的 coding agents 需要 node）；`bun`
 改由 **scoop** 安裝（mise 沒有 Windows-arm64 的 bun build）。啟用 **Extra
-runtimes** 時才會加裝 `rust`、`go`、`ruby`。
+runtimes** 時才會加裝 `rust`、`go`、`ruby`。預設 **Python** 由 uv 管理：
+`uv python install --default` 會把 `python`/`python3` 放到 `~/.local/bin`（PATH
+上排在 Store 的 `python.exe` app-alias 前面），所以 `python`、`uv run`、`uv venv`
+都能用，不需 Microsoft Store。
 
 ## GUI 應用程式（winget）
 

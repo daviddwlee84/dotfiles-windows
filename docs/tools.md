@@ -32,7 +32,10 @@ tools; **winget** handles GUI apps.
 
 Runtimes: `node@lts` is installed via mise (the npm-based coding agents need
 node); `bun` comes from **scoop** (mise has no Windows-arm64 bun build). `rust`,
-`go`, `ruby` are added when **Extra runtimes** is enabled.
+`go`, `ruby` are added when **Extra runtimes** is enabled. A default **Python**
+is uv-managed: `uv python install --default` puts `python`/`python3` in
+`~/.local/bin` (on PATH ahead of the Store's `python.exe` app-alias), so
+`python`, `uv run`, and `uv venv` all work without the Microsoft Store.
 
 ## GUI apps (winget)
 

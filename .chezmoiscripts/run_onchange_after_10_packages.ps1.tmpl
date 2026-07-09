@@ -148,6 +148,16 @@ if (Have mise) {
     mise reshim   # generate shims so pinned tools land on PATH (see 00_env)
 }
 
+# Default Python, uv-managed. --default also creates unversioned python/python3
+# (not just python3.x) in UV_PYTHON_BIN_DIR (~/.local/bin, on PATH via 00_env
+# ahead of the Store's python.exe app-alias). Needs uv >= 0.8.
+if (Have uv) {
+    Info 'uv python install --default'
+    $env:UV_PYTHON_BIN_DIR = Join-Path $HOME '.local\bin'
+    uv python install --default 2>&1 | Out-Host
+    if ($LASTEXITCODE -ne 0) { Register-Failure 'uv:python' }
+}
+
 # Make PSGallery usable non-interactively before Install-Module (NuGet provider
 # + trust) so the fzf key bindings / audio cmdlets install reliably.
 try {
