@@ -48,13 +48,14 @@ jobs:
         run: |
           $failed = $false
           Get-ChildItem -Recurse -Filter *.ps1.tmpl | ForEach-Object {
-            $rendered = Get-Content -Raw $_.FullName | chezmoi execute-template
+            $rendered = Get-Content -Raw $_.FullName | chezmoi execute-template --source .
+            if ($LASTEXITCODE -ne 0 -or -not $rendered) { Write-Host "RENDER FAIL: $($_.Name)"; $failed = $true; return }
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseInput($rendered, [ref]$null, [ref]$errors) | Out-Null
-            if ($errors) { Write-Host "FAIL: $($_.Name)"; $errors | ForEach-Object { Write-Host "  $_" }; $failed = $true }
+            if ($errors) { Write-Host "PARSE FAIL: $($_.Name)"; $errors | ForEach-Object { Write-Host "  $_" }; $failed = $true }
             else { Write-Host "OK:   $($_.Name)" }
           }
-          if ($failed) { throw 'A rendered template has a PowerShell syntax error' }
+          if ($failed) { throw 'A rendered template failed to render or parse' }
 
       - name: chezmoi apply (files only, no package scripts)
         shell: pwsh
