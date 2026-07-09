@@ -2562,3 +2562,641 @@ if (Get-Module -ListAvailable -Name Copilot -ErrorAction SilentlyContinue) {
 }
 ```
 </details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:55:56Z)**_
+
+<think><details><summary>Thought Process</summary>
+I've verified my descriptions for each script are correct, and now I'm ready to create the task list and write out all the files.
+
+I need to create two new documentation files (English and Traditional Chinese versions of shell.md), then edit the rationale docs and mkdocs.yml configuration to add a new section explaining how Windows and XDG handle directories differently — Windows splits by roaming behavior while XDG splits by purpose, so the shell setup uses XDG paths rather than %APPDATA%. Now I'm settling on the navigation label and translations. I'll use "Shell" as the English nav label with the page heading as "Shell & environment", and for the Chinese translation I'll add "環境" as the zh-TW nav label — keeping it concise like the other navigation items.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:55:56Z)**_
+
+Fragments confirmed — my table is accurate. Creating a task list, then writing the bilingual page + rationale entry + nav:
+
+_**Agent (claude-opus-4-8 2026-07-09 16:55:56Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskCreate"><details>
+<summary>Tool use: **TaskCreate**</summary>
+New Shell & environment page: profile.d loading, reload/dot-sourcing, PATH (Windows registry Machine/User vs Unix rc, no-GUI mechanism, ~/.local/bin session-scoped), XDG-on-Windows + AppData mapping.
+
+```text
+Task #1 created successfully: Write docs/shell.md (EN)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:56:04Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskCreate"><details>
+<summary>Tool use: **TaskCreate**</summary>
+Traditional Chinese mirror of shell.md, matching existing zh-TW doc style.
+
+```text
+Task #2 created successfully: Write docs/shell.zh-TW.md (zh-TW)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:56:04Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskCreate"><details>
+<summary>Tool use: **TaskCreate**</summary>
+Add "## XDG paths on Windows, not %APPDATA%" rationale entry (EN + zh-TW), short why + link to shell.md.
+
+```text
+Task #3 created successfully: Add XDG rationale entry (both langs)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:56:04Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskCreate"><details>
+<summary>Tool use: **TaskCreate**</summary>
+Add "Shell: shell.md" to nav after Tools, plus zh-TW nav_translation.
+
+```text
+Task #4 created successfully: Wire Shell page into mkdocs.yml nav
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:56:07Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskUpdate"><details>
+<summary>Tool use: **TaskUpdate**</summary>
+
+```text
+Updated task #1 status
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:56:42Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```md
+# Shell & environment
+
+How a PowerShell session is assembled — what loads, how to reload, and how
+`PATH` and the XDG base dirs get set — **without ever touching the Windows
+"Environment Variables" GUI**.
+
+## Profile loading
+
+`$PROFILE` (`~/Documents/PowerShell/Microsoft.PowerShell_profile.ps1`) is a thin
+loader. It dot-sources every fragment under `~/.config/powershell/profile.d/*.ps1`
+in sorted (numeric-prefix) order, then your untracked `local.ps1` last. All the
+logic lives in the fragments; the loader stays boring.
+
+| Fragment | Does |
+|---|---|
+| `00_env.ps1` | XDG base dirs, `$env:EDITOR`, PATH |
+| `05_mirrors.ps1` | China package mirrors (when enabled) |
+| `10_tools.ps1` | `init` hooks: starship, zoxide, mise, atuin, fzf, direnv, tv |
+| `20_aliases.ps1` | aliases + helpers (`reload`, `cas`/`cau`, git shortcuts) |
+| `30_apps.ps1` | app control (`applaunch`/`appquit`/…), audio, clipboard |
+| `35_yazi.ps1` | `y` — launch yazi, cd to where you quit |
+| `40_copilot.ps1` | import the `copilot-proxy` PowerShell module |
+| `90_psreadline.ps1` | PSReadLine (vi mode, history) |
+
+Modules under `~/.config/powershell/modules` are prepended to
+`$env:PSModulePath` by the loader, so they import by name (e.g. `Copilot`).
+
+## Reloading
+
+`reload` **dot-sources** the profile back into the current session — the same
+mechanism `$PROFILE` uses at startup:
+
+\```powershell
+function reload { . $PROFILE }                    # re-source everything
+function cas { chezmoi apply  @args; . $PROFILE } # apply, then reload
+function cau { chezmoi update @args; . $PROFILE } # git pull + apply, then reload
+\```
+
+!!! note "reload is additive, not a clean restart"
+    Dot-sourcing **re-runs** the profile in place. PATH edits are idempotent
+    (guarded, never double-added) and `Set-Alias` / `Import-Module` just
+    re-apply — but anything a *previous* load defined that this load no longer
+    defines is **not** removed. For a guaranteed-clean state, open a new pwsh
+    session.
+
+## PATH: Windows vs Unix
+
+On **Unix**, `PATH` is a single colon-separated variable the shell rc
+(`.zshrc` / `.bashrc`) assembles at startup — purely process-scoped, inherited
+by child processes, no system database involved. Edit a dotfile, and it changes
+on the next shell.
+
+**Windows** has two *persistent* layers stored in the **registry**, plus the
+in-process copy:
+
+| Layer | Where | Scope |
+|---|---|---|
+| Machine PATH | `HKLM\…\Session Manager\Environment` | all users (needs admin) |
+| User PATH | `HKCU\Environment` | your account, all your processes |
+| `$env:PATH` | in memory, per process | this session + its children |
+
+At logon Windows concatenates Machine + User into each process's `$env:PATH`.
+Editing the registry does **not** update already-running processes.
+
+### We change PATH without the GUI
+
+This repo touches `PATH` two ways, both scripted — the System Properties
+"Environment Variables" dialog is never opened:
+
+1. **Persistent (registry User PATH) — scoop only.** When scoop installs, it
+   writes `~/scoop/shims` into the User PATH programmatically
+   (`[Environment]::SetEnvironmentVariable('Path', …, 'User')`), so scoop CLIs
+   resolve in *every* shell and GUI app — no admin, no dialog.
+
+2. **In-process only — our profile.** `00_env.ps1` prepends `~/.local/bin` and
+   `~/scoop/shims` to `$env:PATH` on every shell start, idempotently and only
+   when the directory exists:
+
+   \```powershell
+   $UserPaths = @(
+       (Join-Path $HOME '.local/bin'),
+       (Join-Path $HOME 'scoop/shims')
+   ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+   foreach ($p in $UserPaths) {
+       if (($env:PATH -split ';') -notcontains $p) { $env:PATH = "$p;$env:PATH" }
+   }
+   \```
+
+`bootstrap.ps1` does a third, one-shot variant: right after scoop installs the
+baseline tools it rebuilds `$env:PATH` from the `Machine + User` registry values
+so the just-installed shims resolve **in the same session** (scoop persisted
+them, but the running process's copy predates that write).
+
+!!! warning "`~/.local/bin` is pwsh-session-scoped"
+    `~/.local/bin` is the Windows home for your own scripts and binaries — same
+    path name as Unix. But unlike `~/scoop/shims`, it is added to `$env:PATH`
+    **only** by this profile; it is **never** persisted to the registry. So it's
+    on PATH inside pwsh sessions that load the profile, but **not** in Windows
+    PowerShell 5.1, in GUI apps, or in anything launched outside pwsh. To make a
+    binary there visible everywhere, add `~/.local/bin` to the User PATH
+    yourself (`setx` or `[Environment]::SetEnvironmentVariable(…, 'User')`).
+
+Resolution order after the profile runs: `~/scoop/shims` → `~/.local/bin` →
+inherited PATH (each is prepended, so the last one added ends up first).
+
+## XDG base dirs on Windows
+
+XDG and Windows split directories on **different axes** — XDG by *purpose*
+(config / data / state / cache), Windows by *whether it roams* (Roaming vs
+Local) — so there is no clean 1:1. The rough mapping:
+
+| XDG (Unix) | Closest Windows folder |
+|---|---|
+| `XDG_CONFIG_HOME` (`~/.config`) | `%APPDATA%` = `AppData\Roaming` |
+| `XDG_DATA_HOME` (`~/.local/share`) | `%APPDATA%` = `AppData\Roaming` |
+| `XDG_STATE_HOME` (`~/.local/state`) | `%LOCALAPPDATA%` = `AppData\Local` |
+| `XDG_CACHE_HOME` (`~/.cache`) | `%LOCALAPPDATA%` = `AppData\Local` |
+
+`AppData\Roaming` bundles what XDG calls *config* and *data* into one folder;
+`AppData\Local` bundles *cache*, *state*, and non-roaming data. ("Roaming" only
+actually roams under domain Roaming Profiles / Enterprise State Roaming — on a
+standalone PC it's just a folder with that name.)
+
+Rather than live with the ambiguity, `00_env.ps1` sets the XDG variables to
+Unix-style paths, so **XDG-aware tools keep a tidy `$HOME` shared with the
+macOS/Linux dotfiles**:
+
+\```powershell
+$env:XDG_CONFIG_HOME = Join-Path $HOME '.config'
+$env:XDG_DATA_HOME   = Join-Path $HOME '.local/share'
+$env:XDG_STATE_HOME  = Join-Path $HOME '.local/state'
+$env:XDG_CACHE_HOME  = Join-Path $HOME '.cache'
+$env:YAZI_CONFIG_HOME = Join-Path $env:XDG_CONFIG_HOME 'yazi'  # yazi defaults to %APPDATA%
+\```
+
+starship, atuin, zoxide, and yazi then read `~/.config`. Apps that **hard-code
+`%APPDATA%`** and ignore XDG — VSCode, Cursor, Alacritty — stay in
+`AppData\Roaming`, which is why the repo tracks `AppData/Roaming/alacritty/…`
+and the backup script's allowlist names `%APPDATA%\Code`, `%APPDATA%\Cursor`,
+and `%APPDATA%\alacritty`.
+
+So in this repo `AppData\Roaming` is **not** "Windows XDG" — it's simply where
+the non-XDG native apps land. The real XDG role is played by the `~/.config`
+paths we set explicitly.
+
+```
+
+```text
+File created successfully at: /Users/david/src/tries/2026-07-09-windows-dotfiles/docs/shell.md (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:56:45Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskUpdate"><details>
+<summary>Tool use: **TaskUpdate**</summary>
+
+```text
+Updated task #1 status
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:56:48Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskUpdate"><details>
+<summary>Tool use: **TaskUpdate**</summary>
+
+```text
+Updated task #2 status
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:57:36Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```md
+# Shell 環境
+
+一個 PowerShell session 是怎麼組起來的 —— 什麼會被載入、怎麼 reload、`PATH`
+與 XDG base 目錄怎麼設定 —— 而且**全程不碰 Windows「環境變數」GUI**。
+
+## Profile 載入
+
+`$PROFILE`（`~/Documents/PowerShell/Microsoft.PowerShell_profile.ps1`）是一個
+很薄的 loader。它依排序（數字前綴）dot-source `~/.config/powershell/profile.d/*.ps1`
+底下每個片段,最後再載入你未被追蹤的 `local.ps1`。邏輯全放在片段裡,loader
+刻意保持無聊。
+
+| 片段 | 做什麼 |
+|---|---|
+| `00_env.ps1` | XDG base 目錄、`$env:EDITOR`、PATH |
+| `05_mirrors.ps1` | 中國套件鏡像（啟用時） |
+| `10_tools.ps1` | `init` 掛鉤:starship、zoxide、mise、atuin、fzf、direnv、tv |
+| `20_aliases.ps1` | alias 與 helper（`reload`、`cas`/`cau`、git 快捷） |
+| `30_apps.ps1` | app 控制（`applaunch`/`appquit`/…）、音量、剪貼簿 |
+| `35_yazi.ps1` | `y` —— 開 yazi,離開時 cd 到你停下的目錄 |
+| `40_copilot.ps1` | 匯入 `copilot-proxy` PowerShell 模組 |
+| `90_psreadline.ps1` | PSReadLine（vi 模式、歷史） |
+
+`~/.config/powershell/modules` 底下的模組會被 loader 前置到
+`$env:PSModulePath`,所以能直接以名稱匯入(例如 `Copilot`)。
+
+## Reload
+
+`reload` 把 profile **dot-source** 回當前 session —— 跟 `$PROFILE` 啟動時
+用的是同一個機制:
+
+\```powershell
+function reload { . $PROFILE }                    # 重新載入全部
+function cas { chezmoi apply  @args; . $PROFILE } # apply,再 reload
+function cau { chezmoi update @args; . $PROFILE } # git pull + apply,再 reload
+\```
+
+!!! note "reload 是疊加,不是乾淨重啟"
+    dot-source 是**就地重跑** profile。PATH 的修改有守門(冪等、不會重複加)、
+    `Set-Alias` / `Import-Module` 只是重新套用 —— 但**上一次載入定義、這次不再
+    定義**的東西**不會**被移除。要保證乾淨的狀態,請開新的 pwsh session。
+
+## PATH:Windows vs Unix
+
+在 **Unix**,`PATH` 是單一個以冒號分隔的變數,由 shell rc（`.zshrc` / `.bashrc`）
+在啟動時組出來 —— 純粹 process 範圍、由子行程繼承,不牽涉任何系統資料庫。改一改
+dotfile,下個 shell 就生效。
+
+**Windows** 則有兩個存在**登錄檔(registry)**的*持久*層,外加行程內的複本:
+
+| 層 | 位置 | 範圍 |
+|---|---|---|
+| Machine PATH | `HKLM\…\Session Manager\Environment` | 所有使用者(需系統管理員) |
+| User PATH | `HKCU\Environment` | 你的帳號、你所有行程 |
+| `$env:PATH` | 記憶體、每個行程一份 | 這個 session 及其子行程 |
+
+登入時 Windows 把 Machine + User 串接成每個行程的 `$env:PATH`。改登錄檔**不會**
+更新已在執行的行程。
+
+### 我們不用 GUI 就改了 PATH
+
+這個 repo 動 `PATH` 有兩條路,都是腳本 —— 從不打開系統內容的「環境變數」對話框:
+
+1. **持久(登錄檔 User PATH)—— 只有 scoop。** scoop 安裝時會用程式方式把
+   `~/scoop/shims` 寫進 User PATH（`[Environment]::SetEnvironmentVariable('Path', …, 'User')`),
+   所以 scoop 的 CLI 在*每個* shell 與 GUI app 都找得到 —— 不需管理員、不需對話框。
+
+2. **只在行程內 —— 我們的 profile。** `00_env.ps1` 在每次 shell 啟動時,把
+   `~/.local/bin` 與 `~/scoop/shims` 前置到 `$env:PATH`,冪等、且只在目錄存在時:
+
+   \```powershell
+   $UserPaths = @(
+       (Join-Path $HOME '.local/bin'),
+       (Join-Path $HOME 'scoop/shims')
+   ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+   foreach ($p in $UserPaths) {
+       if (($env:PATH -split ';') -notcontains $p) { $env:PATH = "$p;$env:PATH" }
+   }
+   \```
+
+`bootstrap.ps1` 還有第三種、一次性的變體:在 scoop 裝完基礎工具後,立刻用
+`Machine + User` 的登錄檔值重建 `$env:PATH`,讓剛裝好的 shim 在**同一個 session**
+就找得到(scoop 已寫入持久層,但當前行程的複本早於那次寫入)。
+
+!!! warning "`~/.local/bin` 只在 pwsh session 範圍"
+    `~/.local/bin` 是你自己 script/binary 在 Windows 的落腳處 —— 路徑名跟 Unix
+    一樣。但與 `~/scoop/shims` 不同,它**只**由這份 profile 加進 `$env:PATH`,
+    **從不**寫進登錄檔。所以它在載入此 profile 的 pwsh session 內才在 PATH 上,
+    在 Windows PowerShell 5.1、GUI app、或任何在 pwsh 外啟動的東西裡都**看不到**。
+    若要讓那裡的 binary 全系統可見,請自己把 `~/.local/bin` 加進 User PATH
+    （`setx` 或 `[Environment]::SetEnvironmentVariable(…, 'User')`）。
+
+profile 跑完後的解析順序:`~/scoop/shims` → `~/.local/bin` → 繼承來的 PATH
+（每個都是前置,所以最後加的排最前）。
+
+## Windows 上的 XDG base 目錄
+
+XDG 與 Windows 用**不同的軸**切目錄 —— XDG 按*用途*（config / data / state /
+cache），Windows 按*是否漫遊*（Roaming vs Local）—— 所以沒有乾淨的一對一。粗略
+對照:
+
+| XDG (Unix) | 最接近的 Windows 資料夾 |
+|---|---|
+| `XDG_CONFIG_HOME` (`~/.config`) | `%APPDATA%` = `AppData\Roaming` |
+| `XDG_DATA_HOME` (`~/.local/share`) | `%APPDATA%` = `AppData\Roaming` |
+| `XDG_STATE_HOME` (`~/.local/state`) | `%LOCALAPPDATA%` = `AppData\Local` |
+| `XDG_CACHE_HOME` (`~/.cache`) | `%LOCALAPPDATA%` = `AppData\Local` |
+
+`AppData\Roaming` 把 XDG 眼中的 *config* 和 *data* 併進同一個資料夾;
+`AppData\Local` 則裝了 *cache*、*state* 與不漫遊的 data。（「Roaming」只有在網域
+Roaming Profiles / Enterprise State Roaming 下才真的漫遊 —— 單機上它只是個叫這名字
+的資料夾。）
+
+與其忍受這種模糊,`00_env.ps1` 直接把 XDG 變數設成 Unix 風格路徑,讓**吃 XDG 的
+工具維持乾淨的 `$HOME`,與 macOS/Linux dotfiles 共用**:
+
+\```powershell
+$env:XDG_CONFIG_HOME = Join-Path $HOME '.config'
+$env:XDG_DATA_HOME   = Join-Path $HOME '.local/share'
+$env:XDG_STATE_HOME  = Join-Path $HOME '.local/state'
+$env:XDG_CACHE_HOME  = Join-Path $HOME '.cache'
+$env:YAZI_CONFIG_HOME = Join-Path $env:XDG_CONFIG_HOME 'yazi'  # yazi 預設會找 %APPDATA%
+\```
+
+starship、atuin、zoxide、yazi 於是都讀 `~/.config`。那些**硬寫死 `%APPDATA%`**、
+忽略 XDG 的 app —— VSCode、Cursor、Alacritty —— 就留在 `AppData\Roaming`,這也是
+為什麼 repo 追蹤 `AppData/Roaming/alacritty/…`,而 backup 腳本的 allowlist 會點名
+`%APPDATA%\Code`、`%APPDATA%\Cursor`、`%APPDATA%\alacritty`。
+
+所以在這個 repo 裡,`AppData\Roaming` **不是**「Windows 版 XDG」—— 它只是那些不吃
+XDG 的原生 app 的落腳處;真正扮演 XDG 角色的,是我們明確設出來的 `~/.config` 路徑。
+
+```
+
+```text
+File created successfully at: /Users/david/src/tries/2026-07-09-windows-dotfiles/docs/shell.zh-TW.md (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:57:55Z)**_
+
+<think><details><summary>Thought Process</summary>
+The AGENTS.md file has been updated with a comprehensive agent contract that includes a cross-file mirrors section, which validates my approach—I need to create shell.md and shell.zh-TW.md, update the navigation entries, and ensure the build stays green.
+
+I also notice `.chezmoiignore` now excludes `CLAUDE.md` and `docs/**`, which is correct since these are mkdocs source files meant to be read via `chezmoi source-path` rather than deployed. Now I'll mark task 2 complete and move forward with task 3 (adding a rationale entry in both English and Traditional Chinese) and task 4 (updating the navigation in mkdocs.yml).
+
+For the rationale files, I'll append a new section about XDG paths on Windows, and I need to ensure the nav link resolves correctly — since shell.md exists and is in the navigation, the link will work in English, and the i18n plugin will automatically route the Traditional Chinese version to shell.zh-TW.md. I'll add the nav entry and corresponding translation label to mkdocs.yml so everything stays consistent and the build passes with `--strict`.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:57:55Z)**_
+
+The enriched `AGENTS.md` confirms the exact invariant I'm following — *"New `docs/**/*.md` → its `.zh-TW.md` twin + nav + nav_translations in mkdocs.yml; `just docs-build` must stay green."* Marking the page done and adding the rationale entry + nav wiring:
+
+_**Agent (claude-opus-4-8 2026-07-09 16:57:55Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskUpdate"><details>
+<summary>Tool use: **TaskUpdate**</summary>
+
+```text
+Updated task #2 status
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:57:58Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskUpdate"><details>
+<summary>Tool use: **TaskUpdate**</summary>
+
+```text
+Updated task #3 status
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:58:05Z)**_
+
+Now the rationale entries (EN + zh-TW) and the nav wiring — all independent files, batched:
+
+_**Agent (claude-opus-4-8 2026-07-09 16:58:10Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/docs/rationale.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:58:22Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/docs/rationale.zh-TW.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:58:25Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskUpdate"><details>
+<summary>Tool use: **TaskUpdate**</summary>
+
+```text
+Updated task #3 status
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:58:28Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskUpdate"><details>
+<summary>Tool use: **TaskUpdate**</summary>
+
+```text
+Updated task #4 status
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:58:34Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/mkdocs.yml has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:58:40Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/mkdocs.yml has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:58:51Z)**_
+
+<think><details><summary>Thought Process</summary>
+I need to verify that the documentation build stays green by running the strict mkdocs build command, which requires uv to fetch the mkdocs-material and mkdocs-static-i18n packages—this might fail if there's no network access, but let me attempt it anyway.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:58:51Z)**_
+
+Nav wired. Now let me verify the docs build stays green with `--strict` (the repo's stated gate for doc changes):
+
+_**Agent (claude-opus-4-8 2026-07-09 16:58:51Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check uv/just availability for docs build
+
+`command -v uv >/dev/null 2>&1 && echo "uv: $(uv --version)" || echo "NO uv"; command -v just >/dev/null 2>&1 && echo "just present; recipe:" && just --list 2>/dev/null | grep -i docs || echo "(no just)"`
+
+```text
+uv: uv 0.9.24 (0fda1525e 2026-01-09)
+just present; recipe:
+    docs-build     # build the docs site (strict)
+    docs-serve     # serve the docs site locally
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:59:00Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Build docs strictly to verify no broken links/nav
+
+`just docs-build 2>&1 | tail -30`
+
+```text
+uv run --with mkdocs-material --with mkdocs-static-i18n mkdocs build --strict
+
+ │  ⚠  Warning from the Material for MkDocs team
+ │
+ │  MkDocs 2.0, the underlying framework of Material for MkDocs,
+ │  will introduce backward-incompatible changes, including:
+ │
+ │  × All plugins will stop working – the plugin system has been removed
+ │  × All theme overrides will break – the theming system has been rewritten
+ │  × No migration path exists – existing projects cannot be upgraded
+ │  × Closed contribution model – community members can't report bugs
+ │  × Currently unlicensed – unsuitable for production use
+ │
+ │  Our full analysis:
+ │
+ │  https://squidfunk.github.io/mkdocs-material/blog/2026/02/18/mkdocs-2.0/
+
+INFO    -  mkdocs_static_i18n: Building 'en' documentation to directory: /Users/david/src/tries/2026-07-09-windows-dotfiles/site
+INFO    -  Cleaning site directory
+INFO    -  Building documentation to directory: /Users/david/src/tries/2026-07-09-windows-dotfiles/site
+INFO    -  mkdocs_static_i18n: Building 'zh-TW' documentation to directory: /Users/david/src/tries/2026-07-09-windows-dotfiles/site/zh-TW
+INFO    -  mkdocs_static_i18n: Language 'zh-TW' is not supported by lunr.js, not setting it in the 'plugins.search.lang' option
+INFO    -  mkdocs_static_i18n: Translated 6 navigation elements to 'zh-TW'
+INFO    -  Documentation built in 1.09 seconds
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:59:13Z)**_
+
+<think><details><summary>Thought Process</summary>
+The docs built successfully with strict mode enabled, and the navigation translation now shows 6 elements in zh-TW instead of 5, confirming the new Shell page was properly added. No broken links or errors to worry about. I should mark this task as complete and show the user the results before we commit.
+
+I'm also checking whether the generated `site/` directory is properly gitignored so we don't accidentally commit build artifacts.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:59:13Z)**_
+
+Docs build passes `--strict` — note it now reports **6** translated nav elements (was 5), confirming the new Shell page and its zh-TW label registered. Marking done and checking the tree is clean (the build produced a `site/` dir I want to confirm is ignored):
+
+_**Agent (claude-opus-4-8 2026-07-09 16:59:13Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskUpdate"><details>
+<summary>Tool use: **TaskUpdate**</summary>
+
+```text
+Updated task #4 status
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:59:17Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Confirm site/ ignored and review working tree
+
+`echo "=== is site/ gitignored? ==="; git check-ignore site 2>/dev/null && echo "YES (ignored)" || echo "NO — would be tracked!"; echo; echo "=== git status (harness+docs work) ==="; git status --short`
+
+```text
+=== is site/ gitignored? ===
+site
+YES (ignored)
+
+=== git status (harness+docs work) ===
+ M .specstory/history/2026-07-09_13-02-08Z-continue.md
+ M .specstory/history/2026-07-09_16-08-55Z-at-bootstrap-ps1-vs.md
+ M docs/rationale.md
+ M docs/rationale.zh-TW.md
+ M mkdocs.yml
+?? docs/shell.md
+?? docs/shell.zh-TW.md
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:59:50Z)**_
+
+<think><details><summary>Thought Process</summary>
+The documentation changes look good — I've updated the rationale and shell docs in both English and Traditional Chinese, modified the mkdocs config, and the site directory is properly gitignored. The SpecStory history files are just auto-recorded transcripts from our sessions, separate from my actual documentation work.
+
+I notice the concurrent-edit files that were showing earlier (the PowerShell scripts, tools docs, and AGENTS.md) have disappeared from the modified list, which means you committed those changes between our interactions. The tree is now clean except for my docs additions and the specstory transcripts. Since you didn't explicitly ask me to commit this time, I should hold off and let you review the work first — I can commit whenever you're ready.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-09 16:59:57Z)**_
+
+都補進 docs 了,而且 `just docs-build --strict` 通過(nav 翻譯從 5 個變 6 個,證明新頁與 zh-TW 標籤都掛上了)。
+
+## 新增內容
+
+**新的雙語專頁 `docs/shell.md` + `docs/shell.zh-TW.md`(nav 標籤 "Shell" / "Shell 環境")**,涵蓋這幾天問的全部:
+
+- **Profile 載入** —— `$PROFILE` thin loader 依序 dot-source `profile.d/*.ps1` 的載入順序表。
+- **Reload** —— `reload` / `cas` / `cau` 都是 dot-source,並點出「疊加 re-apply 而非乾淨重啟」的語意。
+- **PATH:Windows vs Unix** —— 正面回答你補的問題:
+  - Unix 是 shell rc 在啟動時組出的單一 process-scoped 變數;Windows 則多了登錄檔裡的 **Machine + User 兩個持久層**。
+  - **「我們不通過 GUI 就改了」= 對**,而且文件裡分兩條講清楚:①持久層只有 **scoop** 動(用 `SetEnvironmentVariable(...,'User')` 寫進登錄檔 User PATH,不開對話框);②我們的 profile 只改 **行程內 `$env:PATH`**,每次開 shell 前置、不落地。
+  - `~/.local/bin` 是 session-scoped 的 warning(pwsh 內才看得到,GUI/5.1 看不到)。
+- **XDG on Windows + AppData 對照表** —— 為何 `AppData\Roaming` 不是「Windows 版 XDG」,以及 repo 怎麼用 XDG 環境變數把吃 XDG 的工具拉回 `~/.config`。
+
+**`docs/rationale.md`(+ zh-TW)** 加了一條精簡的 `## XDG paths, not %APPDATA%`,放「為什麼」並連到 Shell 頁的細節 —— 符合 `AGENTS.md` 那條「新 `docs/**/*.md` 要有 zh-TW 雙胞胎 + nav + nav_translations」的 invariant。
+
+## 現在的工作樹
+
+```
+ M docs/rationale.md      M docs/rationale.zh-TW.md      M mkdocs.yml
+?? docs/shell.md          ?? docs/shell.zh-TW.md
+```
+
+(你先前的 television + AGENTS.md 那批看來已被你自己 commit 掉了,現在樹上只剩這次的 docs 工作和 SpecStory 逐字稿。)
+
+要我把這批 docs 變更 commit 嗎?訊息我會擬成類似 `docs: add Shell & environment page (profile loading, PATH, XDG)`。
+
+---
+
+_**User (2026-07-09 17:04:56Z)**_
+
+sure git commit our changes

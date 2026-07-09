@@ -10,6 +10,8 @@ mkdocs.yml
 pyproject.toml
 uv.lock
 PSScriptAnalyzerSettings.psd1
+.pre-commit-config.yaml
+.gitleaks.toml
 
 # project-knowledge-harness (maintainer-facing repo metadata, never shipped).
 AGENTS.md
