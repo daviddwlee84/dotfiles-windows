@@ -35,6 +35,12 @@ upgrade-winget:
 # upgrade everything
 upgrade: upgrade-scoop upgrade-winget
 
+# EXPERIMENTAL: build the SpecStory Windows CLI from the unmerged PR #191
+# (needs git + go) -> ~/.local/bin/specstory.exe. See
+# backlog/specstory-windows-native-cli.md. Run from the chezmoi source dir.
+specstory-build:
+    pwsh -NoProfile -File ./scripts/build-specstory.ps1
+
 # --- Windows-in-Docker test harness (x86-64 Linux + KVM host only) ---
 
 # launch the test VM (web viewer http://localhost:8006, RDP localhost:3389 dev/dev)

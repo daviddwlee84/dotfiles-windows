@@ -50,4 +50,5 @@ Add new entries here as you create them. Keep alphabetical.
 
 | Slug | Status | TODO entry |
 |---|---|---|
-| (none yet) | | |
+| [align-windows-backup-with-unix-run-before-unified-dir](align-windows-backup-with-unix-run-before-unified-dir.md) | P? | Align Windows backup with Unix |
+| [specstory-windows-native-cli](specstory-windows-native-cli.md) | P? (blocked on PR #191) | SpecStory Windows-native CLI |

@@ -159,7 +159,8 @@ Npm-InstallGlobal @(
 # NOTE: SpecStory ships no native-Windows CLI (macOS: brew; Linux/WSL: GitHub
 # release binaries only), so it is intentionally omitted -- `npm i -g
 # @specstory/cli` 404s. The Copilot module already no-ops when `specstory` is
-# absent. Track a Windows install path in TODO.md if it's wanted.
+# absent. Experimental Windows build from the unmerged PR #191:
+# `just specstory-build` (see backlog/specstory-windows-native-cli.md).
 {{ end -}}
 
 {{ if .installWindowsApps -}}
