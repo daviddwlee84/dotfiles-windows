@@ -6,6 +6,12 @@
 .DESCRIPTION
     Installs scoop (user-scoped, no admin), then git + PowerShell 7 + chezmoi +
     uv, then runs `chezmoi init --apply` against this repo. Safe to re-run.
+    Works from Windows PowerShell 5.1 or pwsh 7 — chezmoi runs the repo's .ps1
+    scripts via pwsh regardless (see [interpreters.ps1] in .chezmoi.toml.tmpl).
+
+    Behind the GFW: keep a VPN on for this step. scoop downloads git/pwsh/etc.
+    from GitHub releases, which the `useChineseMirror` option does NOT cover
+    (that only redirects pip/npm/cargo/go/node at runtime).
 
 .EXAMPLE
     # From a fresh Windows PowerShell / pwsh session:
@@ -49,17 +55,18 @@ foreach ($t in 'pwsh', 'chezmoi', 'uv') {
     if (-not (Get-Command $t -ErrorAction SilentlyContinue)) { scoop install $t }
 }
 
-# 3. Re-exec under PowerShell 7 if we started in Windows PowerShell 5.1, so
-#    chezmoi's [interpreters.ps1] = pwsh lines up with the running shell.
-if ($PSVersionTable.PSVersion.Major -lt 7 -and (Get-Command pwsh -ErrorAction SilentlyContinue)) {
-    Info 'Re-launching under PowerShell 7'
-    $argsList = @('-NoLogo', '-File', $PSCommandPath, '-Repo', $Repo, '-Branch', $Branch)
-    if ($Source) { $argsList += @('-Source', $Source) }
-    & pwsh @argsList
-    return
+# 3. Refresh PATH from the registry so the just-installed scoop shims (chezmoi,
+#    pwsh, uv, git) are resolvable in THIS session — scoop updates the persisted
+#    User PATH, not the current process environment.
+$env:PATH = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
+            [System.Environment]::GetEnvironmentVariable('Path', 'User')
+
+if (-not (Get-Command chezmoi -ErrorAction SilentlyContinue)) {
+    throw 'chezmoi not found on PATH after install — open a new terminal and re-run bootstrap.'
 }
 
-# 4. chezmoi init --apply
+# 4. chezmoi init --apply. No need to re-launch under pwsh 7: chezmoi invokes the
+#    repo's .ps1 run-scripts with pwsh itself (per [interpreters.ps1]).
 if ($Source) {
     Info "chezmoi init --apply --source $Source"
     chezmoi init --apply --source $Source

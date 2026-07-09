@@ -16,6 +16,11 @@ irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstr
 4. Re-launches under `pwsh` if it started in Windows PowerShell 5.1.
 5. Runs `chezmoi init --apply` against this repo.
 
+!!! warning "Behind the GFW"
+    Keep a VPN on for the bootstrap — scoop downloads git / pwsh / chezmoi / uv
+    from **GitHub releases**. The `China mirrors` option only redirects
+    pip / npm / cargo / go / node at runtime, **not** scoop's own downloads.
+
 ## Init prompts
 
 `chezmoi init` asks a few questions once (answers are stored and never re-asked):

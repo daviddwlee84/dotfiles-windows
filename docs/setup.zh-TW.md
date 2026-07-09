@@ -16,6 +16,11 @@ irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstr
 4. 若是從 Windows PowerShell 5.1 啟動，會改用 `pwsh` 重新執行。
 5. 對此 repo 執行 `chezmoi init --apply`。
 
+!!! warning "在 GFW 後面"
+    bootstrap 期間請開著 VPN —— scoop 會從 **GitHub releases** 下載
+    git / pwsh / chezmoi / uv。`China mirrors` 選項只在執行期重導
+    pip / npm / cargo / go / node，**不涵蓋** scoop 自己的下載。
+
 ## 初始化提問
 
 `chezmoi init` 只會問一次（答案會被記住，不再重複問）：
