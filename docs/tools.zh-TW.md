@@ -48,9 +48,18 @@ node）。啟用 **Extra runtimes** 時才會加裝 `rust`、`go`、`ruby`。
 | GPU-Z | `TechPowerUp.GPU-Z` | GPU 資訊 + 感測器 |
 | HWiNFO | `REALiX.HWiNFO` | 完整硬體監控 |
 | TreeSize Free | `JAMSoftware.TreeSize.Free` | 磁碟用量瀏覽 |
+| WinDirStat | `WinDirStat.WinDirStat` | 磁碟用量 treemap |
 | Everything | `voidtools.Everything` | 即時檔名搜尋 |
 | ShareX | `ShareX.ShareX` | 截圖 + 螢幕錄影 |
+| OBS Studio | `OBSProject.OBSStudio` | 螢幕錄影 / 直播 |
 | VLC | `VideoLAN.VLC` | 媒體播放器 |
+| Rufus | `Rufus.Rufus` | 開機 USB 製作 |
+| Tailscale | `tailscale.tailscale` | mesh VPN |
+
+!!! note "Flow Launcher"
+    [Flow Launcher](https://www.flowlauncher.com/)（`Flow-Launcher.Flow-Launcher`）
+    是不錯的鍵盤啟動器，但預設用 **Alt+Space** —— 與 Raycast、PowerToys Run 撞鍵。
+    為避免三方衝突，預設不裝；若你偏好它勝過 Raycast，可自行加入並擇一使用。
 
 ## AI agents（npm）
 

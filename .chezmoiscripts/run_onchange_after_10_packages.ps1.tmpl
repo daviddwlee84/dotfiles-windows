@@ -137,11 +137,15 @@ Winget-Install 'Valve.Steam'
 foreach ($id in @(
     'CPUID.CPU-Z',
     'TechPowerUp.GPU-Z',
+    'REALiX.HWiNFO',
     'JAMSoftware.TreeSize.Free',
-    'VideoLAN.VLC',
+    'WinDirStat.WinDirStat',
     'voidtools.Everything',
     'ShareX.ShareX',
-    'REALiX.HWiNFO'
+    'VideoLAN.VLC',
+    'OBSProject.OBSStudio',
+    'Rufus.Rufus',
+    'tailscale.tailscale'
 )) { Winget-Install $id }
 {{ end -}}
 

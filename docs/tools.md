@@ -49,9 +49,19 @@ Enabled by **Install utility apps**:
 | GPU-Z | `TechPowerUp.GPU-Z` | GPU info + sensors |
 | HWiNFO | `REALiX.HWiNFO` | full hardware monitoring |
 | TreeSize Free | `JAMSoftware.TreeSize.Free` | disk-usage explorer |
+| WinDirStat | `WinDirStat.WinDirStat` | disk-usage treemap |
 | Everything | `voidtools.Everything` | instant filename search |
 | ShareX | `ShareX.ShareX` | screenshots + screen recording |
+| OBS Studio | `OBSProject.OBSStudio` | screen recording / streaming |
 | VLC | `VideoLAN.VLC` | media player |
+| Rufus | `Rufus.Rufus` | bootable USB creator |
+| Tailscale | `tailscale.tailscale` | mesh VPN |
+
+!!! note "Flow Launcher"
+    [Flow Launcher](https://www.flowlauncher.com/) (`Flow-Launcher.Flow-Launcher`)
+    is a good keyboard launcher, but it defaults to **Alt+Space** — the same hotkey
+    as Raycast and PowerToys Run. It's left out of the default set to avoid a
+    three-way clash; add it (and pick one launcher) if you prefer it over Raycast.
 
 ## AI agents (npm)
 

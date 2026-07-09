@@ -13,11 +13,11 @@ diff:
 
 # apply dotfiles
 apply:
-    chezmoi apply
+    chezmoi apply --init
 
 # pull latest from the repo and apply
 update:
-    chezmoi update
+    chezmoi update --init
 
 # edit the source of a managed file
 edit FILE:
@@ -34,6 +34,29 @@ upgrade-winget:
 
 # upgrade everything
 upgrade: upgrade-scoop upgrade-winget
+
+# --- Windows-in-Docker test harness (x86-64 Linux + KVM host only) ---
+
+# launch the test VM (web viewer http://localhost:8006, RDP localhost:3389 dev/dev)
+docker-up:
+    #!/usr/bin/env bash
+    docker compose -f docker/windows/compose.yml up -d
+    echo "Web viewer: http://localhost:8006   RDP: localhost:3389 (dev/dev)"
+
+# stop the test VM (keeps the disk)
+docker-down:
+    #!/usr/bin/env bash
+    docker compose -f docker/windows/compose.yml down
+
+# stop the test VM and delete its disk
+docker-clean:
+    #!/usr/bin/env bash
+    docker compose -f docker/windows/compose.yml down -v
+
+# tail the VM boot/install logs
+docker-logs:
+    #!/usr/bin/env bash
+    docker compose -f docker/windows/compose.yml logs -f
 
 # lint PowerShell with PSScriptAnalyzer
 lint:
