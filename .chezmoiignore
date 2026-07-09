@@ -1,0 +1,34 @@
+# Repo-meta files that must NOT be deployed into %USERPROFILE%.
+# chezmoiignore patterns match TARGET paths (what would land in $HOME).
+
+README.md
+LICENSE
+.gitignore
+justfile
+bootstrap.ps1
+mkdocs.yml
+pyproject.toml
+uv.lock
+
+docs
+docs/**
+.github
+.github/**
+docker
+docker/**
+
+# package manifests + editor sources are read by run_onchange scripts via
+# `chezmoi source-path`, not deployed directly.
+packages
+packages/**
+editors
+editors/**
+scripts
+scripts/**
+tests
+tests/**
+
+site
+site/**
+.venv
+.venv/**

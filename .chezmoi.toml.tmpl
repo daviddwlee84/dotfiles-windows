@@ -1,0 +1,34 @@
+# Windows dotfiles — chezmoi config template.
+# Rendered once at `chezmoi init`; answers are stored in
+# %USERPROFILE%\.config\chezmoi\chezmoi.toml and never re-asked.
+#
+# This repo targets **native Windows + PowerShell 7 (pwsh)** only. There is no
+# OS branching: everything here assumes Windows. WSL/macOS/Linux are handled by
+# the separate cross-platform dotfiles repo.
+
+[data]
+    # role picks coarse defaults; every toggle can still be overridden.
+    {{- $role := promptChoiceOnce . "role" "Role: workstation (full desktop) or minimal (shell only)" (list "workstation" "minimal") "workstation" }}
+    {{- $full := eq $role "workstation" }}
+    role  = {{ $role | quote }}
+    name  = {{ promptStringOnce . "name" "Your full name (git)" "Da-Wei Lee" | quote }}
+    email = {{ promptStringOnce . "email" "Your git email" "daviddwlee84@gmail.com" | quote }}
+
+    # --- feature toggles (role-defaulted) ---
+    installCodingAgents  = {{ promptBoolOnce . "installCodingAgents" "Install coding agents (Claude Code, OpenCode, Codex, Copilot CLI, SpecStory)" $full }}
+    installWindowsApps   = {{ promptBoolOnce . "installWindowsApps" "Install GUI apps via winget (VSCode, Cursor, Notepad++, Terminal, Alacritty, PowerToys, Raycast)" $full }}
+    installGamingApps    = {{ promptBoolOnce . "installGamingApps" "Install gaming apps (Steam)" false }}
+    installExtraRuntimes = {{ promptBoolOnce . "installExtraRuntimes" "Install extra mise runtimes (rust, go, ruby) beyond node/bun/uv" $full }}
+    installMediaTools    = {{ promptBoolOnce . "installMediaTools" "Install media CLIs (ffmpeg, imagemagick)" false }}
+    enableVimMode        = {{ promptBoolOnce . "enableVimMode" "Enable PSReadLine vi editing mode" true }}
+
+# Run .ps1 scripts (.chezmoiscripts + modify_/create_) under PowerShell 7.
+[interpreters.ps1]
+    command = "pwsh"
+    args = ["-NoProfile", "-NonInteractive"]
+
+[diff]
+    exclude = ["scripts"]
+
+[status]
+    exclude = ["scripts"]

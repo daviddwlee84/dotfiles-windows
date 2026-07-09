@@ -1,0 +1,18 @@
+# mkdocs build output
+site/
+
+# python / uv
+.venv/
+__pycache__/
+*.pyc
+
+# os
+.DS_Store
+Thumbs.db
+
+# agent/session artifacts (not part of the dotfiles)
+.claude/
+.specstory/
+
+# local, untracked user overrides that may get copied here by accident
+*.local.ps1

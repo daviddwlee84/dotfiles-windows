@@ -1,0 +1,23 @@
+# 90_psreadline.ps1 — history, inline predictions, and edit mode.
+# Templated: edit mode follows the `enableVimMode` init toggle.
+if (Get-Module -ListAvailable -Name PSReadLine) {
+    Import-Module PSReadLine
+
+    Set-PSReadLineOption -PredictionSource HistoryAndPlugin -ErrorAction SilentlyContinue
+    Set-PSReadLineOption -PredictionViewStyle ListView       -ErrorAction SilentlyContinue
+    Set-PSReadLineOption -HistorySearchCursorMovesToEnd
+    Set-PSReadLineOption -HistoryNoDuplicates
+
+    # Up/Down search history by the prefix already typed.
+    Set-PSReadLineKeyHandler -Key UpArrow   -Function HistorySearchBackward
+    Set-PSReadLineKeyHandler -Key DownArrow -Function HistorySearchForward
+{{- if .enableVimMode }}
+
+    # vi modal editing (mirrors the shells' enableVimMode on macOS/Linux).
+    Set-PSReadLineOption -EditMode Vi
+    Set-PSReadLineOption -ViModeIndicator Cursor
+{{- else }}
+
+    Set-PSReadLineOption -EditMode Windows
+{{- end }}
+}
