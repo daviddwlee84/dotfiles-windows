@@ -9,8 +9,8 @@ GUI 應用程式。
 | 工具 | 用途 |
 |---|---|
 | git、gh | 版本控制 + GitHub CLI |
-| neovim | 編輯器（可搭 LazyVim） |
-| lazygit | git TUI |
+| neovim | 編輯器（已配置 LazyVim） |
+| lazygit | git TUI（已配置 delta 分頁器） |
 | zoxide | 更聰明的 `cd` |
 | fzf、fd、ripgrep | 模糊搜尋 / 找檔案 / grep |
 | bat、eza | `cat` / `ls` 替代品 |
@@ -23,6 +23,8 @@ GUI 應用程式。
 | uv | Python 套件/runtime 管理器 |
 | just | 任務執行器（本 repo 的 `justfile`） |
 | make | GNU make |
+| zig | Neovim tree-sitter parser 的 C 編譯器 |
+| win32yank | Neovim 的剪貼簿提供者 |
 
 Runtime：`node@lts` + `bun` 由 mise 安裝為基本內建（npm-based 的 coding agents 需要
 node）。啟用 **Extra runtimes** 時才會加裝 `rust`、`go`、`ruby`。
@@ -37,10 +39,17 @@ node）。啟用 **Extra runtimes** 時才會加裝 `rust`、`go`、`ruby`。
 | Windows Terminal | `Microsoft.WindowsTerminal` |
 | Alacritty | `Alacritty.Alacritty` |
 | PowerToys | `Microsoft.PowerToys` |
-| Raycast | `Raycast.Raycast` |
+| Flow Launcher | `Flow-Launcher.Flow-Launcher` |
 | Antigravity | `Google.Antigravity` |
 | Docker Desktop | `Docker.DockerDesktop` |
 | Discord | `Discord.Discord` |
+| Claude Desktop | `Anthropic.Claude` |
+| ChatGPT | `9NT1R1C2HH7J`（msstore） |
+| Codex | `9PLM9XGG6VKS`（msstore） |
+| Chrome | `Google.Chrome` |
+| Arc | `TheBrowserCompany.Arc` |
+| Zen Browser | `Zen-Team.Zen-Browser` |
+| Grammarly | `Grammarly.Grammarly` |
 | Steam（gaming） | `Valve.Steam` |
 
 ## 工具程式（winget）
@@ -59,17 +68,20 @@ node）。啟用 **Extra runtimes** 時才會加裝 `rust`、`go`、`ruby`。
 | OBS Studio | `OBSProject.OBSStudio` | 螢幕錄影 / 直播 |
 | VLC | `VideoLAN.VLC` | 媒體播放器 |
 | Rufus | `Rufus.Rufus` | 開機 USB 製作 |
-| Tailscale | `tailscale.tailscale` | mesh VPN |
+| Tailscale | `Tailscale.Tailscale` | mesh VPN |
 
-!!! note "Flow Launcher"
-    [Flow Launcher](https://www.flowlauncher.com/)（`Flow-Launcher.Flow-Launcher`）
-    是不錯的鍵盤啟動器，但預設用 **Alt+Space** —— 與 Raycast、PowerToys Run 撞鍵。
-    為避免三方衝突，預設不裝；若你偏好它勝過 Raycast，可自行加入並擇一使用。
+!!! note "啟動器與 Alt+Space 撞鍵"
+    [Flow Launcher](https://www.flowlauncher.com/) 是預設的鍵盤啟動器（x64 與
+    ARM64 都穩定）。**Raycast for Windows** 是 Microsoft Store 測試版、winget id
+    不穩定，故改為選用：`winget install raycast`。Flow Launcher、Raycast 與
+    **PowerToys Run** 都預設 **Alt+Space** —— 擇一使用，其餘改鍵或停用。
 
 ## AI agents（npm）
 
-`@anthropic-ai/claude-code`、`opencode-ai`、`@openai/codex`、`@github/copilot`、
-`@specstory/cli` —— 透過 npm 全域安裝（由 mise 的 `node` 提供）。
+`@anthropic-ai/claude-code`、`opencode-ai`、`@openai/codex`、`@github/copilot`
+—— 透過 npm 全域安裝（由 mise 的 `node` 提供）。官方 **ChatGPT** 與 **Codex**
+桌面程式透過 Microsoft Store 安裝（見 GUI 應用程式）。SpecStory 沒有原生 Windows
+CLI 套件，故此處略過。
 
 ## PowerShell 模組（PSGallery）
 

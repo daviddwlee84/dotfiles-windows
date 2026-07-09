@@ -22,6 +22,23 @@ if (Get-Command lazygit -ErrorAction SilentlyContinue) {
     Set-Alias -Name lg -Value lazygit -Scope Global
 }
 
+# --- unix muscle-memory ---
+# `which foo` — resolve a command like the unix tool. pwsh's native equivalent
+# is Get-Command (alias gcm); this prints just the path for executables and a
+# short description for aliases / functions / cmdlets.
+function which {
+    param([Parameter(Mandatory, ValueFromRemainingArguments)][string[]]$Name)
+    foreach ($n in $Name) {
+        $c = Get-Command $n -ErrorAction SilentlyContinue
+        if (-not $c) { Write-Error "which: $n not found"; continue }
+        switch ($c.CommandType) {
+            'Application' { $c.Source }
+            'Alias'       { '{0}: aliased to {1}' -f $n, $c.Definition }
+            default       { '{0}: {1}' -f $n, $c.CommandType }
+        }
+    }
+}
+
 # --- git shortcuts ---
 function gs { git status @args }
 function gd { git diff @args }

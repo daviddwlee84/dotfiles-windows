@@ -84,6 +84,19 @@ function Winget-Install([string]$id) {
     if ($LASTEXITCODE -ne 0) { Register-Failure "winget:$id" }
 }
 
+# Microsoft Store packages (installed by Store product id via the msstore
+# source) — used for apps with no community winget manifest, e.g. the official
+# ChatGPT / Codex desktop apps. msstore ignores --scope, so we don't pass it.
+function Winget-InstallStore([string]$id) {
+    if (-not (Have winget)) { Register-Failure "msstore:$id (winget unavailable)"; return }
+    winget list --id $id -e --accept-source-agreements *> $null
+    if ($LASTEXITCODE -eq 0) { return }   # already installed
+    Info "winget (msstore) install $id"
+    winget install --id $id -e --source msstore --silent `
+        --accept-source-agreements --accept-package-agreements 2>&1 | Out-Host
+    if ($LASTEXITCODE -ne 0) { Register-Failure "msstore:$id" }
+}
+
 # --- npm CLI agents --------------------------------------------------------
 function Npm-InstallGlobal([string[]]$pkgs) {
     if (-not (Have npm)) { foreach ($p in $pkgs) { Register-Failure "npm:$p (npm unavailable)" }; return }
@@ -102,7 +115,10 @@ Scoop-Install @(
     'git', 'gh', '7zip', 'make', 'just',
     'starship', 'zoxide', 'fzf', 'fd', 'ripgrep', 'bat', 'eza', 'jq',
     'delta', 'lazygit', 'neovim', 'yazi', 'btop', 'television',
-    'mise', 'uv'
+    'mise', 'uv',
+    # LazyVim needs a C compiler for tree-sitter parsers (zig) and a clipboard
+    # provider so `unnamedplus` yanks reach the Windows clipboard (win32yank).
+    'zig', 'win32yank'
 )
 
 # Node + bun via mise (node is a hard dep for the npm-based coding agents).
@@ -158,8 +174,18 @@ foreach ($id in @(
     'Flow-Launcher.Flow-Launcher',
     'Google.Antigravity',
     'Docker.DockerDesktop',
-    'Discord.Discord'
+    'Discord.Discord',
+    # AI desktop app + browsers + writing assistant.
+    'Anthropic.Claude',
+    'Google.Chrome',
+    'TheBrowserCompany.Arc',
+    'Zen-Team.Zen-Browser',
+    'Grammarly.Grammarly'
 )) { Winget-Install $id }
+
+# Official ChatGPT + Codex desktop apps ship only on the Microsoft Store.
+Winget-InstallStore '9NT1R1C2HH7J'   # ChatGPT
+Winget-InstallStore '9PLM9XGG6VKS'   # Codex
 
 # Nerd Fonts so starship glyphs render. Hack-NF-Mono supplies the
 # "Hack Nerd Font Mono" family the Alacritty / Windows Terminal / editor

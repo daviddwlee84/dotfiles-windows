@@ -1,0 +1,13 @@
+# lazygit — use delta as the diff pager (needs `delta`, installed via scoop).
+#
+# Ported from the macOS/Linux dotfiles, but fixed to lazygit's real schema:
+# the key is `git.paging` (a map), NOT `git.pagers` (a list). lazygit silently
+# ignores unknown keys, so the list form never engages delta at all.
+#
+# Location: lazygit reads %APPDATA%\lazygit\config.yml by default, but honours
+# $XDG_CONFIG_HOME — which our pwsh profile sets to ~/.config — so this lands at
+# ~/.config/lazygit/config.yml, matching the macOS/Linux layout.
+git:
+  paging:
+    colorArg: always
+    pager: delta --dark --paging=never --syntax-theme base16-256 -s

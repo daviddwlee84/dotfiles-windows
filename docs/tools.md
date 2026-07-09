@@ -9,8 +9,8 @@ tools; **winget** handles GUI apps.
 | Tool | Purpose |
 |---|---|
 | git, gh | version control + GitHub CLI |
-| neovim | editor (LazyVim-ready) |
-| lazygit | git TUI |
+| neovim | editor (LazyVim, pre-configured) |
+| lazygit | git TUI (delta pager configured) |
 | zoxide | smarter `cd` |
 | fzf, fd, ripgrep | fuzzy find / file search / grep |
 | bat, eza | `cat` / `ls` replacements |
@@ -23,6 +23,8 @@ tools; **winget** handles GUI apps.
 | uv | Python package/runtime manager |
 | just | task runner (this repo's `justfile`) |
 | make | GNU make |
+| zig | C compiler for Neovim tree-sitter parsers |
+| win32yank | clipboard provider for Neovim |
 
 Runtimes: `node@lts` + `bun` are installed via mise as a baseline (the npm-based
 coding agents need node). `rust`, `go`, `ruby` are added when **Extra runtimes**
@@ -38,10 +40,17 @@ is enabled.
 | Windows Terminal | `Microsoft.WindowsTerminal` |
 | Alacritty | `Alacritty.Alacritty` |
 | PowerToys | `Microsoft.PowerToys` |
-| Raycast | `Raycast.Raycast` |
+| Flow Launcher | `Flow-Launcher.Flow-Launcher` |
 | Antigravity | `Google.Antigravity` |
 | Docker Desktop | `Docker.DockerDesktop` |
 | Discord | `Discord.Discord` |
+| Claude Desktop | `Anthropic.Claude` |
+| ChatGPT | `9NT1R1C2HH7J` (msstore) |
+| Codex | `9PLM9XGG6VKS` (msstore) |
+| Chrome | `Google.Chrome` |
+| Arc | `TheBrowserCompany.Arc` |
+| Zen Browser | `Zen-Team.Zen-Browser` |
+| Grammarly | `Grammarly.Grammarly` |
 | Steam (gaming) | `Valve.Steam` |
 
 ## Utility apps (winget)
@@ -60,18 +69,21 @@ Enabled by **Install utility apps**:
 | OBS Studio | `OBSProject.OBSStudio` | screen recording / streaming |
 | VLC | `VideoLAN.VLC` | media player |
 | Rufus | `Rufus.Rufus` | bootable USB creator |
-| Tailscale | `tailscale.tailscale` | mesh VPN |
+| Tailscale | `Tailscale.Tailscale` | mesh VPN |
 
-!!! note "Flow Launcher"
-    [Flow Launcher](https://www.flowlauncher.com/) (`Flow-Launcher.Flow-Launcher`)
-    is a good keyboard launcher, but it defaults to **Alt+Space** — the same hotkey
-    as Raycast and PowerToys Run. It's left out of the default set to avoid a
-    three-way clash; add it (and pick one launcher) if you prefer it over Raycast.
+!!! note "Launchers & the Alt+Space clash"
+    [Flow Launcher](https://www.flowlauncher.com/) is the default keyboard
+    launcher (reliable on x64 **and** ARM64). **Raycast for Windows** is a
+    Microsoft Store beta with a finicky winget id, so it's opt-in:
+    `winget install raycast`. Flow Launcher, Raycast, and **PowerToys Run** all
+    default to **Alt+Space** — pick one and rebind or disable the others.
 
 ## AI agents (npm)
 
-`@anthropic-ai/claude-code`, `opencode-ai`, `@openai/codex`, `@github/copilot`,
-`@specstory/cli` — installed globally via npm (provided by the mise `node`).
+`@anthropic-ai/claude-code`, `opencode-ai`, `@openai/codex`, `@github/copilot`
+— installed globally via npm (provided by the mise `node`). The official
+**ChatGPT** and **Codex** desktop apps install via the Microsoft Store (see GUI
+apps). SpecStory has no native-Windows CLI package, so it's omitted here.
 
 ## PowerShell modules (PSGallery)
 
