@@ -17,9 +17,12 @@ tools; **winget** handles GUI apps.
 | delta | git diff pager |
 | jq | JSON processor |
 | yazi, btop | file manager / system monitor |
+| television (`tv`) | fuzzy picker / channel launcher |
 | starship | prompt |
 | mise | runtime version manager |
 | uv | Python package/runtime manager |
+| just | task runner (this repo's `justfile`) |
+| make | GNU make |
 
 Runtimes: `node@lts` + `bun` are installed via mise as a baseline (the npm-based
 coding agents need node). `rust`, `go`, `ruby` are added when **Extra runtimes**

@@ -37,3 +37,9 @@ if (Get-Command fzf -ErrorAction SilentlyContinue) {
 if (Get-Command direnv -ErrorAction SilentlyContinue) {
     Invoke-Expression (& direnv hook pwsh | Out-String)
 }
+
+# television (tv) — fuzzy picker shell integration (best-effort; some versions
+# have no powershell init, so swallow errors).
+if (Get-Command tv -ErrorAction SilentlyContinue) {
+    try { tv init powershell | Out-String | Invoke-Expression } catch { $null = $_ }
+}

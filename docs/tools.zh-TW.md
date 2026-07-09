@@ -17,9 +17,12 @@ GUI 應用程式。
 | delta | git diff 分頁器 |
 | jq | JSON 處理器 |
 | yazi、btop | 檔案管理員 / 系統監控 |
+| television（`tv`） | 模糊選擇器 / channel 啟動器 |
 | starship | 提示字元 |
 | mise | runtime 版本管理器 |
 | uv | Python 套件/runtime 管理器 |
+| just | 任務執行器（本 repo 的 `justfile`） |
+| make | GNU make |
 
 Runtime：`node@lts` + `bun` 由 mise 安裝為基本內建（npm-based 的 coding agents 需要
 node）。啟用 **Extra runtimes** 時才會加裝 `rust`、`go`、`ruby`。
