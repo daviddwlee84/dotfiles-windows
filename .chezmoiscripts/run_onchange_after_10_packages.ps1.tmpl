@@ -127,11 +127,20 @@ Scoop-Install @(
     'zig', 'tree-sitter', 'win32yank'
 )
 
+# On Windows-on-ARM, scoop's neovim is amd64 (runs under x64 emulation) while
+# zig installs arm64-native, so zig-built tree-sitter parsers are the wrong
+# arch for nvim. Add an amd64 gcc that matches the emulated nvim.
+if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') {
+    Info 'ARM64 host: adding amd64 gcc for nvim-treesitter'
+    Scoop-Install @('gcc')
+}
+
 # Node + bun via mise (node is a hard dep for the npm-based coding agents).
 if (Have mise) {
     Info 'mise: node@lts, bun@latest'
     mise use -g node@lts bun@latest
     if ($LASTEXITCODE -ne 0) { Register-Failure 'mise:node/bun' }
+    mise reshim   # generate shims so pinned tools land on PATH (see 00_env)
 }
 
 # Make PSGallery usable non-interactively before Install-Module (NuGet provider
@@ -159,7 +168,7 @@ if (-not (Get-Module -ListAvailable -Name AudioDeviceCmdlets)) {
 
 {{ if .installExtraRuntimes -}}
 # Extra language runtimes via mise (rust/go/ruby). node/bun/uv are baseline.
-if (Have mise) { Info 'mise: rust, go, ruby'; mise use -g rust@latest go@latest ruby@latest; if ($LASTEXITCODE -ne 0) { Register-Failure 'mise:rust/go/ruby' } }
+if (Have mise) { Info 'mise: rust, go, ruby'; mise use -g rust@latest go@latest ruby@latest; if ($LASTEXITCODE -ne 0) { Register-Failure 'mise:rust/go/ruby' }; mise reshim }
 {{ end -}}
 
 {{ if .installMediaTools -}}

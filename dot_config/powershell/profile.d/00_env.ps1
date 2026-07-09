@@ -26,9 +26,12 @@ if (Get-Command nvim -ErrorAction SilentlyContinue) { $env:EDITOR = 'nvim' }
 
 # Prepend user bin dirs to PATH, idempotently. scoop already adds its shims to
 # the user PATH, but a fresh session inside chezmoi apply may not have it yet.
+# mise shims expose the globally-pinned runtimes (node/bun/uv/…) reliably — the
+# `mise activate` prompt-hook doesn't land global tools on PATH on Windows.
 $UserPaths = @(
     (Join-Path $HOME '.local/bin'),
-    (Join-Path $HOME 'scoop/shims')
+    (Join-Path $HOME 'scoop/shims'),
+    (Join-Path $env:XDG_DATA_HOME 'mise/shims')
 ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
 
 $SepPaths = $env:PATH -split ';'

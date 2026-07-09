@@ -24,6 +24,7 @@ GUI 應用程式。
 | just | 任務執行器（本 repo 的 `justfile`） |
 | make | GNU make |
 | zig | Neovim tree-sitter parser 的 C 編譯器 |
+| gcc | amd64 C 編譯器（**僅 ARM64 主機** —— 對應 x64 模擬的 nvim） |
 | tree-sitter | tree-sitter CLI（nvim-treesitter `main` 分支） |
 | win32yank | Neovim 的剪貼簿提供者 |
 | gnupg | `gpg` —— 讓 mise 驗證 runtime 下載 |
