@@ -7,6 +7,7 @@
 # Toggles (from .chezmoi.toml.tmpl):
 #   installCodingAgents  = {{ .installCodingAgents }}
 #   installWindowsApps   = {{ .installWindowsApps }}
+#   installUtilityApps   = {{ .installUtilityApps }}
 #   installGamingApps    = {{ .installGamingApps }}
 #   installExtraRuntimes = {{ .installExtraRuntimes }}
 #   installMediaTools    = {{ .installMediaTools }}
@@ -129,6 +130,19 @@ Write-Warning 'Raycast and PowerToys Run both default to Alt+Space. Pick one lau
 
 {{ if .installGamingApps -}}
 Winget-Install 'Valve.Steam'
+{{ end -}}
+
+{{ if .installUtilityApps -}}
+# System / utility apps via winget.
+foreach ($id in @(
+    'CPUID.CPU-Z',
+    'TechPowerUp.GPU-Z',
+    'JAMSoftware.TreeSize.Free',
+    'VideoLAN.VLC',
+    'voidtools.Everything',
+    'ShareX.ShareX',
+    'REALiX.HWiNFO'
+)) { Winget-Install $id }
 {{ end -}}
 
 Info 'package install complete'

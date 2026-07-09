@@ -17,6 +17,7 @@
     # --- feature toggles (role-defaulted) ---
     installCodingAgents  = {{ promptBoolOnce . "installCodingAgents" "Install coding agents (Claude Code, OpenCode, Codex, Copilot CLI, SpecStory)" $full }}
     installWindowsApps   = {{ promptBoolOnce . "installWindowsApps" "Install GUI apps via winget (VSCode, Cursor, Notepad++, Terminal, Alacritty, PowerToys, Raycast)" $full }}
+    installUtilityApps   = {{ promptBoolOnce . "installUtilityApps" "Install utility apps via winget (CPU-Z, GPU-Z, TreeSize, VLC, Everything, ShareX, HWiNFO)" $full }}
     installGamingApps    = {{ promptBoolOnce . "installGamingApps" "Install gaming apps (Steam)" false }}
     installExtraRuntimes = {{ promptBoolOnce . "installExtraRuntimes" "Install extra mise runtimes (rust, go, ruby) beyond node/bun/uv" $full }}
     installMediaTools    = {{ promptBoolOnce . "installMediaTools" "Install media CLIs (ffmpeg, imagemagick)" false }}

@@ -38,6 +38,20 @@ node）。啟用 **Extra runtimes** 時才會加裝 `rust`、`go`、`ruby`。
 | Antigravity | `Google.Antigravity` |
 | Steam（gaming） | `Valve.Steam` |
 
+## 工具程式（winget）
+
+由 **Install utility apps** 開關控制：
+
+| 應用程式 | winget id | 用途 |
+|---|---|---|
+| CPU-Z | `CPUID.CPU-Z` | CPU/主機板資訊 |
+| GPU-Z | `TechPowerUp.GPU-Z` | GPU 資訊 + 感測器 |
+| HWiNFO | `REALiX.HWiNFO` | 完整硬體監控 |
+| TreeSize Free | `JAMSoftware.TreeSize.Free` | 磁碟用量瀏覽 |
+| Everything | `voidtools.Everything` | 即時檔名搜尋 |
+| ShareX | `ShareX.ShareX` | 截圖 + 螢幕錄影 |
+| VLC | `VideoLAN.VLC` | 媒體播放器 |
+
 ## AI agents（npm）
 
 `@anthropic-ai/claude-code`、`opencode-ai`、`@openai/codex`、`@github/copilot`、

@@ -25,6 +25,7 @@ irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstr
 | Role | `workstation` | `workstation` = full desktop; `minimal` = shell only |
 | Coding agents | on (workstation) | Claude Code, OpenCode, Codex, Copilot CLI, SpecStory |
 | Windows GUI apps | on (workstation) | VSCode, Cursor, Notepad++, Terminal, Alacritty, PowerToys, Raycast |
+| Utility apps | on (workstation) | CPU-Z, GPU-Z, TreeSize, VLC, Everything, ShareX, HWiNFO |
 | Gaming apps | off | Steam |
 | Extra runtimes | on (workstation) | rust, go, ruby via mise (node/bun/uv are baseline) |
 | Media CLIs | off | ffmpeg, imagemagick |

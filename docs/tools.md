@@ -39,6 +39,20 @@ is enabled.
 | Antigravity | `Google.Antigravity` |
 | Steam (gaming) | `Valve.Steam` |
 
+## Utility apps (winget)
+
+Enabled by **Install utility apps**:
+
+| App | winget id | What |
+|---|---|---|
+| CPU-Z | `CPUID.CPU-Z` | CPU/mainboard info |
+| GPU-Z | `TechPowerUp.GPU-Z` | GPU info + sensors |
+| HWiNFO | `REALiX.HWiNFO` | full hardware monitoring |
+| TreeSize Free | `JAMSoftware.TreeSize.Free` | disk-usage explorer |
+| Everything | `voidtools.Everything` | instant filename search |
+| ShareX | `ShareX.ShareX` | screenshots + screen recording |
+| VLC | `VideoLAN.VLC` | media player |
+
 ## AI agents (npm)
 
 `@anthropic-ai/claude-code`, `opencode-ai`, `@openai/codex`, `@github/copilot`,
