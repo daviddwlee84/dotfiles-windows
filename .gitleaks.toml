@@ -137,3 +137,14 @@ useDefault = true
   description = "Stripe webhook signing secret (whsec_...)"
   regex       = '''\bwhsec_[A-Za-z0-9]{32,}\b'''
   tags        = ["webhook", "stripe", "auto"]
+
+
+# Synthetic key fixtures shipped by agent skills' own test suites. These corpora
+# deliberately contain example key shapes to prove the redactor/gitleaks fire;
+# they are test data, not real credentials.
+[[allowlists]]
+  description = "Agent-skill test fixtures (synthetic secrets by design)"
+  paths = [
+    "\\.agents/skills/[^/]+/tests/",
+    "\\.claude/skills/[^/]+/tests/",
+  ]
