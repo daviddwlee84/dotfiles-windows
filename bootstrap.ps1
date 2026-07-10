@@ -4,8 +4,8 @@
     Bootstrap a fresh Windows machine with these dotfiles.
 
 .DESCRIPTION
-    Installs scoop (user-scoped, no admin), then git + PowerShell 7 + chezmoi +
-    uv, then runs `chezmoi init --apply` against this repo. Safe to re-run.
+    Installs scoop (user-scoped; auto-passes -RunAsAdmin if the shell is
+    elevated), then git + PowerShell 7 + chezmoi + uv, then runs `chezmoi init --apply` against this repo. Safe to re-run.
     Works from Windows PowerShell 5.1 or pwsh 7 — chezmoi runs the repo's .ps1
     scripts via pwsh regardless (see [interpreters.ps1] in .chezmoi.toml.tmpl).
 
@@ -33,6 +33,13 @@ param(
 $ErrorActionPreference = 'Stop'
 function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 function Ok($m)   { Write-Host "==> $m" -ForegroundColor Green }
+function Test-Admin {
+    # $true when this session is elevated. Works on Windows PowerShell 5.1 and pwsh 7.
+    try {
+        $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+        ([Security.Principal.WindowsPrincipal]$id).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    } catch { $false }
+}
 
 Info 'Windows dotfiles bootstrap'
 
@@ -42,10 +49,20 @@ if ((Get-ExecutionPolicy -Scope CurrentUser) -notin 'RemoteSigned', 'Unrestricte
     Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 }
 
-# 1. scoop — user-scoped package manager, no admin required.
+# 1. scoop — user-scoped package manager. No admin required, but some dev boxes
+#    always open the shell elevated; the installer refuses an admin console
+#    ("Running the installer as administrator is disabled by default") unless
+#    -RunAsAdmin is passed. Detect elevation and forward the flag so bootstrap
+#    doesn't die on the first step. (scoop still installs per-user into ~/scoop.)
 if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
-    Info 'Installing scoop'
-    Invoke-RestMethod get.scoop.sh | Invoke-Expression
+    $installer = [scriptblock]::Create((Invoke-RestMethod get.scoop.sh))
+    if (Test-Admin) {
+        Info 'Installing scoop (elevated console: passing -RunAsAdmin)'
+        & $installer -RunAsAdmin
+    } else {
+        Info 'Installing scoop'
+        & $installer
+    }
 }
 
 # 2. Baseline tools via scoop.

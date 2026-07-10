@@ -11,7 +11,9 @@ irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstr
 `bootstrap.ps1` 會依序（且可重複執行）完成：
 
 1. 將目前使用者的 execution policy 設為 `RemoteSigned`。
-2. 安裝 [scoop](https://scoop.sh)（使用者層級、免系統管理員）。
+2. 安裝 [scoop](https://scoop.sh)（使用者層級、免系統管理員 —— 但若 shell 本身是
+   系統管理員身分，會自動帶上 `-RunAsAdmin`；否則安裝程式會以
+   *「Running the installer as administrator is disabled by default」* 拒絕執行）。
 3. 透過 scoop 安裝 `git`、PowerShell 7（`pwsh`）、`chezmoi`、`uv`。
 4. 若是從 Windows PowerShell 5.1 啟動，會改用 `pwsh` 重新執行。
 5. 對此 repo 執行 `chezmoi init --apply`。

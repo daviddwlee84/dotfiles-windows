@@ -40,10 +40,30 @@ function Have($n) { [bool](Get-Command $n -ErrorAction SilentlyContinue) }
 function Register-Failure($what) { $script:Failures.Add($what); Write-Warning "FAILED (skipped): $what" }
 
 # --- scoop -----------------------------------------------------------------
+function Test-Admin {
+    # $true when this pwsh is running elevated (member of the Administrators role).
+    try {
+        $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+        ([Security.Principal.WindowsPrincipal]$id).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    } catch { $false }
+}
+
 function Ensure-Scoop {
     if (-not (Have scoop)) {
-        Info 'scoop not found — installing (user-scoped, no admin)'
-        Invoke-RestMethod get.scoop.sh | Invoke-Expression
+        # get.scoop.sh returns install.ps1's text. Piping it to Invoke-Expression
+        # works in a normal console, but an ELEVATED one is refused ("Running the
+        # installer as administrator is disabled by default") unless -RunAsAdmin is
+        # passed. Some dev boxes always open the shell as admin, so detect that and
+        # forward the flag. We build a scriptblock from the fetched text so we can
+        # pass args -- equivalent to `iex "& {$(irm get.scoop.sh)} -RunAsAdmin"`.
+        $installer = [scriptblock]::Create((Invoke-RestMethod get.scoop.sh))
+        if (Test-Admin) {
+            Info 'scoop not found — installing (elevated console: passing -RunAsAdmin)'
+            & $installer -RunAsAdmin
+        } else {
+            Info 'scoop not found — installing (user-scoped, no admin)'
+            & $installer
+        }
     }
     foreach ($b in 'main', 'extras', 'versions', 'nerd-fonts') {
         scoop bucket add $b *> $null

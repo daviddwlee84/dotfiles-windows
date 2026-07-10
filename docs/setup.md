@@ -11,7 +11,10 @@ irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstr
 `bootstrap.ps1` does the following, idempotently:
 
 1. Sets the execution policy to `RemoteSigned` for the current user.
-2. Installs [scoop](https://scoop.sh) (user-scoped, no admin).
+2. Installs [scoop](https://scoop.sh) (user-scoped, no admin — but if the shell
+   is already elevated it auto-passes `-RunAsAdmin`, which the installer
+   otherwise refuses with *"Running the installer as administrator is disabled
+   by default"*).
 3. Installs `git`, PowerShell 7 (`pwsh`), `chezmoi`, and `uv` via scoop.
 4. Re-launches under `pwsh` if it started in Windows PowerShell 5.1.
 5. Runs `chezmoi init --apply` against this repo.
