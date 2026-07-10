@@ -19,6 +19,7 @@ tools; **winget** handles GUI apps.
 | yazi, btop | file manager / system monitor |
 | television (`tv`) | fuzzy picker / channel launcher |
 | tldr (tlrc) | community man-page cheatsheets; `tldrf` adds `zh_TW → zh → en` fallback |
+| gh dash | GitHub PR/issue dashboard TUI (gh extension; installs once `gh` is authenticated) |
 | starship | prompt |
 | node | JS runtime (`nodejs-lts`) |
 | uv | Python package/runtime manager |

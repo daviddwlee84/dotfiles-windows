@@ -139,6 +139,27 @@ if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm
     Scoop-Install @('gcc')
 }
 
+# gh-dash: GitHub PR/issue dashboard TUI (`gh dash`). It's a gh extension, not a
+# scoop package, so it needs gh to be authenticated -- this no-ops on a fresh
+# machine until `gh auth login`. run_onchange only re-fires when this script
+# changes, so after authenticating, install by hand (`gh extension install
+# dlvhdr/gh-dash`) or force a reapply (`chezmoi state delete-bucket
+# --bucket=entryState`). gh-notify / gh-select from the Unix repo are bash-only
+# extensions and are intentionally skipped on Windows.
+if (Have gh) {
+    gh auth status *> $null
+    if ($LASTEXITCODE -eq 0) {
+        $ghExts = gh extension list 2>$null | Out-String
+        if ($ghExts -notmatch 'dlvhdr/gh-dash') {
+            Info 'gh extension install dlvhdr/gh-dash'
+            gh extension install dlvhdr/gh-dash
+            if ($LASTEXITCODE -ne 0) { Register-Failure 'gh-ext:gh-dash' }
+        }
+    } else {
+        Info 'gh not authenticated -- skipping gh-dash (gh auth login, then reapply)'
+    }
+}
+
 # node/bun come from scoop above (on ~/scoop/shims, reliably on PATH). We do NOT
 # use mise here -- see the runtimes note in the core scoop list.
 

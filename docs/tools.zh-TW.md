@@ -19,6 +19,7 @@ GUI 應用程式。
 | yazi、btop | 檔案管理員 / 系統監控 |
 | television（`tv`） | 模糊選擇器 / channel 啟動器 |
 | tldr（tlrc） | 社群 man page 速查表；`tldrf` 加上 `zh_TW → zh → en` fallback |
+| gh dash | GitHub PR/issue 儀表板 TUI（gh 擴充；`gh` 登入後才會安裝） |
 | starship | 提示字元 |
 | node | JS runtime（`nodejs-lts`） |
 | uv | Python 套件/runtime 管理器 |
