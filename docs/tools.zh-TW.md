@@ -8,7 +8,7 @@ GUI 應用程式。
 
 | 工具 | 用途 |
 |---|---|
-| git、gh | 版本控制 + GitHub CLI |
+| git、gh、glab | 版本控制 + GitHub / GitLab CLI |
 | neovim | 編輯器（已配置 LazyVim） |
 | lazygit | git TUI（已配置 delta 分頁器） |
 | zoxide | 更聰明的 `cd` |

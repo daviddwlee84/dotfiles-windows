@@ -8,7 +8,7 @@ tools; **winget** handles GUI apps.
 
 | Tool | Purpose |
 |---|---|
-| git, gh | version control + GitHub CLI |
+| git, gh, glab | version control + GitHub / GitLab CLIs |
 | neovim | editor (LazyVim, pre-configured) |
 | lazygit | git TUI (delta pager configured) |
 | zoxide | smarter `cd` |
