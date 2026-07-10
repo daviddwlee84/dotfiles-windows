@@ -198,6 +198,9 @@ Npm-InstallGlobal @(
 # @specstory/cli` 404s. The Copilot module already no-ops when `specstory` is
 # absent. Experimental Windows build from the unmerged PR #191:
 # `just specstory-build` (see backlog/specstory-windows-native-cli.md).
+
+# OpenCode Desktop (GUI companion to the opencode-ai CLI) via scoop extras.
+Scoop-Install @('extras/opencode-desktop')
 {{ end -}}
 
 {{ if .installWindowsApps -}}
@@ -207,6 +210,7 @@ foreach ($id in @(
     'Anysphere.Cursor',
     'Microsoft.WindowsTerminal',
     'Alacritty.Alacritty',
+    'wez.wezterm',
     'Microsoft.PowerToys',
     'Google.Antigravity',
     'Docker.DockerDesktop',

@@ -21,7 +21,7 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 - `$PROFILE` (`~/Documents/PowerShell/Microsoft.PowerShell_profile.ps1`) is a loader
   that dot-sources `~/.config/powershell/profile.d/*.ps1` in sorted order, then
   `~/.config/powershell/local.ps1` (untracked user override, loaded last).
-- Fragments: `00_env` (PATH/XDG/env), `10_tools` (starship, zoxide, mise, atuin,
+- Fragments: `00_env` (PATH/XDG/env), `10_tools` (starship, zoxide, atuin,
   fzf, direnv, tv), `20_aliases` (`ll`/`gs`/`reload`/`cas`/`cau`/`chezmoi-cd`/`run-for`),
   `30_apps` (`applaunch`/`appquit`/`apprestart`/`sysvol`/`sysmute`/`x`), `35_yazi` (`y`),
   `40_copilot` (imports the Copilot module), `90_psreadline` (vi-mode gated on `enableVimMode`).
@@ -63,6 +63,8 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 ## Gotchas
 - Windows-only repo — no `{{ "{{" }} if eq .chezmoi.os {{ "}}" }}` branching needed.
 - Editor settings use a `run_onchange` pwsh merger (not `modify_`) on Windows.
-- tmux / zellij / herdr are Unix-only and intentionally absent; use Windows Terminal panes.
+- tmux / zellij are Unix-only and intentionally absent; **WezTerm** (installed) is
+  the native tmux-like multiplexer, or use Windows Terminal panes. Runtimes are
+  native via scoop (node/bun/go/rust/ruby) + uv for Python — no mise on Windows.
 - This skill body is shared: `dot_agents/skills/dotfiles-windows/` and
   `dot_claude/skills/dotfiles-windows/` both render `.chezmoitemplates/dotfiles-windows-skill.md`.

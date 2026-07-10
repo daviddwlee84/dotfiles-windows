@@ -19,7 +19,7 @@ GUI 應用程式。
 | yazi、btop | 檔案管理員 / 系統監控 |
 | television（`tv`） | 模糊選擇器 / channel 啟動器 |
 | starship | 提示字元 |
-| mise | runtime 版本管理器 |
+| node | JS runtime（`nodejs-lts`） |
 | uv | Python 套件/runtime 管理器 |
 | bun | JS runtime + 套件管理器（copilot-proxy 用） |
 | just | 任務執行器（本 repo 的 `justfile`） |
@@ -28,13 +28,13 @@ GUI 應用程式。
 | gcc | amd64 C 編譯器（**僅 ARM64 主機** —— 對應 x64 模擬的 nvim） |
 | tree-sitter | tree-sitter CLI（nvim-treesitter `main` 分支） |
 | win32yank | Neovim 的剪貼簿提供者 |
-| gnupg | `gpg` —— 讓 mise 驗證 runtime 下載 |
+| gnupg | `gpg`（git commit 簽章、驗證） |
 
-Runtime：`node@lts` 由 mise 安裝（npm-based 的 coding agents 需要 node）；`bun`
-改由 **scoop** 安裝（mise 沒有 Windows-arm64 的 bun build）。啟用 **Extra
-runtimes** 時才會加裝 `rust`、`go`、`ruby`。預設 **Python** 由 uv 管理：
-`uv python install --default` 會把 `python`/`python3` 放到 `~/.local/bin`（PATH
-上排在 Store 的 `python.exe` app-alias 前面），所以 `python`、`uv run`、`uv venv`
+Runtime **改用原生（scoop），不用 mise** —— 見 [rationale](rationale.md)。`node`
+（`nodejs-lts`）與 `bun` 由 scoop 安裝；啟用 **Extra runtimes** 時才會加裝 `go`、
+`rust`（rustup）、`ruby`。預設 **Python** 由 uv 管理：`uv python install --default`
+會把 `python`/`python3` 放到 `~/.local/bin`（PATH 上排在 Store 的 `python.exe`
+app-alias 前面），所以 `python`、`uv run`、`uv venv`
 都能用，不需 Microsoft Store。
 
 ## GUI 應用程式（winget）
@@ -45,6 +45,7 @@ runtimes** 時才會加裝 `rust`、`go`、`ruby`。預設 **Python** 由 uv 管
 | Cursor | `Anysphere.Cursor` |
 | Windows Terminal | `Microsoft.WindowsTerminal` |
 | Alacritty | `Alacritty.Alacritty` |
+| WezTerm | `wez.wezterm`（內建 tmux 式多工器） |
 | PowerToys | `Microsoft.PowerToys` |
 | Raycast | `9PFXXSHC64H3`（msstore） |
 | Antigravity | `Google.Antigravity` |
@@ -98,7 +99,8 @@ runtimes** 時才會加裝 `rust`、`go`、`ruby`。預設 **Python** 由 uv 管
 ## AI agents（npm）
 
 `@anthropic-ai/claude-code`、`opencode-ai`、`@openai/codex`、`@github/copilot`
-—— 透過 npm 全域安裝（由 mise 的 `node` 提供）。官方 **ChatGPT** 與 **Codex**
+—— 透過 npm 全域安裝（由 scoop 的 `node` 提供）。**OpenCode Desktop**（`opencode-ai`
+CLI 的 GUI 版）由 scoop 安裝（`extras/opencode-desktop`）。官方 **ChatGPT** 與 **Codex**
 桌面程式透過 Microsoft Store 安裝（見 GUI 應用程式）。SpecStory 沒有原生 Windows
 CLI 套件，故此處略過。
 

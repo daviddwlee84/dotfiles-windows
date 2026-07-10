@@ -19,7 +19,7 @@ tools; **winget** handles GUI apps.
 | yazi, btop | file manager / system monitor |
 | television (`tv`) | fuzzy picker / channel launcher |
 | starship | prompt |
-| mise | runtime version manager |
+| node | JS runtime (`nodejs-lts`) |
 | uv | Python package/runtime manager |
 | bun | JS runtime + package manager (backs copilot-proxy) |
 | just | task runner (this repo's `justfile`) |
@@ -28,14 +28,14 @@ tools; **winget** handles GUI apps.
 | gcc | amd64 C compiler (**ARM64 hosts only** — matches the x64-emulated nvim) |
 | tree-sitter | tree-sitter CLI (nvim-treesitter `main` branch) |
 | win32yank | clipboard provider for Neovim |
-| gnupg | `gpg` — lets mise verify runtime downloads |
+| gnupg | `gpg` (git commit signing, verification) |
 
-Runtimes: `node@lts` is installed via mise (the npm-based coding agents need
-node); `bun` comes from **scoop** (mise has no Windows-arm64 bun build). `rust`,
-`go`, `ruby` are added when **Extra runtimes** is enabled. A default **Python**
-is uv-managed: `uv python install --default` puts `python`/`python3` in
-`~/.local/bin` (on PATH ahead of the Store's `python.exe` app-alias), so
-`python`, `uv run`, and `uv venv` all work without the Microsoft Store.
+Runtimes are **native (scoop), not mise** — see [rationale](rationale.md#runtimes-scoop-natives-not-mise-on-windows).
+`node` (`nodejs-lts`) and `bun` come from scoop; `go`, `rust` (rustup), `ruby`
+are added when **Extra runtimes** is enabled. A default **Python** is uv-managed:
+`uv python install --default` puts `python`/`python3` in `~/.local/bin` (on PATH
+ahead of the Store's `python.exe` app-alias), so `python`, `uv run`, and
+`uv venv` all work without the Microsoft Store.
 
 ## GUI apps (winget)
 
@@ -45,6 +45,7 @@ is uv-managed: `uv python install --default` puts `python`/`python3` in
 | Cursor | `Anysphere.Cursor` |
 | Windows Terminal | `Microsoft.WindowsTerminal` |
 | Alacritty | `Alacritty.Alacritty` |
+| WezTerm | `wez.wezterm` (built-in tmux-like multiplexer) |
 | PowerToys | `Microsoft.PowerToys` |
 | Raycast | `9PFXXSHC64H3` (msstore) |
 | Antigravity | `Google.Antigravity` |
@@ -100,9 +101,11 @@ Enabled by **Install utility apps**:
 ## AI agents (npm)
 
 `@anthropic-ai/claude-code`, `opencode-ai`, `@openai/codex`, `@github/copilot`
-— installed globally via npm (provided by the mise `node`). The official
-**ChatGPT** and **Codex** desktop apps install via the Microsoft Store (see GUI
-apps). SpecStory has no native-Windows CLI package, so it's omitted here.
+— installed globally via npm (provided by the scoop `node`). **OpenCode Desktop**
+(GUI companion to the `opencode-ai` CLI) installs via scoop (`extras/opencode-desktop`).
+The official **ChatGPT** and **Codex** desktop apps install via the Microsoft
+Store (see GUI apps). SpecStory has no native-Windows CLI package, so it's
+omitted here.
 
 ## PowerShell modules (PSGallery)
 
