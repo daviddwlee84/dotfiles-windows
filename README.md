@@ -51,9 +51,29 @@ starship not oh-my-posh, why pwsh not cmd) lives in the docs.
 | `dot_config/powershell/profile.d/` | Modular shell fragments. |
 | `dot_config/powershell/modules/Copilot/` | `copilot-proxy` PowerShell module. |
 | `dot_config/starship.toml` | Prompt config. |
+| `dot_ssh/` | Create-only `~/.ssh/config` skeleton (`Include config.d/*`) + `config.d/` snippets. |
 | `.chezmoiscripts/` | Package install + editor-overlay scripts. |
 | `bootstrap.ps1` | One-line installer. |
 | `docs/`, `mkdocs.yml` | Bilingual documentation site. |
+
+## SSH
+
+`dot_ssh/` ships a create-only OpenSSH skeleton, mirrored from the cross-platform
+dotfiles and adapted for Windows:
+
+- `~/.ssh/config` — `Include ~/.ssh/config.d/*` plus conservative `Host *`
+  keepalives. **Create-only**: an existing `~/.ssh/config` is never overwritten
+  (add the `Include` line by hand if so). chezmoi writes it owner-only so
+  Windows OpenSSH won't reject it with "Bad owner or permissions".
+- `~/.ssh/config.d/00-defaults` — commented-out global-defaults stub.
+- `~/.ssh/config.d/01_git` — `github.com` over `ssh.github.com:443` (survives
+  port-22 filtering) + `gitlab.com`, with commented multi-account / SOCKS5-proxy
+  examples.
+
+Agent handling differs from macOS/Linux: use the Windows **OpenSSH
+Authentication Agent** service (`Set-Service ssh-agent -StartupType Automatic`;
+`Start-Service ssh-agent`; `ssh-add`). The client uses the
+`//./pipe/openssh-ssh-agent` named pipe by default — no `SSH_AUTH_SOCK` needed.
 
 ## Manual dotfiles ops
 

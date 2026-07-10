@@ -34,6 +34,7 @@ Worth doing, no rush.
 Someday / nice-to-have.
 
 - [ ] **[S] Example deferred item** — low signal-to-effort, but easy.
+- [ ] **[S] Windows ssh-agent profile fragment** — parallel to the parent repo's `94_ssh_agent.zsh`. A `dot_config/powershell/profile.d/` fragment that ensures the OpenSSH Authentication Agent service is running (`Set-Service ssh-agent -StartupType Automatic`; `Start-Service`) and optionally detects Bitwarden desktop's `//./pipe/openssh-ssh-agent`. Config skeleton (`dot_ssh/`) already shipped; this only automates the agent side.
 
 ## P?
 

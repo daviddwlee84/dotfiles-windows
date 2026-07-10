@@ -1,0 +1,37 @@
+# ~/.ssh/config
+#
+# Managed by chezmoi as create-only:
+# - Created only when this file does not exist.
+# - Existing ~/.ssh/config will NOT be overwritten. If you already have one, add
+#   `Include ~/.ssh/config.d/*` to it by hand to pick up the managed snippets.
+#
+# On Windows, `~/.ssh/config` == `%USERPROFILE%\.ssh\config` and is read by both
+# the built-in Windows OpenSSH client and the copy bundled with scoop's git.
+# chezmoi writes this file owner-only (the `private_` attribute maps to a
+# restrictive ACL) so OpenSSH does not reject it with "Bad owner or permissions".
+#
+# Put host-specific entries in ~/.ssh/config.d/*. Files there load in lexical
+# order. `Include` with a glob needs a recent Windows OpenSSH (ships since
+# Win10 1809 / OpenSSH 8.x); scoop's git bundles its own recent build.
+Include ~/.ssh/config.d/*
+
+Host *
+    # Conservative cross-platform keepalive defaults.
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+
+    # Agent selection on Windows is the OpenSSH Authentication Agent service, not
+    # a SSH_AUTH_SOCK dance: set it to start automatically and load your keys --
+    #   Set-Service ssh-agent -StartupType Automatic
+    #   Start-Service ssh-agent
+    #   ssh-add $HOME\.ssh\id_ed25519
+    # The client then talks to the named pipe //./pipe/openssh-ssh-agent by
+    # default, so no IdentityAgent line is needed.
+    #
+    # Only uncomment IdentityAgent below for config-level pinning (e.g. a
+    # non-interactive context, or to point at Bitwarden desktop's agent -- it
+    # serves the SAME pipe, so stop the Windows ssh-agent service first to avoid
+    # a collision). Use forward slashes: OpenSSH >= 8.9 mishandles the backslash
+    # form, and setting IdentityAgent disables the env-var fallback.
+    #
+    # IdentityAgent //./pipe/openssh-ssh-agent
