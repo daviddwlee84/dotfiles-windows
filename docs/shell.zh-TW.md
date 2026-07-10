@@ -16,6 +16,7 @@
 | `05_mirrors.ps1` | 中國套件鏡像（啟用時） |
 | `10_tools.ps1` | `init` 掛鉤:starship、zoxide、mise、atuin、fzf、direnv、tv |
 | `20_aliases.ps1` | alias 與 helper（`reload`、`cas`/`cau`、git 快捷） |
+| `28_tldr.ps1` | `tldrf` —— tldr 加上 `zh_TW → zh → en` 語言 fallback |
 | `30_apps.ps1` | app 控制（`applaunch`/`appquit`/…）、音量、剪貼簿 |
 | `35_yazi.ps1` | `y` —— 開 yazi,離開時 cd 到你停下的目錄 |
 | `40_copilot.ps1` | 匯入 `copilot-proxy` PowerShell 模組 |

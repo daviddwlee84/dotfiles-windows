@@ -19,6 +19,15 @@ Host gitlab.com
     # use ncat (`scoop install nmap`) or `connect`:
     # ProxyCommand ncat --proxy 127.0.0.1:7890 --proxy-type socks5 %h %p
 
+Host ssh.dev.azure.com vs-ssh.visualstudio.com
+    User git
+    # Azure DevOps Git over SSH. It deprecated legacy ssh-rsa (RSA+SHA-1);
+    # modern OpenSSH negotiates rsa-sha2-256/512 with an RSA key automatically.
+    # ED25519 is NOT yet accepted by Azure DevOps, so an Ed25519 key that works
+    # for GitHub/GitLab will be rejected here -- add an RSA key for this host.
+    # If an old client still offers only ssh-rsa, force SHA-2:
+    # PubkeyAcceptedAlgorithms +rsa-sha2-512
+
 # Example: multiple account alias (disabled by default)
 # Host github-work
 #     HostName github.com

@@ -18,6 +18,7 @@ GUI 應用程式。
 | jq | JSON 處理器 |
 | yazi、btop | 檔案管理員 / 系統監控 |
 | television（`tv`） | 模糊選擇器 / channel 啟動器 |
+| tldr（tlrc） | 社群 man page 速查表；`tldrf` 加上 `zh_TW → zh → en` fallback |
 | starship | 提示字元 |
 | node | JS runtime（`nodejs-lts`） |
 | uv | Python 套件/runtime 管理器 |
@@ -117,7 +118,7 @@ CLI 套件，故此處略過。
 |---|---|
 | Local LLM tools | Ollama（`Ollama.Ollama`）+ LiteLLM（`uv tool install 'litellm[proxy]'`） |
 | Tunnel tools | ngrok、cloudflared（scoop） |
-| IaC tools | Terraform、OpenTofu（scoop）+ Azure CLI（winget） |
+| IaC tools | Terraform、OpenTofu（scoop）+ Azure CLI 與 `azure-devops` 擴充（`az devops`/`az repos`,winget） |
 
 **China mirrors** 會把 pip / npm / cargo / go / node 的套件抓取導向 GFW 鏡像
 （清華 / npmmirror / goproxy.cn / rsproxy），安裝時與互動式 shell

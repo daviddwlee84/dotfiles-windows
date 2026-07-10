@@ -118,7 +118,7 @@ Ensure-Scoop
 Scoop-Install @(
     'git', 'gh', 'glab', '7zip', 'make', 'just',
     'starship', 'zoxide', 'fzf', 'fd', 'ripgrep', 'bat', 'eza', 'jq',
-    'delta', 'lazygit', 'neovim', 'yazi', 'btop', 'television',
+    'delta', 'lazygit', 'neovim', 'yazi', 'btop', 'television', 'tlrc',
     'uv', 'gnupg',
     # Runtimes are NATIVE via scoop, not mise: mise's activate/shims are
     # unreliable on Windows and it has no windows-arm64 bun build. node + bun
@@ -276,6 +276,15 @@ Scoop-Install @('ngrok', 'cloudflared')
 {{ if .installIacTools -}}
 Scoop-Install @('terraform', 'opentofu')
 Winget-Install 'Microsoft.AzureCLI'
+# Azure DevOps CLI (az extension -> `az devops`, `az repos`, `az pipelines`).
+# It also auto-installs on first `az devops`/`az repos` use; pre-adding here just
+# skips the first-use prompt. Skipped when az isn't on PATH yet (a fresh winget
+# install needs a new shell) -- harmless, since first use self-installs it.
+if (Have az) {
+    Info 'az extension add azure-devops'
+    az extension add --name azure-devops --upgrade --only-show-errors
+    if ($LASTEXITCODE -ne 0) { Register-Failure 'az-ext:azure-devops' }
+}
 {{ end -}}
 
 if ($script:Failures.Count -gt 0) {

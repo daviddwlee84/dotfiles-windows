@@ -18,6 +18,7 @@ tools; **winget** handles GUI apps.
 | jq | JSON processor |
 | yazi, btop | file manager / system monitor |
 | television (`tv`) | fuzzy picker / channel launcher |
+| tldr (tlrc) | community man-page cheatsheets; `tldrf` adds `zh_TW → zh → en` fallback |
 | starship | prompt |
 | node | JS runtime (`nodejs-lts`) |
 | uv | Python package/runtime manager |
@@ -120,7 +121,7 @@ Off by default; enable the matching init prompt:
 |---|---|
 | Local LLM tools | Ollama (`Ollama.Ollama`) + LiteLLM (`uv tool install 'litellm[proxy]'`) |
 | Tunnel tools | ngrok, cloudflared (scoop) |
-| IaC tools | Terraform, OpenTofu (scoop) + Azure CLI (winget) |
+| IaC tools | Terraform, OpenTofu (scoop) + Azure CLI & the `azure-devops` extension (`az devops`/`az repos`, winget) |
 
 **China mirrors** routes pip / npm / cargo / go / node package fetches through GFW
 mirrors (Tsinghua / npmmirror / goproxy.cn / rsproxy), applied both at install time

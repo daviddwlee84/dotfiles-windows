@@ -17,6 +17,7 @@ logic lives in the fragments; the loader stays boring.
 | `05_mirrors.ps1` | China package mirrors (when enabled) |
 | `10_tools.ps1` | `init` hooks: starship, zoxide, mise, atuin, fzf, direnv, tv |
 | `20_aliases.ps1` | aliases + helpers (`reload`, `cas`/`cau`, git shortcuts) |
+| `28_tldr.ps1` | `tldrf` — tldr with a `zh_TW → zh → en` language fallback |
 | `30_apps.ps1` | app control (`applaunch`/`appquit`/…), audio, clipboard |
 | `35_yazi.ps1` | `y` — launch yazi, cd to where you quit |
 | `40_copilot.ps1` | import the `copilot-proxy` PowerShell module |
