@@ -21,6 +21,18 @@ $env:STARSHIP_CONFIG = Join-Path $env:XDG_CONFIG_HOME 'starship.toml'
 # yazi looks in %APPDATA%\yazi\config by default; keep it XDG-consistent instead.
 $env:YAZI_CONFIG_HOME = Join-Path $env:XDG_CONFIG_HOME 'yazi'
 
+# yazi needs the MSYS `file.exe` (bundled with Git) for MIME detection; without
+# it every entry errors "Cannot find `file` … Set it up per the Windows guide".
+# scoop doesn't shim git's usr/bin, so point YAZI_FILE_ONE at file.exe directly;
+# fall back to a system/winget Git install. First existing candidate wins.
+if (-not $env:YAZI_FILE_ONE) {
+    $fileOne = @(
+        (Join-Path $HOME 'scoop/apps/git/current/usr/bin/file.exe'),
+        'C:\Program Files\Git\usr\bin\file.exe'
+    ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    if ($fileOne) { $env:YAZI_FILE_ONE = $fileOne }
+}
+
 # uv-managed Python: `uv python install --default` drops python/python3 here.
 # ~/.local/bin is prepended to PATH below, so they win over the Windows Store
 # `python.exe` app-execution-alias.
