@@ -173,18 +173,42 @@ def filter_by_prefixes(findings: list[dict], prefixes: list[str]) -> list[dict]:
     ]
 
 
-# Matches actual PEM private key blocks
+# Matches actual PEM private key blocks (header … base64 body … footer).
 _PEM_BLOCK_RE = re.compile(
     r"-----BEGIN[^-]*PRIVATE KEY[^-]*-----.*?-----END[^-]*PRIVATE KEY[^-]*-----",
     re.DOTALL,
 )
 
-# Matches the literal string the detect-private-key hook greps for
-_PRIVATE_KEY_STR = "PRIVATE KEY"
+# The private-key *header* tokens the downstream detect-private-key hook greps
+# for (pre-commit/pre-commit-hooks BLACKLIST, matched as plain substrings via
+# `any(line in content for line in BLACKLIST)`). These headers — NOT the bare
+# phrase "PRIVATE KEY" — are what actually fail a commit, so the redactor scopes
+# to exactly them. Matching the bare phrase instead used to flag and mangle
+# prose that merely *discusses* private keys; against a live transcript writer
+# that re-appends the words on every diagnostic command, that never converged.
+# See the "Active SpecStory writer can defeat the redact loop" pitfall in
+# SKILL.md.
+#
+# NOTE: the OpenVPN token is split across two adjacent string literals on
+# purpose so THIS source file does not itself contain the contiguous BLACKLIST
+# string — otherwise detect-private-key would flag redact_secrets.py in every
+# repo that installs it. Do not join them back together.
+_PRIVATE_KEY_HEADER_RE = re.compile(
+    r"BEGIN [A-Z0-9 ]*PRIVATE KEY"      # RSA/DSA/EC/OPENSSH/PGP/ENCRYPTED/SSH2/plain
+    r"|PuTTY-User-Key-File-\d"
+    r"|BEGIN OpenVPN " r"Static key V1"
+)
 
 
 def find_private_key_files(files: list[Path]) -> dict[Path, list[str]]:
-    """Find files containing private key patterns. Returns {path: [match_descriptions]}."""
+    """Find files containing private-key material. Returns {path: [descriptions]}.
+
+    Only real key indicators count: a full PEM block, or a stray key *header*
+    token (a truncated key, or a header quoted in prose) that the downstream
+    detect-private-key hook would grep for. Bare "PRIVATE KEY" prose is
+    deliberately ignored — detect-private-key ignores it too, and flagging it
+    caused a non-converging redact loop.
+    """
     results: dict[Path, list[str]] = {}
     for path in files:
         if not path.is_file() or path.suffix != ".md":
@@ -193,36 +217,37 @@ def find_private_key_files(files: list[Path]) -> dict[Path, list[str]]:
             content = read_text(path)
         except OSError:
             continue
-        if _PRIVATE_KEY_STR not in content:
-            continue
         matches = []
         pem_blocks = _PEM_BLOCK_RE.findall(content)
         if pem_blocks:
             matches.append(f"{len(pem_blocks)} PEM private key block(s)")
-        # Count remaining mentions (outside PEM blocks)
+        # Count header tokens OUTSIDE full PEM blocks (which are handled above):
+        # truncated keys, or a header quoted in prose.
         without_pem = _PEM_BLOCK_RE.sub("", content)
-        mention_count = without_pem.count(_PRIVATE_KEY_STR)
-        if mention_count:
-            matches.append(f'{mention_count} "{_PRIVATE_KEY_STR}" mention(s)')
+        header_count = len(_PRIVATE_KEY_HEADER_RE.findall(without_pem))
+        if header_count:
+            matches.append(f"{header_count} private-key header(s)")
         if matches:
             results[path] = matches
     return results
 
 
 def redact_private_keys(file_path: Path) -> bool:
-    """Redact private key patterns in a file. Returns True if modified.
+    """Redact private-key material in a file. Returns True if modified.
 
-    The PEM-block placeholder must NOT contain the substring "PRIVATE
-    KEY", otherwise the follow-up literal replacement below would
-    corrupt it into "[REDACTED PRIV***KEY BLOCK]".
+    Scrubs full PEM blocks and any stray key *header* tokens — exactly what the
+    detect-private-key hook greps for. The bare phrase "PRIVATE KEY" in prose is
+    left untouched on purpose: redacting it mangled legitimate text and never
+    converged against a live transcript writer. Both placeholders contain
+    neither a header token nor the bare phrase, so a re-run is a no-op.
     """
     content = read_text(file_path)
     original = content
-    # Replace full PEM blocks first, using a sentinel that won't be
-    # clobbered by the literal-string replacement on the next line.
+    # Full PEM blocks first (header + body + footer).
     content = _PEM_BLOCK_RE.sub("[REDACTED PEM PRIVKEY BLOCK]", content)
-    # Replace remaining literal "PRIVATE KEY" mentions
-    content = content.replace(_PRIVATE_KEY_STR, "PRIV***KEY")
+    # Any remaining stray header tokens (truncated keys / headers quoted in
+    # prose) — these alone would still trip detect-private-key.
+    content = _PRIVATE_KEY_HEADER_RE.sub("[REDACTED PRIVKEY HEADER]", content)
     if content != original:
         write_text(file_path, content)
         return True
