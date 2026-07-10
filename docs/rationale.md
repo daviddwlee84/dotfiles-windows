@@ -52,7 +52,7 @@ Why mise didn't hold up here:
 scoop shims live in `~/scoop/shims`, which scoop persists to the user PATH (and
 `profile.d/00_env.ps1` also prepends) — so `node` (`nodejs-lts`), `bun`, `go`,
 `rustup`, `ruby` are simply **on PATH**, no activation dance. **Python** is
-uv-managed (`uv python install --default`), which also drops unversioned
+uv-managed (`uv python install --default --preview`), which also drops unversioned
 `python`/`python3` into `~/.local/bin`.
 
 The tradeoff: **no per-project runtime pinning** (mise's headline feature). For a

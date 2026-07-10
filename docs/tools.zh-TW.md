@@ -34,7 +34,7 @@ GUI 應用程式。
 
 Runtime **改用原生（scoop），不用 mise** —— 見 [rationale](rationale.md)。`node`
 （`nodejs-lts`）與 `bun` 由 scoop 安裝；啟用 **Extra runtimes** 時才會加裝 `go`、
-`rust`（rustup）、`ruby`。預設 **Python** 由 uv 管理：`uv python install --default`
+`rust`（rustup）、`ruby`。預設 **Python** 由 uv 管理：`uv python install --default --preview`
 會把 `python`/`python3` 放到 `~/.local/bin`（PATH 上排在 Store 的 `python.exe`
 app-alias 前面），所以 `python`、`uv run`、`uv venv`
 都能用，不需 Microsoft Store。
@@ -47,15 +47,14 @@ app-alias 前面），所以 `python`、`uv run`、`uv venv`
 | Cursor | `Anysphere.Cursor` |
 | Windows Terminal | `Microsoft.WindowsTerminal` |
 | Alacritty | `Alacritty.Alacritty` |
-| WezTerm | `wez.wezterm`（內建 tmux 式多工器） |
+| WezTerm | `wez.wezterm`（tmux 式多工器；受管的 `~/.config/wezterm/wezterm.lua` 設定 pwsh 為預設 shell + Nerd Font） |
 | PowerToys | `Microsoft.PowerToys` |
 | Raycast | `9PFXXSHC64H3`（msstore） |
 | Antigravity | `Google.Antigravity` |
 | Docker Desktop | `Docker.DockerDesktop` |
 | Discord | `Discord.Discord` |
 | Claude Desktop | `Anthropic.Claude` |
-| ChatGPT | `9NT1R1C2HH7J`（msstore） |
-| Codex | `9PLM9XGG6VKS`（msstore） |
+| ChatGPT | `9PLM9XGG6VKS`（msstore） |
 | Chrome | `Google.Chrome` |
 | Arc | `TheBrowserCompany.Arc` |
 | Zen Browser | `Zen-Team.Zen-Browser` |
@@ -98,13 +97,21 @@ app-alias 前面），所以 `python`、`uv run`、`uv venv`
     **Tailscale**（其 MSI 在政策下以 exit `1625` 失敗）。個人機器把開關關掉即可
     照常安裝。
 
+!!! note "Alacritty 與 Nerd Font（machine-wide 安裝）"
+    scoop 的 `nerd-fonts` bucket 是把 **Hack Nerd Font Mono** 註冊在*使用者層級*
+    （HKCU）。Windows Terminal 與 WezTerm 看得到使用者字型，但 **Windows 上的
+    Alacritty 只讀 machine-wide 字型集**，因此找不到字型、退回預設。修法（需系統
+    管理員）：`just install-fonts-machine-wide`（執行 `scoop install -g Hack-NF-Mono
+    Hack-NF`），再重啟 Alacritty。用
+    `[System.Drawing.FontFamily]::Families.Name | Select-String Hack` 診斷字型家族名。
+
 ## AI agents（npm）
 
 `@anthropic-ai/claude-code`、`opencode-ai`、`@openai/codex`、`@github/copilot`
 —— 透過 npm 全域安裝（由 scoop 的 `node` 提供）。**OpenCode Desktop**（`opencode-ai`
-CLI 的 GUI 版）由 scoop 安裝（`extras/opencode-desktop`）。官方 **ChatGPT** 與 **Codex**
-桌面程式透過 Microsoft Store 安裝（見 GUI 應用程式）。SpecStory 沒有原生 Windows
-CLI 套件，故此處略過。
+CLI 的 GUI 版）由 scoop 安裝（`extras/opencode-desktop`）。官方 **ChatGPT** 桌面程式
+透過 Microsoft Store 安裝（見 GUI 應用程式）；**Codex** 是上面的 `@openai/codex` npm
+CLI，不是 Store app。SpecStory 沒有原生 Windows CLI 套件，故此處略過。
 
 ## PowerShell 模組（PSGallery）
 
@@ -120,6 +127,7 @@ CLI 套件，故此處略過。
 | Local LLM tools | Ollama（`Ollama.Ollama`）+ LiteLLM（`uv tool install 'litellm[proxy]'`） |
 | Tunnel tools | ngrok、cloudflared（scoop） |
 | IaC tools | Terraform、OpenTofu（scoop）+ Azure CLI 與 `azure-devops` 擴充（`az devops`/`az repos`,winget） |
+| OpenSSH server | Microsoft OpenSSH Server（sshd）：Windows capability + 自動啟動服務 + inbound TCP 22 防火牆規則，並以 pwsh 為預設 shell。需系統管理員 —— 用提升權限的 `chezmoi apply`，或在提升權限的 pwsh 執行 `just enable-sshd`。 |
 
 **China mirrors** 會把 pip / npm / cargo / go / node 的套件抓取導向 GFW 鏡像
 （清華 / npmmirror / goproxy.cn / rsproxy），安裝時與互動式 shell

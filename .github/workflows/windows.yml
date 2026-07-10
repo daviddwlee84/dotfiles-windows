@@ -57,6 +57,7 @@ jobs:
             '--promptBool','Install local LLM tools (Ollama, LiteLLM)=false',
             '--promptBool','Install tunnel tools (ngrok, cloudflared)=false',
             '--promptBool','Install Infrastructure-as-Code tools (Azure CLI, Terraform, OpenTofu)=false',
+            '--promptBool','Install and enable the OpenSSH server / sshd (needs admin, opens inbound port 22)=false',
             '--promptBool','Use China (GFW) mirrors for pip/npm/cargo/go/node=false',
             '--promptBool','Managed or corporate machine (skip org-policy-blocked apps like Tailscale and Grammarly)=false',
             '--promptChoice','Back up existing files before apply (smart|full|off)=off',

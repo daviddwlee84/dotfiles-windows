@@ -1,0 +1,11 @@
+#Requires -Version 7
+# run_onchange_after_40_openssh_server.ps1.tmpl — install + enable the OpenSSH
+# server (sshd) during `chezmoi apply` when the installSshServer toggle is on.
+# No-op otherwise. The setup logic lives once in scripts/enable-sshd.ps1 (also run
+# by `just enable-sshd`) and is embedded below via include, so run_onchange
+# re-fires whenever that logic changes. Needs an elevated apply — the embedded
+# script prints guidance and returns cleanly when not elevated (never aborts the
+# apply). See docs/tools.md and scripts/enable-sshd.ps1.
+{{ if .installSshServer -}}
+{{ include "scripts/enable-sshd.ps1" }}
+{{ end -}}

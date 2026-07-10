@@ -45,7 +45,7 @@ mise 在這裡撐不住的原因：
 scoop 的 shims 在 `~/scoop/shims`，scoop 會把它寫進 user PATH（`profile.d/00_env.ps1`
 也會前置），所以 `node`（`nodejs-lts`）、`bun`、`go`、`rustup`、`ruby` 就直接
 **在 PATH 上**，不用 activate 那套。**Python** 由 uv 管理（`uv python install
---default`），同時把 `python`/`python3` 放到 `~/.local/bin`。
+--default --preview`），同時把 `python`/`python3` 放到 `~/.local/bin`。
 
 代價是：**沒有 per-project 的 runtime 鎖版本**（mise 的招牌功能）。對 Windows 開發機
 而言，換來「工具真的在 PATH 上」是划算的。若你要 per-project 版本，`scoop install

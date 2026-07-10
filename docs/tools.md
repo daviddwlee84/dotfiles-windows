@@ -35,8 +35,8 @@ tools; **winget** handles GUI apps.
 Runtimes are **native (scoop), not mise** — see [rationale](rationale.md#runtimes-scoop-natives-not-mise-on-windows).
 `node` (`nodejs-lts`) and `bun` come from scoop; `go`, `rust` (rustup), `ruby`
 are added when **Extra runtimes** is enabled. A default **Python** is uv-managed:
-`uv python install --default` puts `python`/`python3` in `~/.local/bin` (on PATH
-ahead of the Store's `python.exe` app-alias), so `python`, `uv run`, and
+`uv python install --default --preview` puts `python`/`python3` in `~/.local/bin`
+(on PATH ahead of the Store's `python.exe` app-alias), so `python`, `uv run`, and
 `uv venv` all work without the Microsoft Store.
 
 ## GUI apps (winget)
@@ -47,15 +47,14 @@ ahead of the Store's `python.exe` app-alias), so `python`, `uv run`, and
 | Cursor | `Anysphere.Cursor` |
 | Windows Terminal | `Microsoft.WindowsTerminal` |
 | Alacritty | `Alacritty.Alacritty` |
-| WezTerm | `wez.wezterm` (built-in tmux-like multiplexer) |
+| WezTerm | `wez.wezterm` (tmux-like multiplexer; managed `~/.config/wezterm/wezterm.lua` sets pwsh as the shell + Nerd Font) |
 | PowerToys | `Microsoft.PowerToys` |
 | Raycast | `9PFXXSHC64H3` (msstore) |
 | Antigravity | `Google.Antigravity` |
 | Docker Desktop | `Docker.DockerDesktop` |
 | Discord | `Discord.Discord` |
 | Claude Desktop | `Anthropic.Claude` |
-| ChatGPT | `9NT1R1C2HH7J` (msstore) |
-| Codex | `9PLM9XGG6VKS` (msstore) |
+| ChatGPT | `9PLM9XGG6VKS` (msstore) |
 | Chrome | `Google.Chrome` |
 | Arc | `TheBrowserCompany.Arc` |
 | Zen Browser | `Zen-Team.Zen-Browser` |
@@ -100,14 +99,23 @@ Enabled by **Install utility apps**:
     blocks — **Grammarly** and **Tailscale** (its MSI fails with exit `1625`
     under policy). Leave the toggle off on a personal machine to install them.
 
+!!! note "Alacritty & Nerd Fonts (machine-wide install)"
+    scoop's `nerd-fonts` bucket registers **Hack Nerd Font Mono** *per-user*
+    (HKCU). Windows Terminal and WezTerm see per-user fonts, but **Alacritty on
+    Windows reads only the machine-wide font collection**, so it can't find the
+    font and falls back to a default. Fix (needs admin):
+    `just install-fonts-machine-wide` (runs `scoop install -g Hack-NF-Mono Hack-NF`),
+    then restart Alacritty. Diagnose the family name with
+    `[System.Drawing.FontFamily]::Families.Name | Select-String Hack`.
+
 ## AI agents (npm)
 
 `@anthropic-ai/claude-code`, `opencode-ai`, `@openai/codex`, `@github/copilot`
 — installed globally via npm (provided by the scoop `node`). **OpenCode Desktop**
 (GUI companion to the `opencode-ai` CLI) installs via scoop (`extras/opencode-desktop`).
-The official **ChatGPT** and **Codex** desktop apps install via the Microsoft
-Store (see GUI apps). SpecStory has no native-Windows CLI package, so it's
-omitted here.
+The official **ChatGPT** desktop app installs via the Microsoft Store (see GUI
+apps); **Codex** is the `@openai/codex` npm CLI above, not a Store app. SpecStory
+has no native-Windows CLI package, so it's omitted here.
 
 ## PowerShell modules (PSGallery)
 
@@ -123,6 +131,7 @@ Off by default; enable the matching init prompt:
 | Local LLM tools | Ollama (`Ollama.Ollama`) + LiteLLM (`uv tool install 'litellm[proxy]'`) |
 | Tunnel tools | ngrok, cloudflared (scoop) |
 | IaC tools | Terraform, OpenTofu (scoop) + Azure CLI & the `azure-devops` extension (`az devops`/`az repos`, winget) |
+| OpenSSH server | Microsoft OpenSSH Server (sshd): Windows capability + auto-start service + inbound TCP 22 firewall rule, with pwsh as the default shell. Needs admin — set up on an elevated `chezmoi apply`, or run `just enable-sshd` from an elevated pwsh. |
 
 **China mirrors** routes pip / npm / cargo / go / node package fetches through GFW
 mirrors (Tsinghua / npmmirror / goproxy.cn / rsproxy), applied both at install time

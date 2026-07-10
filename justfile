@@ -41,6 +41,14 @@ upgrade: upgrade-scoop upgrade-winget
 specstory-build:
     pwsh -NoProfile -File ./scripts/build-specstory.ps1
 
+# enable the OpenSSH server (sshd) — run from an ELEVATED pwsh (opt-in; opens TCP 22)
+enable-sshd:
+    pwsh -NoProfile -File ./scripts/enable-sshd.ps1
+
+# install Hack Nerd Font machine-wide so Alacritty sees it (run from ELEVATED pwsh)
+install-fonts-machine-wide:
+    pwsh -NoProfile -File ./scripts/install-fonts-machine-wide.ps1
+
 # --- Windows-in-Docker test harness (x86-64 Linux + KVM host only) ---
 
 # launch the test VM (web viewer http://localhost:8006, RDP localhost:3389 dev/dev)

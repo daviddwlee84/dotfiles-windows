@@ -109,8 +109,8 @@ function Winget-Install([string]$id) {
 }
 
 # Microsoft Store packages (installed by Store product id via the msstore
-# source) — used for apps with no community winget manifest, e.g. the official
-# ChatGPT / Codex desktop apps. msstore ignores --scope, so we don't pass it.
+# source) — used for apps with no community winget manifest, e.g. Raycast and the
+# official ChatGPT desktop app. msstore ignores --scope, so we don't pass it.
 function Winget-InstallStore([string]$id) {
     if (-not (Have winget)) { Register-Failure "msstore:$id (winget unavailable)"; return }
     winget list --id $id -e --accept-source-agreements *> $null
@@ -185,11 +185,13 @@ if (Have gh) {
 
 # Default Python, uv-managed. --default also creates unversioned python/python3
 # (not just python3.x) in UV_PYTHON_BIN_DIR (~/.local/bin, on PATH via 00_env
-# ahead of the Store's python.exe app-alias). Needs uv >= 0.8.
+# ahead of the Store's python.exe app-alias). On uv 0.8+ `--default` lives behind
+# preview mode, so it must be paired with `--preview` (older uv just ignored it) —
+# without it, current uv errors: "`--default` is only available in preview mode".
 if (Have uv) {
-    Info 'uv python install --default'
+    Info 'uv python install --default --preview'
     $env:UV_PYTHON_BIN_DIR = Join-Path $HOME '.local\bin'
-    uv python install --default 2>&1 | Out-Host
+    uv python install --default --preview 2>&1 | Out-Host
     if ($LASTEXITCODE -ne 0) { Register-Failure 'uv:python' }
 }
 
@@ -266,12 +268,14 @@ foreach ($id in @(
 {{- end }}
 )) { Winget-Install $id }
 
-# Store-only apps: Raycast (default launcher) + the official ChatGPT / Codex
-# desktop apps. All ship via the Microsoft Store; there's no Raycast.Raycast
-# winget manifest, so it installs by Store product id.
+# Store-only apps: Raycast (default launcher) + the official ChatGPT desktop app.
+# Neither has a community winget manifest, so they install by Store product id.
+# Codex is the npm @openai/codex CLI (coding-agents block above), not a Store app.
+# NB: 9PLM9XGG6VKS is the OpenAI "ChatGPT" listing; the old 9NT1R1C2HH7J was
+# "ChatGPT Classic", which winget's msstore source no longer resolves ("no
+# matching package"). Confirm live ids with `winget search --source msstore ...`.
 Winget-InstallStore '9PFXXSHC64H3'   # Raycast
-Winget-InstallStore '9NT1R1C2HH7J'   # ChatGPT
-Winget-InstallStore '9PLM9XGG6VKS'   # Codex
+Winget-InstallStore '9PLM9XGG6VKS'   # ChatGPT (OpenAI)
 
 # Nerd Fonts so starship glyphs render. Hack-NF-Mono supplies the
 # "Hack Nerd Font Mono" family the Alacritty / Windows Terminal / editor

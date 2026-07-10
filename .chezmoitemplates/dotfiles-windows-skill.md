@@ -46,18 +46,21 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 ## Editors / terminal / tv
 - VSCode & Cursor settings + keybindings are deep-merged into `%APPDATA%\{Code,Cursor}\User`
   by `.chezmoiscripts/run_onchange_after_20_editor_overlays.ps1.tmpl` (sources under `editors/`).
-- Windows Terminal `profiles.defaults` and Alacritty (`%APPDATA%\alacritty\alacritty.toml`)
-  are managed too. Television channels live under `%APPDATA%\television\cable\` (`tv <name>`).
+- Windows Terminal `profiles.defaults`, Alacritty (`%APPDATA%\alacritty\alacritty.toml`),
+  and WezTerm (`~/.config/wezterm/wezterm.lua`, pwsh as default shell) are managed too.
+  Television channels live under `%APPDATA%\television\cable\` (`tv <name>`).
 
 ## What's enabled on THIS machine
 - role: **{{ .role }}**
 - Coding agents: {{ .installCodingAgents }} · GUI apps: {{ .installWindowsApps }} · Utility apps: {{ .installUtilityApps }} · Gaming: {{ .installGamingApps }}
-- Extra runtimes: {{ .installExtraRuntimes }} · Media: {{ .installMediaTools }} · LLM: {{ .installLlmTools }} · Tunnel: {{ .installTunnelTools }} · IaC: {{ .installIacTools }}
+- Extra runtimes: {{ .installExtraRuntimes }} · Media: {{ .installMediaTools }} · LLM: {{ .installLlmTools }} · Tunnel: {{ .installTunnelTools }} · IaC: {{ .installIacTools }} · OpenSSH: {{ .installSshServer }}
 - China mirrors: {{ .useChineseMirror }} · Backup mode: {{ .backupMode }} · Vim mode: {{ .enableVimMode }} · Managed machine: {{ .managedMachine }}
 
 ## just recipes
 `just --list`: `apply`/`diff`/`update`, `upgrade-scoop`/`upgrade-winget`, `lint`/`test`,
-`docs-serve`/`docs-build`, and `docker-up`/`docker-down`/`docker-clean`/`docker-logs`
+`docs-serve`/`docs-build`, `enable-sshd` (opt-in OpenSSH server, elevated),
+`install-fonts-machine-wide` (Alacritty Nerd Font fix, elevated), and
+`docker-up`/`docker-down`/`docker-clean`/`docker-logs`
 (the x86-Linux+KVM Windows-in-Docker test harness — see `docker/windows/`).
 
 ## Gotchas
