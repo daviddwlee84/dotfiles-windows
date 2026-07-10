@@ -11,11 +11,8 @@ if (Get-Command zoxide -ErrorAction SilentlyContinue) {
     Invoke-Expression (& { (zoxide init powershell --cmd cd | Out-String) })
 }
 
-# mise — runtime version manager (node/bun/uv/…). We rely on SHIMS (mise's shims
-# dir is on PATH via 00_env) rather than `mise activate`: on Windows the activate
-# prompt-hook doesn't reliably put globally-pinned tools (e.g. bun) on PATH, and
-# shims sidestep the "activate + shims both on PATH" conflict. Shims still do
-# per-project version switching; project [env] vars come from direnv.
+# Runtimes (node/bun/go/rust/ruby) are native via scoop and Python via uv — no
+# mise on Windows (its activate/shims are unreliable here). See docs/rationale.
 
 # atuin — SQLite shell history with fuzzy search (Ctrl+R)
 if (Get-Command atuin -ErrorAction SilentlyContinue) {

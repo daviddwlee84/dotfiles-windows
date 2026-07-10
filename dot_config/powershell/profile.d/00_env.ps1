@@ -30,16 +30,12 @@ $env:UV_PYTHON_BIN_DIR = Join-Path $HOME '.local/bin'
 if (Get-Command nvim -ErrorAction SilentlyContinue) { $env:EDITOR = 'nvim' }
 
 # Prepend user bin dirs to PATH, idempotently. scoop already adds its shims to
-# the user PATH, but a fresh session inside chezmoi apply may not have it yet.
-# mise shims expose the globally-pinned runtimes (node/bun/uv/…) reliably — the
-# `mise activate` prompt-hook doesn't land global tools on PATH on Windows. mise's
-# shims dir varies (XDG_DATA_HOME vs %LOCALAPPDATA%), so include both; Test-Path
-# keeps only the one that exists.
+# the persisted user PATH, but a fresh session inside chezmoi apply may not have
+# it yet; ~/.local/bin carries uv tools + the uv-managed python. Normalize each
+# entry to backslashes (mixed slashes can fail Windows command resolution).
 $UserPaths = @(
     (Join-Path $HOME '.local/bin'),
-    (Join-Path $HOME 'scoop/shims'),
-    (Join-Path $env:XDG_DATA_HOME 'mise/shims'),
-    (Join-Path $env:LOCALAPPDATA 'mise/shims')
+    (Join-Path $HOME 'scoop/shims')
 ) | Where-Object { $_ -and (Test-Path $_) } |
     ForEach-Object { [System.IO.Path]::GetFullPath($_) } | Select-Object -Unique
 

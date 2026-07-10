@@ -52,7 +52,7 @@ jobs:
             '--promptBool','Install GUI apps via winget (VSCode, Cursor, Notepad++, Terminal, Alacritty, PowerToys, Raycast)=false',
             '--promptBool','Install utility apps via winget (CPU-Z, GPU-Z, TreeSize, VLC, Everything, ShareX, HWiNFO)=false',
             '--promptBool','Install gaming apps (Steam)=false',
-            '--promptBool','Install extra mise runtimes (rust, go, ruby) beyond node/bun/uv=false',
+            '--promptBool','Install extra runtimes (rust, go, ruby) beyond node/bun/uv=false',
             '--promptBool','Install media CLIs (ffmpeg, imagemagick)=false',
             '--promptBool','Install local LLM tools (Ollama, LiteLLM)=false',
             '--promptBool','Install tunnel tools (ngrok, cloudflared)=false',

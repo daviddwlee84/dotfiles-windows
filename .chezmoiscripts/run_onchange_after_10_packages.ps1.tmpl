@@ -119,12 +119,12 @@ Scoop-Install @(
     'git', 'gh', '7zip', 'make', 'just',
     'starship', 'zoxide', 'fzf', 'fd', 'ripgrep', 'bat', 'eza', 'jq',
     'delta', 'lazygit', 'neovim', 'yazi', 'btop', 'television',
-    # gnupg lets mise gpg-verify its runtime downloads (else: "gpg not found").
-    'mise', 'uv', 'gnupg',
-    # bun via scoop, NOT mise: mise has no Windows-arm64 bun build (it records
-    # the version but the binary never lands -> dead shim), and scoop's bun is a
-    # real binary on PATH. copilot-proxy needs bun/bunx.
-    'bun',
+    'uv', 'gnupg',
+    # Runtimes are NATIVE via scoop, not mise: mise's activate/shims are
+    # unreliable on Windows and it has no windows-arm64 bun build. node + bun
+    # here; Python via uv (below); go/rust/ruby under Extra runtimes.
+    # copilot-proxy needs bun/bunx.
+    'nodejs-lts', 'bun',
     # LazyVim needs a C compiler for tree-sitter parsers (zig), the tree-sitter
     # CLI the nvim-treesitter `main` branch requires, and a clipboard provider so
     # `unnamedplus` yanks reach the Windows clipboard (win32yank).
@@ -139,14 +139,8 @@ if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm
     Scoop-Install @('gcc')
 }
 
-# Node via mise (a hard dep for the npm-based coding agents). bun comes from
-# scoop above -- mise has no Windows-arm64 bun build.
-if (Have mise) {
-    Info 'mise: node@lts'
-    mise use -g node@lts
-    if ($LASTEXITCODE -ne 0) { Register-Failure 'mise:node' }
-    mise reshim   # generate shims so pinned tools land on PATH (see 00_env)
-}
+# node/bun come from scoop above (on ~/scoop/shims, reliably on PATH). We do NOT
+# use mise here -- see the runtimes note in the core scoop list.
 
 # Default Python, uv-managed. --default also creates unversioned python/python3
 # (not just python3.x) in UV_PYTHON_BIN_DIR (~/.local/bin, on PATH via 00_env
@@ -182,8 +176,9 @@ if (-not (Get-Module -ListAvailable -Name AudioDeviceCmdlets)) {
 }
 
 {{ if .installExtraRuntimes -}}
-# Extra language runtimes via mise (rust/go/ruby). node/bun/uv are baseline.
-if (Have mise) { Info 'mise: rust, go, ruby'; mise use -g rust@latest go@latest ruby@latest; if ($LASTEXITCODE -ne 0) { Register-Failure 'mise:rust/go/ruby' }; mise reshim }
+# Extra language runtimes, native via scoop (rust via rustup). node/bun/uv are
+# baseline; go/rust/ruby added here.
+Scoop-Install @('go', 'rustup', 'ruby')
 {{ end -}}
 
 {{ if .installMediaTools -}}

@@ -118,7 +118,7 @@ function script:Get-CopilotEffectiveModel {
 function script:Start-CopilotShim {
     if (Test-CopilotShimAlive) { return $true }
     if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
-        Write-Error "copilot-proxy: shim needs 'bun' (mise use -g bun)"; return $false
+        Write-Error "copilot-proxy: shim needs 'bun' (scoop install bun)"; return $false
     }
     $script = Get-CopilotShimScript
     if (-not (Test-Path $script)) { Write-Error "copilot-proxy: shim script not found at $script"; return $false }
@@ -148,7 +148,7 @@ function copilot-proxy {
     param([Parameter(ValueFromRemainingArguments)] [string[]] $Argv)
 
     $bun = Get-BunLauncher
-    if (-not $bun) { Write-Error "copilot-proxy: bun/bunx not found (mise use -g bun)"; return }
+    if (-not $bun) { Write-Error "copilot-proxy: bun/bunx not found (scoop install bun)"; return }
 
     $port = Get-CopilotPort; $pkg = Get-CopilotPkg
     $logf = Get-CopilotLogFile; $pidf = Get-CopilotPidFile
@@ -649,7 +649,7 @@ function semsearch {
         if (-not $Argv) { return }
         return
     }
-    if (-not (Get-Command uv -ErrorAction SilentlyContinue)) { Write-Error "semsearch: uv is required (mise use -g uv)"; return }
+    if (-not (Get-Command uv -ErrorAction SilentlyContinue)) { Write-Error "semsearch: uv is required (scoop install uv)"; return }
     $src = chezmoi source-path 2>$null
     if (-not $src) { Write-Error "semsearch: could not resolve chezmoi source-path"; return }
     $script = Join-Path $src 'scripts/semsearch.py'
