@@ -1,0 +1,85 @@
+#Requires -Version 7
+# run_onchange_after_02_profile_redirect.ps1.tmpl — make sure pwsh actually loads
+# the managed $PROFILE, even when OneDrive redirects Documents.
+#
+# chezmoi writes the loader to the LITERAL ~/Documents/PowerShell/Microsoft.
+# PowerShell_profile.ps1. But when OneDrive "Known Folder Move" is enabled (very
+# common on Windows, and mandatory on corp-managed boxes), pwsh resolves $PROFILE
+# under "~/OneDrive - <tenant>/Documents/PowerShell/..." instead — so the managed
+# profile silently never loads: no starship, no aliases, just the bare prompt.
+#
+# We can't know that redirected path at apply time, but THIS script runs under
+# pwsh, so $PROFILE here is exactly what an interactive pwsh computes. If it
+# differs from the managed file, we write the managed loader's CONTENT there
+# directly. Pure no-op when Documents isn't redirected.
+#
+# Why content, not a `. "<literal path>"` stub (the previous approach): under KFM
+# the literal ~/Documents copy is NOT guaranteed to exist at $PROFILE-load time,
+# so a stub pointing at it fails with
+#   The term '...\Documents\PowerShell\Microsoft.PowerShell_profile.ps1' is not recognized
+# The loader is location-independent (it only sources ~/.config/powershell), so
+# embedding its body is strictly more robust. Embedding via {{ "{{" }} include {{ "}}" }}
+# also folds the loader's bytes into this script's rendered content, so
+# run_onchange re-fires whenever the loader changes and the OneDrive copy stays in
+# sync. See pitfalls/onedrive-kfm-profile-not-loaded.md.
+#
+# Fault-tolerant per the repo invariant: never abort the apply.
+$ErrorActionPreference = 'Continue'
+
+# Managed loader body, embedded verbatim at render time. Single-quoted here-string
+# keeps $HOME / $env: / $($fragment.Name) literal. Mirrors the include pattern in
+# run_onchange_after_20_editor_overlays.ps1.tmpl.
+$loaderBody = @'
+{{ include "Documents/PowerShell/Microsoft.PowerShell_profile.ps1" }}
+'@
+
+# ASCII-only marker (bulletproof for the read-back equality check below).
+$marker  = '# Managed by chezmoi (dotfiles-windows) - OneDrive KFM redirect copy. Local overrides: ~/.config/powershell/local.ps1'
+$content = $marker + "`n" + $loaderBody
+$ourMark = 'chezmoi (dotfiles-windows)'   # matches this copy AND the old redirect stub
+
+$managed = Join-Path $HOME 'Documents\PowerShell\Microsoft.PowerShell_profile.ps1'
+$real    = $PROFILE   # CurrentUserCurrentHost — OneDrive-aware
+
+try {
+    $managedFull = [System.IO.Path]::GetFullPath($managed)
+    $realFull    = if ($real) { [System.IO.Path]::GetFullPath([string]$real) } else { '' }
+
+    if (-not $realFull -or ($realFull -ieq $managedFull)) {
+        Write-Host '==> $PROFILE points at the managed loader (no redirect needed)' -ForegroundColor DarkGray
+        return
+    }
+
+    $dir = Split-Path $realFull -Parent
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+
+    if (Test-Path -LiteralPath $realFull) {
+        $existing = Get-Content -LiteralPath $realFull -Raw -ErrorAction SilentlyContinue
+
+        # Already our managed copy with identical content — nothing to do.
+        # (TrimEnd: Set-Content appends a trailing newline, so compare without it.)
+        if ($existing -and ($existing.TrimEnd() -eq $content.TrimEnd())) {
+            Write-Host '==> OneDrive $PROFILE already up to date (no change)' -ForegroundColor DarkGray
+            return
+        }
+
+        # Preserve a PRE-EXISTING user profile before we overwrite it — the
+        # run_once_before backup only guards the literal ~/Documents path, not
+        # this OneDrive-redirected one. Skip if it's already ours (managed copy
+        # or the old redirect stub); back up once otherwise.
+        if ($existing -and ($existing -notmatch [regex]::Escape($ourMark))) {
+            $backupDir = Join-Path $HOME '.dotfiles-backup'
+            New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+            $bak = Join-Path $backupDir 'Microsoft.PowerShell_profile.ps1.onedrive.bak'
+            if (-not (Test-Path -LiteralPath $bak)) {
+                Copy-Item -LiteralPath $realFull -Destination $bak -Force
+                Write-Host "==> backed up existing profile -> $bak" -ForegroundColor Cyan
+            }
+        }
+    }
+
+    Set-Content -LiteralPath $realFull -Value $content -Encoding utf8
+    Write-Host "==> Wrote managed profile to OneDrive `$PROFILE -> $realFull" -ForegroundColor Cyan
+} catch {
+    Write-Warning "profile redirect failed (non-fatal): $_"
+}

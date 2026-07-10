@@ -1,7 +1,9 @@
 # 90_psreadline.ps1 — history, inline predictions, and edit mode.
 # Templated: edit mode follows the `enableVimMode` init toggle.
-if (Get-Module -ListAvailable -Name PSReadLine) {
-    Import-Module PSReadLine
+# PSReadLine ships with pwsh; import directly rather than scanning PSModulePath
+# with Get-Module -ListAvailable. Get-Module -Name checks only loaded modules.
+Import-Module PSReadLine -ErrorAction SilentlyContinue
+if (Get-Module -Name PSReadLine) {
 
     Set-PSReadLineOption -PredictionSource HistoryAndPlugin -ErrorAction SilentlyContinue
     Set-PSReadLineOption -PredictionViewStyle ListView       -ErrorAction SilentlyContinue
