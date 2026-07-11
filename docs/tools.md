@@ -71,6 +71,18 @@ retry (e.g. if the UAC prompt was declined) with `just enable-wsl`. Already-inst
 machines are a no-op (no UAC). WSL as a *Linux shell* stays out of scope — see
 [rationale](rationale.md#powershell-7-default-cmdexe-optional-via-clink).
 
+**Unattended WSL Ubuntu + dotfiles** (`installWslUbuntu`, off by default) goes further:
+`scripts/enable-wsl-ubuntu.ps1` registers `Ubuntu-24.04` with **no OOBE** (creates your
+user via `wsl -u root`, passwordless sudo, WSL auto-login), then — in the default
+`headless` mode — runs a **frozen-from-Windows** chezmoi one-liner that installs the
+cross-platform dotfiles (`daviddwlee84/dotfiles`, `ubuntu_server` profile) with no
+prompts inside WSL. `wslUbuntuBootstrap` can instead be `interactive` (the parent repo's
+prompts on first login) or `none` (set up the distro only). Requires the WSL2 platform
+(`installWsl`) + its reboot first; run or retry with `just enable-wsl-ubuntu`. Linux GUI
+apps work out of the box via **WSLg** if you later switch the frozen profile to
+`ubuntu_desktop`. This is an opt-in *bridge* — the Linux config lives in the
+cross-platform repo, not here.
+
 ## Utility apps (winget)
 
 Enabled by **Install utility apps**:

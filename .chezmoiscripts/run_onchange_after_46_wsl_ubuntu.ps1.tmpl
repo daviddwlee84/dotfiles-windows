@@ -1,0 +1,17 @@
+#Requires -Version 7
+# run_onchange_after_46_wsl_ubuntu.ps1.tmpl — register a WSL2 Ubuntu distro and
+# bootstrap the cross-platform dotfiles during `chezmoi apply` when the
+# installWslUbuntu toggle is on. No-op otherwise. The logic lives once in
+# scripts/enable-wsl-ubuntu.ps1 (also run by `just enable-wsl-ubuntu`) and is
+# embedded below via include, so run_onchange re-fires when that logic changes.
+# The prelude passes the frozen answers so the embedded script never calls
+# `chezmoi data` mid-apply. Requires the WSL2 platform (installWsl) + reboot
+# first; never aborts the apply. See docs/tools.md and scripts/enable-wsl-ubuntu.ps1.
+{{ if .installWslUbuntu -}}
+$WslUser   = {{ .wslUsername | quote }}
+$WslName   = {{ .name | quote }}
+$WslEmail  = {{ .email | quote }}
+$WslMirror = "{{ .useChineseMirror }}"
+$WslMode   = {{ .wslUbuntuBootstrap | quote }}
+{{ include "scripts/enable-wsl-ubuntu.ps1" }}
+{{ end -}}

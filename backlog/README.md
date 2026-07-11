@@ -54,3 +54,4 @@ Add new entries here as you create them. Keep alphabetical.
 | [auto-resume-wsl-docker-after-reboot](auto-resume-wsl-docker-after-reboot.md) | P? | Auto-resume WSL/Docker setup after reboot |
 | [specstory-windows-native-cli](specstory-windows-native-cli.md) | P? (blocked on PR #191) | SpecStory Windows-native CLI |
 | [windows-arm64-managed-machine-rough-edges](windows-arm64-managed-machine-rough-edges.md) | P? (environmental) | Windows-on-ARM64 + managed-machine rough edges |
+| [wsl-ubuntu-auto-dotfiles](wsl-ubuntu-auto-dotfiles.md) | shipped (2026-07) | Setup WSL Ubuntu + auto-install dotfiles |

@@ -70,6 +70,16 @@ app-alias 前面），所以 `python`、`uv run`、`uv venv`
 UAC）。WSL 作為 *Linux shell* 仍不在此 repo 範圍 —— 見
 [rationale](rationale.zh-TW.md#powershell-7-cmdexe-clink)。
 
+**無人值守的 WSL Ubuntu + dotfiles**（`installWslUbuntu`，預設關）更進一步：
+`scripts/enable-wsl-ubuntu.ps1` 註冊 `Ubuntu-24.04` 且**跳過 OOBE**（用 `wsl -u root`
+建立使用者、免密碼 sudo、WSL 自動登入），接著在預設的 `headless` 模式下執行一條**從
+Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfiles`，
+`ubuntu_server` profile）裝進去，WSL 內完全不用回答提問。`wslUbuntuBootstrap` 也可設為
+`interactive`（首次登入時跑父 repo 的提問）或 `none`（只建發行版）。需先有 WSL2 平台
+（`installWsl`）並重開機；用 `just enable-wsl-ubuntu` 執行或重試。若日後把凍結的 profile
+改成 `ubuntu_desktop`，Linux GUI app 透過 **WSLg** 直接可用。這是選用的*橋接* —— Linux
+設定本身仍屬跨平台 repo，不在這裡。
+
 ## 工具程式（winget）
 
 由 **Install utility apps** 開關控制：

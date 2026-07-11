@@ -22,7 +22,10 @@ pwsh profile）。這是 **prompt 與導覽的對等，而非功能對等**：at
 （WSL 很好，但它是 Linux 環境 —— 由跨平台 dotfiles 處理，不在此 repo。這個 repo
 的重點是一個好用的*原生* Windows shell。唯一例外是 Docker Desktop 的後端：
 `installWsl` 開關透過 `wsl --install --no-distribution` 啟用 WSL2 *平台* —— 這是給
-Docker 容器用的底層，不是 Linux shell —— 並會自動提權（一次 UAC）且需重開機。）
+Docker 容器用的底層，不是 Linux shell —— 並會自動提權（一次 UAC）且需重開機。
+選用的 `installWslUbuntu` 開關再進一步：它註冊一個 Ubuntu 發行版，並在其中*觸發*
+跨平台 repo 自己的安裝程式（一條從 Windows 端答案凍結出來的非互動式 `chezmoi
+init`）—— 即使如此，Linux 設定仍由那個 repo 擁有，這個 repo 只是啟動器。）
 
 ## scoop 管 CLI + winget 管應用程式，而非 Chocolatey
 

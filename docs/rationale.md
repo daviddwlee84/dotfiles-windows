@@ -27,7 +27,11 @@ remains the default and primary target; cmd is a scoped secondary. See
 dotfiles, not this repo. This repo is about a good *native* Windows shell. The
 one exception is Docker Desktop's backend: the `installWsl` toggle enables the
 WSL2 *platform* via `wsl --install --no-distribution` — plumbing for Docker's
-containers, not a Linux shell — self-elevating with one UAC prompt and a reboot.)
+containers, not a Linux shell — self-elevating with one UAC prompt and a reboot.
+The optional `installWslUbuntu` toggle goes one step further: it registers an
+Ubuntu distro and *triggers* the cross-platform repo's own installer inside it
+(a frozen, non-interactive `chezmoi init` seeded from the Windows-side answers) —
+even then the Linux config is owned by that repo; this one is just the launcher.)
 
 ## scoop for CLIs + winget for apps, not Chocolatey
 

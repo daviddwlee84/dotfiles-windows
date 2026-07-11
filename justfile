@@ -49,6 +49,10 @@ enable-sshd:
 enable-wsl:
     pwsh -NoProfile -File ./scripts/enable-wsl.ps1
 
+# install a WSL2 Ubuntu distro + bootstrap cross-platform dotfiles (needs installWsl + reboot first)
+enable-wsl-ubuntu:
+    pwsh -NoProfile -File ./scripts/enable-wsl-ubuntu.ps1
+
 # install Hack Nerd Font machine-wide so Alacritty sees it (run from ELEVATED pwsh)
 install-fonts-machine-wide:
     pwsh -NoProfile -File ./scripts/install-fonts-machine-wide.ps1

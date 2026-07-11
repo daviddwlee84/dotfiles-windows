@@ -78,6 +78,9 @@ PowerShell anyway, so a machine with *no* PowerShell couldn't use the repo.
 | Coding agents | on (workstation) | Claude Code, OpenCode, Codex, Copilot CLI, SpecStory |
 | Windows GUI apps | on (workstation) | VSCode, Cursor, Notepad++, Terminal, Alacritty, PowerToys, Raycast, Docker Desktop, Discord |
 | WSL2 backend | on (workstation) | WSL2 for Docker Desktop's backend; self-elevates (one UAC prompt), reboot required |
+| WSL2 Ubuntu | off | install a WSL2 Ubuntu distro + bootstrap cross-platform dotfiles (needs `installWsl`) |
+| WSL Ubuntu username | your Windows user | UNIX login for the WSL Ubuntu (passwordless sudo, auto-login) |
+| WSL Ubuntu bootstrap | `headless` | dotfiles install mode: `headless` (frozen from Windows) / `interactive` / `none` |
 | Utility apps | on (workstation) | CPU-Z, GPU-Z, TreeSize, VLC, Everything, ShareX, HWiNFO |
 | Gaming apps | off | Steam |
 | Extra runtimes | on (workstation) | rust, go, ruby via mise (node/bun/uv are baseline) |

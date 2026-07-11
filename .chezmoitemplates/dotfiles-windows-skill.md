@@ -52,7 +52,7 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 
 ## What's enabled on THIS machine
 - role: **{{ .role }}**
-- Coding agents: {{ .installCodingAgents }} · GUI apps: {{ .installWindowsApps }} · WSL2 (Docker backend): {{ .installWsl }} · Utility apps: {{ .installUtilityApps }} · Gaming: {{ .installGamingApps }}
+- Coding agents: {{ .installCodingAgents }} · GUI apps: {{ .installWindowsApps }} · WSL2 (Docker backend): {{ .installWsl }} · WSL Ubuntu: {{ .installWslUbuntu }} · Utility apps: {{ .installUtilityApps }} · Gaming: {{ .installGamingApps }}
 - Extra runtimes: {{ .installExtraRuntimes }} · Media: {{ .installMediaTools }} · LLM: {{ .installLlmTools }} · Tunnel: {{ .installTunnelTools }} · IaC: {{ .installIacTools }} · OpenSSH: {{ .installSshServer }} · herdr: {{ .installHerdr }} · Clink(cmd): {{ .installClink }}
 - China mirrors: {{ .useChineseMirror }} · Backup mode: {{ .backupMode }} · Vim mode: {{ .enableVimMode }} · Managed machine: {{ .managedMachine }}
 
@@ -60,6 +60,7 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 `just --list`: `apply`/`diff`/`update`, `upgrade-scoop`/`upgrade-winget`, `lint`/`test`,
 `docs-serve`/`docs-build`, `enable-sshd` (opt-in OpenSSH server, elevated),
 `enable-wsl` (WSL2 for Docker Desktop; self-elevating UAC prompt, reboot after),
+`enable-wsl-ubuntu` (WSL2 Ubuntu distro + cross-platform dotfiles; needs enable-wsl first),
 `install-fonts-machine-wide` (Alacritty Nerd Font fix, elevated), and
 `docker-up`/`docker-down`/`docker-clean`/`docker-logs`
 (the x86-Linux+KVM Windows-in-Docker test harness — see `docker/windows/`).

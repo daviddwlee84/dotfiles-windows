@@ -1,169 +1,181 @@
-# Install WSL2 as the Docker Desktop backend (self-elevating, opt-out)
+# Install a WSL2 Ubuntu distro + bootstrap cross-platform dotfiles (unattended, opt-in)
 
 ## Context
 
-Docker Desktop is installed today via winget (`Docker.DockerDesktop`, in the
-`installWindowsApps` block of `.chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl:283`)
-but the repo does **nothing** about its WSL2 backend. On a machine without WSL,
-Docker Desktop installs but can't start — the user hits "WSL not installed" and
-has to run `wsl --install` by hand from an admin PowerShell, then reboot.
+The just-shipped `installWsl` toggle installs only the **WSL2 platform**
+(`wsl --install --no-distribution`) as Docker Desktop's backend — no Linux
+distro. This feature layers a real **Ubuntu** on top: an **opt-in, default-off**
+toggle that registers Ubuntu **unattended** (no interactive OOBE
+username/password) and bootstraps the user's **cross-platform** dotfiles
+(`github.com/daviddwlee84/dotfiles`) inside it.
 
-`wsl --install` requires **admin elevation** and (almost always) a **reboot** to
-finish enabling the kernel/hypervisor features — this is true even for the
-modern Store-delivered WSL. We can never auto-reboot from inside a `chezmoi
-apply`, so every path ends with a "restart required" message.
+The parent repo has ~35 chezmoi init prompts (all defaulted; default profile
+`ubuntu_server`, correct for WSL). Its `bootstrap.sh` wrapper *aborts* without a
+TTY, but the **direct chezmoi one-liner** runs headless with `--promptDefaults`
+plus explicit `--promptString`/`--promptChoice` overrides. That's the key: we
+**prompt once on Windows, freeze a non-interactive init command, and run it
+headless inside WSL** — the user's choices captured up front, zero prompts in
+WSL. (Scope: this repo only *triggers* the parent installer; it doesn't own
+Linux config — the documented "WSL is a Linux env handled by the other repo"
+stance holds, this is an opt-in bridge.)
 
 **Decisions (from the user):**
-- **Self-elevate during apply.** When the apply reaches the WSL step and isn't
-  already elevated, it fires a single UAC prompt (`Start-Process -Verb RunAs`),
-  runs the install elevated, and returns — the "one click" experience, like
-  scoop's popup. (This is a new pattern for the repo, which otherwise only
-  *detects* elevation. Note the apply already pops UAC today for Docker's
-  machine-scope winget fallback, so it's not unprecedented in effect.)
-- **Default ON for workstation** (`$full`), mirroring Docker itself. A fresh
-  workstation setup provisions the backend automatically; `minimal` skips it.
-
-We reuse the OpenSSH model wholesale: a single-source-of-truth
-`scripts/enable-wsl.ps1`, a gated `run_onchange` wrapper that `{{ include }}`s
-it, a `just enable-wsl` fallback recipe, and a new init toggle — exactly the
-shape of `scripts/enable-sshd.ps1` + `run_onchange_after_40_openssh_server.ps1.tmpl`.
+- **Bootstrap = headless, frozen from Windows** (default), but selectable via a
+  `wslUbuntuBootstrap` choice prompt (`headless` | `interactive` | `none`).
+- **User account:** a `wslUsername` prompt (default = Windows username), **locked
+  password + passwordless sudo** (WSL auto-logs-in as the default user; no OOBE).
+- **Freeze minimal:** name + email + reuse this repo's `useChineseMirror`
+  (mapped onto the parent's China-mirror prompt); everything else = parent
+  defaults (`ubuntu_server`, coding agents on).
+- WSLg (Win11) covers GUI apps for free if the profile is later switched to
+  `ubuntu_desktop` — noted as a future toggle, not built now.
 
 ## Approach
 
-### 1. New logic: `scripts/enable-wsl.ps1` (model on `scripts/enable-sshd.ps1`)
+Mirror the shipped three-part WSL pattern (`scripts/enable-wsl.ps1` +
+gated `run_onchange` wrapper + `just` recipe + toggle + CI flag + docs).
+Everything lives in **one PowerShell script** — no cloud-init file needed; the
+user is created imperatively via `wsl -u root`, which is simpler, version-
+agnostic, and avoids deploying/gating a `~/.cloud-init/` artifact.
 
-`#Requires -Version 7`, `$ErrorActionPreference='Continue'`,
-`PSNativeCommandUseErrorActionPreference=$false`, a `Test-Admin` helper (copy the
-one from `enable-sshd.ps1:20-25`), all work in `try/catch` — **never abort the
-apply** (hard invariant #2). Header comment explaining the dual run context
-(embedded in apply + `just enable-wsl`), same as `enable-sshd.ps1:2-15`.
+### 1. `scripts/enable-wsl-ubuntu.ps1` (model on `scripts/enable-wsl.ps1`)
 
-Flow:
-1. **Already-installed guard (runs first, unelevated — must not pop UAC when WSL
-   is already present).** Treat WSL as present if `wsl.exe --status` **or**
-   `wsl.exe --version` exits 0. If present → `Info 'WSL already installed'` and
-   `return`. (Query is exit-code based because `Get-WindowsOptionalFeature
-   -Online` needs admin; `wsl.exe` is always on PATH as a stub even when the
-   feature is off, so presence must be judged by exit code, not `Get-Command`.)
-2. **Install.** Command is `wsl.exe --install --no-distribution` — Docker only
-   needs the WSL2 platform + its own auto-created `docker-desktop` distro, not
-   Ubuntu. (`--no-distribution` is modern-WSL only; on a build that rejects it,
-   fall back to `wsl.exe --install --no-launch`, then plain `wsl.exe --install`.)
-   - **If `Test-Admin`:** run it inline, capture `$LASTEXITCODE`.
-   - **If not admin (self-elevate):** `Start-Process pwsh -Verb RunAs -Wait
-     -ArgumentList '-NoProfile','-NoLogo','-Command',$cmd` where `$cmd` runs the
-     install elevated then prints the reboot notice and pauses so the user sees
-     it. Wrap in `try/catch`: a declined UAC throws
-     ("operation was canceled by the user") → `Write-Warning` with the
-     `just enable-wsl` retry guidance and return cleanly.
-3. **Reboot notice.** Always end (both paths) with a clear
-   `Write-Warning 'WSL: a RESTART is required before Docker Desktop can use the
-   WSL2 backend. Reboot, then start Docker Desktop.'` — the repo has no
-   pending-reboot convention today; this message is it.
+Same skeleton: `#Requires -Version 7`, `param([switch]$Elevated)`,
+`$ErrorActionPreference='Continue'` + `PSNativeCommandUseErrorActionPreference=$false`,
+`Info`/`Test-Admin`, self-elevation (`Start-Process -Verb RunAs -Wait … -Elevated`,
+declined-UAC caught), `Read-Host` pause only when `-Elevated`, all in
+`try/catch` — **never abort the apply** (invariant #2). Set `$env:WSL_UTF8='1'`
+so `wsl -l`/`--status` output is UTF-8, not UTF-16 mojibake.
 
-### 2. Wrapper: `.chezmoiscripts/run_onchange_after_45_wsl.ps1.tmpl`
+Flow (params baked in at render time via the wrapper — see §2):
+1. **Precondition:** WSL2 platform usable — `& wsl.exe --status` exits 0. If not
+   (platform not enabled or reboot pending from `installWsl`), `Write-Warning`
+   "enable installWsl + reboot first, then `just enable-wsl-ubuntu`" and return.
+   (Don't install the platform here — separation of concerns.)
+2. **Idempotence:** if `Ubuntu-24.04` is already registered (`wsl.exe -l -q`
+   contains it) **and** dotfiles are present
+   (`wsl -d Ubuntu-24.04 -u <user> -- test -d ~/.local/share/chezmoi`), no-op.
+   Registered-but-no-dotfiles → skip straight to the bootstrap step (retry path).
+3. **Register (no OOBE):** `wsl.exe --install -d Ubuntu-24.04 --no-launch`
+   (fallback/warn if `--no-launch` unsupported).
+4. **Create the user as root** (bypasses OOBE) — pipe a small bash script via
+   stdin to dodge quoting hell:
+   `"<root-setup>" | wsl.exe -d Ubuntu-24.04 -u root -- bash -s` where the script
+   does `useradd -m -s /bin/bash -G sudo,adm <user>`, `passwd -l <user>`, writes
+   `/etc/sudoers.d/90-<user>` (`<user> ALL=(ALL) NOPASSWD:ALL`), and
+   `printf '[user]\ndefault=<user>\n' > /etc/wsl.conf`. Then
+   `wsl.exe --terminate Ubuntu-24.04` so `wsl.conf` takes effect.
+5. **Dotfiles (headless mode only):** pipe the **frozen bootstrap script** (built
+   on Windows, LF endings, with `<name>/<email>/<mirror>` interpolated) via stdin
+   to `wsl.exe -d Ubuntu-24.04 -u <user> -- bash -s`. Capture `$LASTEXITCODE`;
+   `Register-Failure`-style warning on non-zero. The frozen command:
+   ```
+   sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin" \
+     init --apply "https://github.com/daviddwlee84/dotfiles.git" --promptDefaults \
+     --promptString "What is your full name=<name>" \
+     --promptString "What is your email address=<email>" \
+     --promptChoice "Which profile=ubuntu_server" \
+     --promptBool "Are you in China (behind GFW) and need to use mirrors=<mirror>"
+   ```
+   For `interactive`/`none`: skip step 5, print the one-liner as guidance.
+6. **No reboot** needed here (the platform reboot already happened via
+   `installWsl`); end with a short "Ubuntu ready — open `wsl`" `Info`.
 
-Copy `run_onchange_after_40_openssh_server.ps1.tmpl` verbatim, swapping the gate
-and include:
+Piping bash via stdin (`bash -s`) is the crux for avoiding PowerShell→wsl→bash
+quote escaping — the same reasoning as the CSI-u "generate + re-parse" invariant.
+
+### 2. Wrapper: `.chezmoiscripts/run_onchange_after_46_wsl_ubuntu.ps1.tmpl`
+
+Copy `run_onchange_after_45_wsl.ps1.tmpl`, gate on `installWslUbuntu`, and pass
+the frozen answers as script args so the embedded script has them at apply time
+(the include renders the `.ps1` with chezmoi data available):
 ```
-{{ if .installWsl -}}
-{{ include "scripts/enable-wsl.ps1" }}
+{{ if .installWslUbuntu -}}
+{{ include "scripts/enable-wsl-ubuntu.ps1" }}
 {{ end -}}
 ```
-`after_45` groups it with the other admin-feature enabler (sshd = 40). Ordering
-vs. the packages script (Docker install, `after_10`) is irrelevant — the reboot
-means the backend isn't live until restart regardless.
+The script reads `{{ .name }}`, `{{ .email }}`, `{{ .useChineseMirror }}`,
+`{{ .wslUsername }}`, `{{ .wslUbuntuBootstrap }}` — but since `enable-wsl-ubuntu.ps1`
+must also run standalone via `just`, template values can't be inlined there.
+**Resolution:** the wrapper renders a tiny prelude that sets `$Name/$Email/
+$Mirror/$User/$Mode` from chezmoi data, then includes the logic; the `just`
+recipe passes them as parameters (defaults read from the persisted
+`~/.config/chezmoi/chezmoi.toml` via `chezmoi data`, or accepts `--set`). Keep
+the script parameterized (`param([string]$User,[string]$Name,...)`) so both
+callers work. `after_46` sits right after the platform script (`after_45`).
 
-### 3. Toggle: `.chezmoi.toml.tmpl` (after line 19, near the GUI-apps toggle)
-
-```
-installWsl = {{ promptBoolOnce . "installWsl" "Install WSL2 (Docker Desktop backend; needs admin + reboot)" $full }}
-```
-Default `$full`. Prompt text contains **no `=`** (invariant #1 — the CI parser
-splits on the first `=`).
-
-### 4. CI flag: `.github/workflows/windows.yml` (in the `$flags` array, ~line 47-68)
-
-Add, matching the prompt TEXT exactly (invariant #1):
-```
-'--promptBool','Install WSL2 (Docker Desktop backend; needs admin + reboot)=false',
-```
-`false` in CI even though real default is `$full` — CI runs `chezmoi apply
---exclude scripts`, so the script never executes there anyway; this only stops
-init from hanging on an unanswered prompt.
-
-### 5. `just enable-wsl` recipe: `justfile` (next to `enable-sshd`, ~line 44)
+### 3. Three new prompts: `.chezmoi.toml.tmpl` (after the `installWsl` line, ~L20)
 
 ```
-# install WSL2 (Docker Desktop backend) — pops one UAC prompt; reboot required after
-enable-wsl:
-    pwsh -NoProfile -File ./scripts/enable-wsl.ps1
+installWslUbuntu   = {{ promptBoolOnce . "installWslUbuntu" "Install a WSL2 Ubuntu distro and bootstrap cross-platform dotfiles inside it (needs admin; requires WSL2 platform)" false }}
+wslUsername        = {{ promptStringOnce . "wslUsername" "WSL Ubuntu username" (.chezmoi.username | lower) }}
+wslUbuntuBootstrap = {{ promptChoiceOnce . "wslUbuntuBootstrap" "WSL Ubuntu dotfiles bootstrap (headless|interactive|none)" (list "headless" "interactive" "none") "headless" | quote }}
 ```
-This is also the **retry path** if the apply's UAC was declined (run_onchange is
-content-hash gated, so it won't re-fire on the next apply — same as sshd).
+Default OFF (invariant: no `=` in any prompt text). The script sanitizes
+`wslUsername` to a valid Linux name (lowercase, strip domain/`\`, `[a-z0-9_-]`).
 
-### 6. Docs + skill mirrors (all in the same commit — cross-file invariants)
+### 4. CI flags: `.github/workflows/windows.yml` (in `$flags`, by the `installWsl` line)
 
-- `docs/setup.md` init-prompt table (~line 87, by the OpenSSH row) **+**
-  `docs/setup.zh-TW.md` twin: new row — `WSL2 backend | on (workstation) | install WSL2 for Docker Desktop (needs admin; reboot required)`.
-- `docs/tools.md` "Opt-in dev stacks" table (~line 141, by the OpenSSH row) **+**
-  `docs/tools.zh-TW.md` twin: new row describing `wsl --install --no-distribution`,
-  the self-elevating UAC prompt, the reboot, and `just enable-wsl`.
-- `docs/rationale.md` (~line 26, the WSL "out of scope" note) **+**
-  `docs/rationale.zh-TW.md` twin: short clarification that WSL-as-Docker-backend
-  is the **exception** to "WSL is a Linux env handled by the other repo" — here
-  we enable only the WSL2 *platform* for Docker's containers, not a Linux shell.
-- `.chezmoitemplates/dotfiles-windows-skill.md` "What's enabled" block
-  (line 56, end of that line): append ` · WSL2: {{ .installWsl }}`.
+Three matching entries (text byte-identical to §3, invariant #1):
+```
+'--promptBool','Install a WSL2 Ubuntu distro and bootstrap cross-platform dotfiles inside it (needs admin; requires WSL2 platform)=false',
+'--promptString','WSL Ubuntu username=ci',
+'--promptChoice','WSL Ubuntu dotfiles bootstrap (headless|interactive|none)=none',
+```
 
-### 7. Pitfall doc: `pitfalls/wsl-install-no-action-reboot-required.md`
+### 5. `just enable-wsl-ubuntu` recipe: `justfile` (next to `enable-wsl`)
 
-Symptom-titled (invariant: title by symptom). Verbatim symptom
-`No action was taken as a system reboot is required.` /
-`The requested operation requires elevation.`; root cause (WSL enables
-kernel/hypervisor features that need a restart + admin); workaround
-(`just enable-wsl`, approve UAC, reboot, start Docker Desktop); prevention
-(the toggle + self-elevating script). `pitfalls/` is chezmoi-ignored — review
-for secrets before commit (there are none here).
+Mirror shape; the retry path after the platform reboot.
 
-### 8. (Optional) backlog: auto-resume after reboot
+### 6. Docs + skill mirrors (same commit — cross-file invariants)
 
-We deliberately **don't** automate the reboot or auto-resume Docker setup after
-it. Per CLAUDE.md, log that as a `P?`/`[M]` entry via
-`scripts/add-todo.sh --priority P3 --effort M --title "Auto-resume WSL/Docker
-setup after required reboot" --description "..." --backlog`, then run
-`scripts/todo-kanban.sh --validate-only TODO.md`.
+- `docs/setup.md` + `.zh-TW`: 3 new init-prompt table rows (by the WSL2 row).
+- `docs/tools.md` + `.zh-TW`: a note by the WSL2-backend note — unattended Ubuntu,
+  the frozen-from-Windows bootstrap, `just enable-wsl-ubuntu`, requires
+  `installWsl` + reboot first. Mention **WSLg** (GUI apps work if profile→desktop).
+- `docs/rationale.md` + `.zh-TW`: extend the WSL exception paragraph — the Ubuntu
+  bridge triggers the cross-platform repo's installer; Linux config stays there.
+- `.chezmoitemplates/dotfiles-windows-skill.md`: "What's enabled" (`WSL Ubuntu:
+  {{ .installWslUbuntu }}`) + `enable-wsl-ubuntu` in the recipe list.
+
+### 7. Pitfall doc: `pitfalls/wsl-ubuntu-oobe-and-wsl-l-encoding.md`
+
+Symptoms: `wsl -l` mojibake in pwsh (fix: `$env:WSL_UTF8=1`); `/etc/wsl.conf`
+`[user] default=` ignored until `wsl --terminate`; OOBE username/password prompt
+if you launch without `--no-launch`/`-u root`. Root cause + copy-paste fixes.
+
+### 8. Backlog/TODO: promote the existing item
+
+`backlog/wsl-ubuntu-auto-dotfiles.md` + its `TODO.md` P? entry (added last turn,
+still uncommitted): move the TODO entry to `## Done` with the dated syntax and
+mark the backlog doc `Status: shipped` (keep as record), noting the chosen
+imperative-`wsl -u root` approach (cloud-init logged as the considered
+alternative).
 
 ## Files
 
-**New:** `scripts/enable-wsl.ps1` · `.chezmoiscripts/run_onchange_after_45_wsl.ps1.tmpl` ·
-`pitfalls/wsl-install-no-action-reboot-required.md`
+**New:** `scripts/enable-wsl-ubuntu.ps1` ·
+`.chezmoiscripts/run_onchange_after_46_wsl_ubuntu.ps1.tmpl` ·
+`pitfalls/wsl-ubuntu-oobe-and-wsl-l-encoding.md`
 
 **Modified:** `.chezmoi.toml.tmpl` · `.github/workflows/windows.yml` · `justfile` ·
-`docs/setup.md` · `docs/setup.zh-TW.md` · `docs/tools.md` · `docs/tools.zh-TW.md` ·
-`docs/rationale.md` · `docs/rationale.zh-TW.md` ·
-`.chezmoitemplates/dotfiles-windows-skill.md` · (optional) `TODO.md` + `backlog/`
+`docs/setup.md`/`.zh-TW` · `docs/tools.md`/`.zh-TW` · `docs/rationale.md`/`.zh-TW` ·
+`.chezmoitemplates/dotfiles-windows-skill.md` · `TODO.md` ·
+`backlog/wsl-ubuntu-auto-dotfiles.md` · `backlog/README.md`
 
-## Verification (no Windows box needed — the repo's standard idiom)
+## Verification (no Windows box — repo's standard idiom; real run needs Windows+WSL)
 
-1. **Lint:** `pwsh -NoProfile -c "Invoke-ScriptAnalyzer -Path ./scripts/enable-wsl.ps1 -Settings ./PSScriptAnalyzerSettings.psd1"` — must be Error-free.
-2. **Render + parse both gate states** (invariant #3-style verify the include lands):
-   ```
-   # installWsl=true → body present and parses
-   chezmoi execute-template --config="$TMPD/c.toml" --source="$PWD" \
-     < .chezmoiscripts/run_onchange_after_45_wsl.ps1.tmpl > r.ps1
-   pwsh -NoProfile -c '$null=[System.Management.Automation.Language.Parser]::ParseFile("r.ps1",[ref]$null,[ref]$null)'
-   ```
-   Re-render with an init that answers the WSL prompt `false` → body should be empty.
-3. **Isolated init doesn't hang** on the new prompt: run the `chezmoi init`
-   idiom from CLAUDE.md with `--promptBool 'Install WSL2 (Docker Desktop backend; needs admin + reboot)=minimal-or-bool'`
-   added; confirm it completes non-interactively.
-4. **Docs stay green:** `just docs-build` (mkdocs `--strict`) — catches missing
-   nav / broken zh-TW mirror.
-5. **CI** (`windows.yml`, the real gate): PSScriptAnalyzer + non-interactive init
-   (new flag) + render/parse of the new `.tmpl` + Pester.
-6. **Real machine (manual):** on a workstation, `chezmoi apply` → single UAC
-   popup at the WSL step → `wsl --install --no-distribution` runs → "restart
-   required" warning; reboot → Docker Desktop starts on the WSL2 backend.
-   Re-run `chezmoi apply` → the already-installed guard makes it a silent no-op
-   (no second UAC). `just enable-wsl` exercises the standalone/retry path.
+1. **Lint:** `Invoke-ScriptAnalyzer -Path ./scripts/enable-wsl-ubuntu.ps1 -Settings ./PSScriptAnalyzerSettings.psd1` → Error-free.
+2. **Render + parse** `run_onchange_after_46_wsl_ubuntu.ps1.tmpl` for
+   `installWslUbuntu` true/false (isolated `chezmoi init` idiom, passing all
+   prompts incl. the 3 new ones) → true embeds body & parses, false is a no-op.
+   Also render with each `wslUbuntuBootstrap` value to confirm the frozen command
+   is well-formed.
+3. **Init doesn't hang** on the 3 new prompts (exact-text flags).
+4. **Docs:** `just docs-build` (`--strict`) green; anchors resolve.
+5. **CI** (`windows.yml`): PSScriptAnalyzer + init + render/parse + Pester.
+6. **Real machine (manual):** after `installWsl` + reboot →
+   `just enable-wsl-ubuntu` (or a fresh apply) → `Ubuntu-24.04` registers with no
+   OOBE, user created (passwordless sudo, WSL auto-login), frozen bootstrap runs
+   → `wsl` drops into a ready dotfiles shell, no prompts. Re-run → idempotent
+   no-op. `interactive`/`none` modes skip the auto-bootstrap and print guidance.

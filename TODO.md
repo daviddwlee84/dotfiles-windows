@@ -58,6 +58,7 @@ This moves the entry here using the dated `Done` syntax and re-validates.
 
 - ✅ [2026-04-23] [P1/M] Example shipped item — one-line summary of what landed and where.
 - ✅ [2026-07-11] [P3/S] Windows Terminal full CSI-u parity (Ctrl+/, Ctrl+digits) — added `ctrl+/` (0x1f) and `ctrl+0..9` (ESC[48+d;5u) sendInput actions to `run_onchange_after_30_windows_terminal.ps1`, matching wezterm/alacritty; `ctrl+0` overrides WT's default resetFontSize.
+- ✅ [2026-07-11] [P?/L] Setup WSL Ubuntu + auto-install dotfiles (unattended, opt-in) — `installWslUbuntu` toggle: `scripts/enable-wsl-ubuntu.ps1` registers `Ubuntu-24.04` with no OOBE (user via `wsl -u root`, passwordless sudo, wsl.conf default), then the default `headless` mode runs a frozen-from-Windows `chezmoi init --apply daviddwlee84` (name/email/profile seeded). `wslUbuntuBootstrap` = headless/interactive/none; `just enable-wsl-ubuntu`. → [research](backlog/wsl-ubuntu-auto-dotfiles.md)
 
 <!-- Prune older entries into CHANGELOG.md once prior-year items appear here
      or this section grows past ~20 entries. -->
