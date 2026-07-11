@@ -41,6 +41,7 @@ plugins:
             Shell: Shell 環境
             Rationale: 設計取捨
             copilot-proxy: copilot-proxy
+            Multi-agent workflow: 多 Agent 工作流
 
 markdown_extensions:
   - admonition
@@ -60,3 +61,4 @@ nav:
   - Shell: shell.md
   - Rationale: rationale.md
   - copilot-proxy: copilot-proxy.md
+  - Multi-agent workflow: claude-code-agents.md
