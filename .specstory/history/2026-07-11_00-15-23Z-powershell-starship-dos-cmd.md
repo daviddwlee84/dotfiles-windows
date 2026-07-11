@@ -10308,3 +10308,1276 @@ Done. **`main` is now at `24bce49`** (fast-forwarded from `78add45`), and the te
 Two FYIs, no action taken (neither was requested):
 - **Local `main` has diverged from `origin/main`** (local ahead 3, remote ahead 2) — this predates my work (looks like the herdr commits vs remote). Reconciling/pushing is your call; say the word if you want me to `git pull --rebase` and/or push.
 - Still uncommitted in the working tree: this session's + herdr specstory transcripts, the plan file, and the pre-existing modified wezterm transcript. Per your repo's `agent-history-hygiene` convention these usually get a `chore:` commit — happy to do that whenever you like.
+
+---
+
+_**User (2026-07-11 05:08:55Z)**_
+
+所以 我們有onliner 類似 `irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex` 但是可以直接在 cmd.exe 裡面跑？
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-11 05:09:35Z)**_
+
+<think><details><summary>Thought Process</summary>
+The user wants to know if there's a way to run the PowerShell bootstrap one-liner directly in cmd.exe instead. The current approach uses PowerShell-specific commands like `irm` and `iex` which won't work in cmd.exe, so we'd need to find an alternative method that cmd.exe can execute natively. ed to worry about escaping the pipe character—cmd.exe passes the entire string to PowerShell, which interprets the pipe correctly. I should verify that `bootstrap.ps1` actually does re-launch under pwsh as documented, and confirm that both `irm` and `iex` are available in Windows PowerShell 5.1 (they are, since PS 3.0). The `iex` of a string bypasses execution policy checks since it's expression evaluation rather than file execution, so `-ExecutionPolicy Bypass` isn't strictly necessary but is a safe addition. I'm considering whether documenting a cmd.exe variant in setup.md alongside the existing pwsh one-liner would be useful given the Clink feature I just added.
+
+Re-reading the question, they're asking if the one-liner can run directly in cmd.exe. The answer is that `irm | iex` itself won't work there since those are PowerShell aliases, but you can easily wrap it with `powershell -c "..."` to run from cmd, and since Windows PowerShell 5.1 is always present on fresh Windows systems, this works universally from cmd.exe without any extra setup. I should verify this by actually reading bootstrap.ps1 to confirm it handles being run from WinPS 5.1 and properly relaunches into pwsh, rather than just assuming it works that way.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:09:35Z)**_
+
+好問題。先直接回答,再給你可複製的 cmd 版本。讓我確認一下 `bootstrap.ps1` 本身在 Windows PowerShell 5.1 起手是沒問題的(因為全新機器上還沒有 pwsh)。
+
+_**Agent (claude-opus-4-8 2026-07-11 05:09:35Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./bootstrap.ps1`
+
+```text
+1	#Requires -Version 5.1
+2	<#
+3	.SYNOPSIS
+4	    Bootstrap a fresh Windows machine with these dotfiles.
+5	
+6	.DESCRIPTION
+7	    Installs scoop (user-scoped; auto-passes -RunAsAdmin if the shell is
+8	    elevated), then git + PowerShell 7 + chezmoi + uv, then runs `chezmoi init --apply` against this repo. Safe to re-run.
+9	    Works from Windows PowerShell 5.1 or pwsh 7 — chezmoi runs the repo's .ps1
+10	    scripts via pwsh regardless (see [interpreters.ps1] in .chezmoi.toml.tmpl).
+11	
+12	    Behind the GFW: keep a VPN on for this step. scoop downloads git/pwsh/etc.
+13	    from GitHub releases, which the `useChineseMirror` option does NOT cover
+14	    (that only redirects pip/npm/cargo/go/node at runtime).
+15	
+16	.EXAMPLE
+17	    # From a fresh Windows PowerShell / pwsh session:
+18	    irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex
+19	
+20	.EXAMPLE
+21	    # Local testing against a checked-out copy:
+22	    ./bootstrap.ps1 -Source .
+23	#>
+24	[CmdletBinding()]
+25	param(
+26	    # Remote repo (default) — chezmoi shorthand or full URL.
+27	    [string]$Repo = 'daviddwlee84/dotfiles-windows',
+28	    [string]$Branch = 'main',
+29	    # Local source dir; when set, overrides -Repo (for testing an unpushed tree).
+30	    [string]$Source
+31	)
+32	
+33	$ErrorActionPreference = 'Stop'
+34	function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
+35	function Ok($m)   { Write-Host "==> $m" -ForegroundColor Green }
+36	function Test-Admin {
+37	    # $true when this session is elevated. Works on Windows PowerShell 5.1 and pwsh 7.
+38	    try {
+39	        $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+40	        ([Security.Principal.WindowsPrincipal]$id).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+41	    } catch { $false }
+42	}
+43	
+44	Info 'Windows dotfiles bootstrap'
+45	
+46	# 0. Allow local scripts for the current user.
+47	if ((Get-ExecutionPolicy -Scope CurrentUser) -notin 'RemoteSigned', 'Unrestricted', 'Bypass') {
+48	    Info 'Setting execution policy: RemoteSigned (CurrentUser)'
+49	    Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+50	}
+51	
+52	# 1. scoop — user-scoped package manager. No admin required, but some dev boxes
+53	#    always open the shell elevated; the installer refuses an admin console
+54	#    ("Running the installer as administrator is disabled by default") unless
+55	#    -RunAsAdmin is passed. Detect elevation and forward the flag so bootstrap
+56	#    doesn't die on the first step. (scoop still installs per-user into ~/scoop.)
+57	if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
+58	    $installer = [scriptblock]::Create((Invoke-RestMethod get.scoop.sh))
+59	    if (Test-Admin) {
+60	        Info 'Installing scoop (elevated console: passing -RunAsAdmin)'
+61	        & $installer -RunAsAdmin
+62	    } else {
+63	        Info 'Installing scoop'
+64	        & $installer
+65	    }
+66	}
+67	
+68	# 2. Baseline tools via scoop.
+69	Info 'Installing git, PowerShell 7, chezmoi, uv'
+70	scoop install git 7zip
+71	foreach ($t in 'pwsh', 'chezmoi', 'uv') {
+72	    if (-not (Get-Command $t -ErrorAction SilentlyContinue)) { scoop install $t }
+73	}
+74	
+75	# 3. Refresh PATH from the registry so the just-installed scoop shims (chezmoi,
+76	#    pwsh, uv, git) are resolvable in THIS session — scoop updates the persisted
+77	#    User PATH, not the current process environment.
+78	$env:PATH = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
+79	            [System.Environment]::GetEnvironmentVariable('Path', 'User')
+80	
+81	if (-not (Get-Command chezmoi -ErrorAction SilentlyContinue)) {
+82	    throw 'chezmoi not found on PATH after install — open a new terminal and re-run bootstrap.'
+83	}
+84	
+85	# 4. chezmoi init/update. No need to re-launch under pwsh 7: chezmoi invokes the
+86	#    repo's .ps1 run-scripts with pwsh itself (per [interpreters.ps1]).
+87	#
+88	#    Re-run behaviour: `chezmoi init` clones on a fresh box but does NOT git-pull
+89	#    an already-cloned source, so a second bootstrap would not see new commits.
+90	#    When a source repo already exists we therefore `chezmoi update` (git pull +
+91	#    apply) so re-running the one-liner always pulls the latest. run_onchange
+92	#    package/config scripts still only re-fire when their rendered content
+93	#    actually changes -- that is by design (see docs/setup.md).
+94	if ($Source) {
+95	    Info "chezmoi init --apply --source $Source"
+96	    chezmoi init --apply --source $Source
+97	} else {
+98	    $srcExists = $false
+99	    try {
+100	        $sp = chezmoi source-path 2>$null
+101	        if ($sp -and (Test-Path (Join-Path $sp '.git'))) { $srcExists = $true }
+102	    } catch { }
+103	    if ($srcExists) {
+104	        Info 'chezmoi update (git pull + apply — picks up new commits)'
+105	        chezmoi update --init
+106	    } else {
+107	        Info "chezmoi init --apply --branch $Branch $Repo"
+108	        chezmoi init --apply --branch $Branch $Repo
+109	    }
+110	}
+111	
+112	Ok 'Done. Open a new pwsh session to load the managed profile.'
+113
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:10:15Z)**_
+
+<think><details><summary>Thought Process</summary>
+Looking at the bootstrap.ps1 script details, I see it requires PowerShell 5.1 and the header indicates it works with both Windows PowerShell 5.1 and pwsh 7, but it doesn't actually relaunch under pwsh—chezmoi handles invoking the .ps1 scripts with pwsh directly, so my earlier assumption about a relaunch was incorrect.
+
+To answer whether the one-liner runs in cmd.exe: the `irm` and `iex` aliases are PowerShell-only, so no, not directly. But you can invoke it from cmd by wrapping it with `powershell.exe` (Windows PowerShell 5.1, which comes built-in), passing the command as a string argument to execute the download-and-invoke pattern.
+
+The pipe character stays safely inside the quoted string, so cmd doesn't interpret it as a cmd pipe. Regarding execution policy: `iex` of a downloaded string isn't blocked by script execution policy (that only applies to .ps1 files), though some corporate machines with GPO-locked AllSigned policies at machine scope might still block it.
+
+Writing the robust command... I should answer their question directly and be precise about the actual behavior — the bootstrap script runs entirely under WinPS 5.1 without needing to relaunch, and chezmoi handles invoking the .ps1 scripts under pwsh. Then I'll offer to add the cmd.exe one-liner to the setup docs alongside the pwsh version, since it's a natural complement to what we just shipped. 我需要確認 bootstrap.ps1 確實支援 Windows PowerShell 5.1（它有 `#Requires -Version 5.1`），所以從 cmd 用 `powershell -c "irm ... | iex"` 這個方式是可行的。新機器預設有 PowerShell 5.1 但可能還沒裝 pwsh，所以要用 `powershell` 而不是 `pwsh`。我可以提議把這個 cmd 版本的 one-liner 加到 setup.md 的安裝說明裡，同時順便指出文件裡關於會 relaunch under pwsh 的說法其實不準確。
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:10:26Z)**_
+
+已確認 `bootstrap.ps1` 開頭就是 `#Requires -Version 5.1`,而且註解明講「Works from Windows PowerShell 5.1 or pwsh 7」——所以從全新機器的內建環境起手完全沒問題。
+
+## 直接回答
+
+`irm … | iex` **本身不能**在 cmd.exe 直接貼上跑——`irm`/`iex` 是 PowerShell 的 alias(`Invoke-RestMethod` / `Invoke-Expression`),而 cmd 裡的 `|` 是 cmd 的 pipe,不是 PowerShell pipeline。
+
+但你**不需要**一個「原生 cmd 版」的 bootstrap。cmd 可以直接呼叫內建的 `powershell.exe`(Windows PowerShell 5.1,每台 Windows 都有),所以 cmd 的一行版就是把整段包進 `-Command`:
+
+```cmd
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex"
+```
+
+## 幾個關鍵點
+
+- **用 `powershell` 不是 `pwsh`**:全新機器上 pwsh 7 還沒裝(bootstrap 才會用 scoop 裝它),但 `powershell.exe` (5.1) 一定在。bootstrap 全程在 5.1 下跑,`chezmoi` 之後再依 `[interpreters.ps1]` 用 pwsh 去跑 repo 的 `.ps1`。
+- **`|` 是安全的**:它在雙引號的 `-Command` 字串內,cmd 不會把它當成 cmd pipe。
+- **`-ExecutionPolicy Bypass` 其實可省**:`iex` 執行的是「字串」不是 `.ps1` 檔案,不受 execution policy 管;bootstrap 自己也會把 CurrentUser 設成 `RemoteSigned`。留著只是對鎖很死的機器多一層保險。
+- 跟這次的 cmd.exe/Clink 功能是**兩回事**:這只是「從 cmd 觸發安裝」;裝完之後 cmd 的 starship/z/fzf 才是靠 `installClink` 的 Clink 那套。
+
+順帶一提,`docs/setup.md` 目前寫「Re-launches under pwsh if it started in Windows PowerShell 5.1」,但實際的 `bootstrap.ps1` **沒有** relaunch(靠 chezmoi 的 `[interpreters.ps1]` 處理)——這行描述其實不準。
+
+要不要我:
+1. 把這個 **cmd.exe 一行版**加進 `docs/setup.md` + `setup.zh-TW.md` 的 "One-line install"(中英雙語),順手修掉上面那個 relaunch 的錯誤描述?
+
+---
+
+_**User (2026-07-11 05:11:59Z)**_
+
+好啊 補一下docs (是說爲什麼更建議在Powershell裡面init呢？是因爲不想維護兩份script嗎？會有機器沒有Powershell的嗎？)
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-11 05:12:57Z)**_
+
+<think><details><summary>Thought Process</summary>
+用戶同意補充文檔，並提出了三個實際的問題：為什麼更建議在 PowerShell 裡初始化、是否是為了避免維護多份腳本，以及是否存在沒有 PowerShell 的機器。
+
+我需要解釋核心原因：雖然 cmd 也能透過 `powershell -c` 觸發初始化，但推薦 PowerShell 的形式主要是因為整個引導邏輯（包括 scoop 安裝、權限檢測、PATH 刷新和 chezmoi 初始化）需要真正的腳本語言，用 batch 維護會很痛苦且容易出錯。所以只有一份 PowerShell 引導腳本，cmd 用戶只需加上前綴就行，這正好驗證了用戶的猜測——主要是為了不維護兩份腳本，同時引導邏輯確實需要更強大的語言。
+
+至於 PowerShell 的可用性，Windows PowerShell 5.1 內建在 Windows 10、11 和 Server 2016+ 上，所以在任何現實的目標機器上都存在。雖然理論上可以透過 DISM 移除它或在 Nano Server 等極端情況下不存在，但這些都不是這個桌面工作站點檔案庫的目標。
+
+即使是 cmd 的單行命令也只是呼叫 PowerShell，所以無論如何都無法完全避免使用 PowerShell 來啟動這些點檔案。
+
+既然整個儲存庫本身就是 PowerShell（chezmoi 執行 `.ps1` 檔案，整個 `$PROFILE` 都是 PowerShell），沒有 PowerShell 的機器根本無法使用這個儲存庫，所以在啟動時要求 PowerShell 不會增加任何成本。
+
+現在我要簡潔地回答這些問題，然後更新文件。我計畫在 `docs/setup.md` 的「一行安裝」部分新增 cmd.exe 的變體。
+
+我會在 PowerShell 區塊後面加上一個 cmd.exe 說明，展示如何從命令提示字元呼叫 Windows PowerShell 來執行相同的啟動指令，並附上簡短的說明說明為什麼 PowerShell 是主要的執行環境。
+
+不過我注意到第 4 步的描述有誤——我需要檢查實際的 bootstrap.ps1 行為，因為它並不是簡單地在 Windows PowerShell 5.1 中重新啟動 pwsh。
+
+實際上，chezmoi 透過 interpreters.ps1 在 pwsh 下執行 .ps1 腳本，所以不需要重新啟動。第 4 步應該改為描述 PATH 重新整理，讓新安裝的 scoop shims（chezmoi、pwsh、uv）在同一個會話中能被解析。第 5 步則應該澄清 chezmoi 會根據源是否已存在來執行 init --apply 或 update，而且 chezmoi 本身會在 pwsh 下執行這些腳本。 The documentation's step 4 is mislabeled — it should describe the PATH refresh from the registry so newly installed tools like chezmoi and pwsh are available immediately, not a shell relaunch. Step 5 then runs chezmoi init or update, which executes the repo's PowerShell scripts directly without needing to restart. Now I need to check the Traditional Chinese version's setup instructions. The bootstrap script then installs scoop (user-scoped unless already elevated), pulls in git, PowerShell 7, chezmoi, and uv through scoop, switches to pwsh if needed, and finally runs chezmoi to initialize and apply the dotfiles from this repo.
+
+Now I need to check the Chinese version of the setup guide to get the mirror URL, then update both files—adding the cmd.exe variant after the PowerShell block and fixing steps 4 and 5.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:12:59Z)**_
+
+好,我先回答你的問題,再動 docs。
+
+## 為什麼更建議用 PowerShell init
+
+**你的猜測基本正確 —— 主因就是不想維護兩份 script,而且 cmd 根本不適合寫這種 script。** 三個層次:
+
+1. **不維護兩份**:bootstrap 要做的事(偵測 elevation 決定要不要傳 `-RunAsAdmin`、從 registry 重刷 `PATH`、`chezmoi init` vs `update` 的分支邏輯)在 cmd/batch 裡會又醜又易錯 —— 這正是整個 repo「pwsh 不 cmd」的理由。所以只維護**一份** `bootstrap.ps1`;cmd 使用者就前面加 `powershell -c` 呼叫它。
+2. **`irm|iex` 是 Windows 的事實標準安裝慣用語**(scoop、chocolatey 都這樣),cmd 沒有對等的簡潔寫法。
+3. **這其實不算「在 cmd 裡跑」**:cmd 版也只是**啟動 PowerShell**。真正的邏輯還是在 pwsh。
+
+## 會有機器沒有 PowerShell 嗎?
+
+實務上**不會**。**Windows PowerShell 5.1 是內建元件**,每台 Windows 10/11、Server 2016+ 都有 `powershell.exe`。極少數例外(有人手動用 DISM 移除 optional feature、Nano Server / 精簡容器映像、或被 AppLocker/Constrained Language Mode 鎖死的公司機器)都不是這份 desktop dotfiles 的目標。
+
+而且關鍵是:**這份 dotfiles 本身就是 PowerShell**(chezmoi 透過 `[interpreters.ps1]` 用 pwsh 跑所有 `.ps1`、整個 `$PROFILE` 也是 pwsh)。一台完全沒有任何 PowerShell 的機器,根本用不了這個 repo —— 所以「bootstrap 需要 PowerShell」等於零成本。
+
+現在補 docs。先讀一下 zh-TW 版的對應段落。
+
+_**Agent (claude-opus-4-8 2026-07-11 05:12:59Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./docs/setup.zh-TW.md`
+
+```text
+1	# 安裝
+2	
+3	## 一行安裝
+4	
+5	在全新的 Windows PowerShell（或 PowerShell 7）視窗執行：
+6	
+7	```powershell
+8	irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex
+9	```
+10	
+11	`bootstrap.ps1` 會依序（且可重複執行）完成：
+12	
+13	1. 將目前使用者的 execution policy 設為 `RemoteSigned`。
+14	2. 安裝 [scoop](https://scoop.sh)（使用者層級、免系統管理員 —— 但若 shell 本身是
+15	   系統管理員身分，會自動帶上 `-RunAsAdmin`；否則安裝程式會以
+16	   *「Running the installer as administrator is disabled by default」* 拒絕執行）。
+17	3. 透過 scoop 安裝 `git`、PowerShell 7（`pwsh`）、`chezmoi`、`uv`。
+18	4. 若是從 Windows PowerShell 5.1 啟動，會改用 `pwsh` 重新執行。
+19	5. 對此 repo 執行 `chezmoi init --apply`。
+20	
+21	!!! warning "在 GFW 後面"
+22	    bootstrap 期間請開著 VPN —— scoop 會從 **GitHub releases** 下載
+23	    git / pwsh / chezmoi / uv。`China mirrors` 選項只在執行期重導
+24	    pip / npm / cargo / go / node，**不涵蓋** scoop 自己的下載。
+25	
+26	## 初始化提問
+27
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:13:34Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm working through the edits for the setup.md file—adding a cmd.exe variant after the PowerShell block with an explanatory note, and fixing steps 4-5. I need to update the one-line install introduction and insert the cmd command block. The bootstrap logic lives in PowerShell since cmd would be worse for handling elevation, PATH manipulation, and chezmoi setup — and these dotfiles are PowerShell-based anyway. I'm using `powershell` (not `pwsh`) because pwsh isn't installed on a fresh machine yet, and the `-ExecutionPolicy Bypass` flag ensures the downloaded script runs regardless of policy settings.
+
+Now I need to fix steps 4-5 in the setup instructions.  The updated flow is: after scoop installs the key tools, I refresh PATH from the registry so the new shims (`chezmoi`, `pwsh`, `uv`) are available in the current session, then run `chezmoi init --apply` (or `chezmoi update` if already cloned). Since chezmoi itself runs PowerShell scripts under pwsh via the `[interpreters.ps1]` config, there's no shell relaunching needed — the bootstrap works seamlessly from either Windows PowerShell 5.1 or pwsh 7. I also need to mirror these edits in the Chinese version of the setup guide. 我只需要在 PowerShell 中維護一份 bootstrap 邏輯，因為 cmd 實現會很複雜且容易出錯，而且這個 dotfiles 本身就是用 PowerShell 設計的（chezmoi 用 pwsh 執行所有 `.ps1` 腳本）。管道符在雙引號的 `-Command` 參數內是安全的，而 `-ExecutionPolicy Bypass` 只是額外保障，因為 `iex` 執行下載的字串不受執行策略限制。
+
+不過要用 `powershell` 而不是 `pwsh`，因為新機器上 pwsh 還沒安裝。`bootstrap.ps1` 會依序執行一系列初始化步驟，包括從 registry 重新載入 `PATH` 環境變數，讓剛安裝的 scoop shim（`chezmoi`、`pwsh`、`uv`）在同一個 session 內就能被找到。
+
+接著執行 `chezmoi init --apply`（或如果 source 已經 clone 過就用 `chezmoi update`），chezmoi 會透過 `[interpreters.ps1]` 自動用 pwsh 執行 repo 裡的 `.ps1` 檔案，所以不需要重啟 shell，無論從 Windows PowerShell 5.1 或 pwsh 7 啟動都可以。
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:13:37Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/docs/setup.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:13:44Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/docs/setup.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:13:48Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/docs/setup.zh-TW.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:13:49Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/docs/setup.zh-TW.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:13:55Z)**_
+
+Docs updated. Let me verify the build stays green under `--strict`.
+
+_**Agent (claude-opus-4-8 2026-07-11 05:14:07Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Rebuild docs --strict to confirm no broken links
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+uv run --with mkdocs-material --with mkdocs-static-i18n mkdocs build --strict 2>&1 | grep -iE "error|warning.*link|no such anchor|aborted|Documentation built" | grep -vi "mkdocs 2.0\|material for mkdocs\|lunr" || echo "(no link/anchor errors)"
+echo "exit: ${PIPESTATUS[0]}"
+rm -rf site
+```
+
+```text
+INFO    -  Documentation built in 1.34 seconds
+exit:
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:14:29Z)**_
+
+<think><details><summary>Thought Process</summary>
+The documentation built successfully with no errors, so that's solid. The user asked me to add docs in Chinese, and based on the earlier pattern of implement → commit → push to main, they probably want me to commit this change too, though they didn't explicitly say so this time. I'll report the docs are done and verified, then ask if they want me to commit it using the same branch-and-fast-forward workflow as before.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:14:31Z)**_
+
+Done — docs updated and `mkdocs --strict` stays clean (no broken links/anchors).
+
+## What changed (`docs/setup.md` + `setup.zh-TW.md`)
+
+1. **Added the cmd.exe one-liner** to "One-line install", right under the pwsh form:
+   ```bat
+   powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex"
+   ```
+   …with a short note capturing the answers to your questions: one bootstrap maintained (in PowerShell), cmd is a poor language for the elevation/PATH/chezmoi logic, WinPS 5.1 is always in-box, use `powershell` not `pwsh` on a fresh box.
+
+2. **Fixed the inaccurate step 4.** It claimed *"Re-launches under pwsh if it started in Windows PowerShell 5.1"* — but `bootstrap.ps1` does **not** relaunch (its own comment says so; chezmoi runs the `.ps1` under pwsh via `[interpreters.ps1]`). Rewrote steps 4–5 to describe the real behavior: PATH refresh from registry → `chezmoi init --apply` (or `update` if already cloned), works from 5.1 or pwsh 7.
+
+Both files, bilingual. Only these two files are touched.
+
+Want me to commit this the same way as before (branch → fast-forward to `main`)? Same message style, e.g. `docs(setup): cmd.exe bootstrap one-liner + fix relaunch step`.
+
+---
+
+_**User (2026-07-11 05:21:02Z)**_
+
+我發現運行 「powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex"」會被Windows Defender擋下
+
+顯示 已檢測 Trojan:Win32/ClickFix.R!ml
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-11 05:21:49Z)**_
+
+<think><details><summary>Thought Process</summary>
+The user is getting flagged by Windows Defender when trying to run a PowerShell one-liner that downloads and executes a bootstrap script, with the detection showing as Trojan:Win32/ClickFix.R!ml. I'm recognizing that ClickFix is a known malware family that uses social engineering tactics, so this detection is significant and worth investigating further.
+
+The `.R!ml` suffix indicates this is a machine-learning heuristic detection, not a signature-based one. ClickFix typically tricks users into copy-pasting commands into their terminal or Run dialog to download and execute remote payloads — the exact same pattern as our one-liner with PowerShell, remote URL, and immediate execution via `iex`. Since our command is structurally identical to how ClickFix attacks work, Defender's ML model is flagging it as a behavioral pattern match, even though this is a legitimate use of the same technique. The key realization is that this isn't about the specific content of our script — it's the command-line pattern itself that's triggering the heuristic.
+
+Adding `-ExecutionPolicy Bypass` likely made the detection worse, since that flag is a strong signal in malware (legitimate users rarely use it), and running from cmd via `powershell -Command "...iex"` matches the ClickFix signature more closely than typing the command interactively in an already-open PowerShell window. When you run `irm | iex` interactively at a PowerShell prompt, there's no suspicious process command line to flag — the parent process just launched `powershell.exe` with no arguments.
+
+Defender's ML heuristic keys off the launched process command line containing the download-execute pattern, so the cmd form bakes the entire payload into the command line and triggers the signature, while the interactive form bypasses this because the command never appears on a command line at all. AMSI still scans the downloaded content regardless, but the ClickFix detection here is specifically targeting the command-line pattern.
+
+The recommendation is to avoid the cmd `powershell -Command "irm|iex"` form entirely — instead, launch PowerShell interactively from cmd first, then run the command inside.
+
+Alternatively, I could suggest a two-step download-then-execute approach where the script is saved to a temporary file first and then executed separately, which avoids the ClickFix signature pattern entirely since it doesn't look like a direct pipe-to-execute.
+
+I should also consider removing the `-ExecutionPolicy Bypass` flag since it's a strong malware indicator and unnecessary when using `iex` with a string. That alone could reduce the heuristic score significantly.
+
+Another option is to use git or chezmoi directly to clone the dotfiles repository rather than relying on curl-pipe patterns, which would be a much more legitimate-looking installation method.
+
+However, I need to be careful about recommending that users simply allow the script through Defender or disable security features — that's exactly what actual malware attacks tell victims to do, and I shouldn't reinforce those bad habits. If they've verified the source is legitimate, I can mention it's likely a false positive, but the emphasis has to be on verification first.
+
+The real solution is recommending safer patterns that avoid the false positive altogether: downloading and inspecting the script before running it, using an interactive PowerShell session, or leveraging git and chezmoi for cloning. These approaches are genuinely more secure and less likely to trigger Defender precisely because they're not matching the ClickFix attack signature. I should also note that the original interactive `irm|iex` form in PowerShell is less likely to be flagged than the cmd wrapper version I added, so the documentation should probably shift away from recommending the cmd approach. I should verify the specific detection behavior and whether removing `-ExecutionPolicy Bypass` or switching to a download-then-run approach actually helps reduce the false positive, since that's what I'm recommending to the user. Let me search for current information on ClickFix detection patterns and Defender's response to these variations.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:21:49Z)**_
+
+這是個很重要的發現,而且諷刺的是——**問題正是我上一步加的 `-ExecutionPolicy Bypass` + 把整段塞進 `powershell -Command "…iex"` 這個形式本身**。讓我先查證一下 ClickFix 這個偵測的實際觸發條件,再給你正確的做法(我不想給你「直接關掉 Defender / 按允許」這種建議——因為那恰好就是 ClickFix 攻擊本身在教受害者做的事)。
+
+_**Agent (claude-opus-4-8 2026-07-11 05:22:30Z)**_
+
+<tool-use data-tool-type="search" data-tool-name="WebSearch"><details>
+<summary>Tool use: **WebSearch**</summary>
+ `Trojan:Win32/ClickFix.R!ml powershell irm iex false positive Defender detection command line`
+
+```text
+Web search results for query: "Trojan:Win32/ClickFix.R!ml powershell irm iex false positive Defender detection command line"
+
+Links: [{"title":"Think before you Click(Fix): Analyzing the ClickFix social engineering ...","url":"https://www.microsoft.com/en-us/security/blog/2025/08/21/think-before-you-clickfix-analyzing-the-clickfix-social-engineering-technique/"},{"title":"Trojan:Win32/ClickFix.SEC threat description - Microsoft Security ...","url":"https://www.microsoft.com/en-us/wdsi/threats/malware-encyclopedia-description?Name=Trojan%3AWin32%2FClickFix.SEC"},{"title":"Trojan:Win32/ClickFix.R!ml' was detected in the powershell","url":"https://github.com/DeusData/codebase-memory-mcp/issues/230"},{"title":"noahmurphx/clickfix-incident-response - GitHub","url":"https://github.com/noahmurphx/clickfix-incident-response"},{"title":"Detection: Windows PowerShell FakeCAPTCHA Clipboard Execution","url":"https://research.splunk.com/endpoint/d81d4d3d-76b5-4f21-ab51-b17d5164c106/"},{"title":"Detecting ClickFix Malvertising in Enterprise Environments","url":"https://cybercentaurs.com/blog/clickfix-malvertising-detection-threat-hunting/"}]
+
+I ran the web search you requested. Below are the most relevant results I found (short summary + source links).
+
+Top results / summary
+- Microsoft Threat research: "Think before you Click (Fix)" — official Microsoft Security Blog analysis of the ClickFix social‑engineering technique and Defender detection coverage. Explains the attack chain (fake CAPTCHA pages that get victims to paste PowerShell one‑liners). ([microsoft.com](https://www.microsoft.com/en-us/security/blog/2025/08/21/think-before-you-clickfix-analyzing-the-clickfix-social-engineering-technique/))  
+- Microsoft Malware Encyclopedia: Trojan:Win32/ClickFix (ClickFix.SEC) — Microsoft’s Defender entry describing ClickFix as a social‑engineering attack that delivers malicious PowerShell via user paste/Run and the Defender detection name. ([microsoft.com](https://www.microsoft.com/en-us/wdsi/threats/malware-encyclopedia-description?Name=Trojan%3AWin32%2FClickFix.SEC))  
+- Community report / GitHub issue noting a Defender detection/false‑positive: discussion where a PowerShell installer was flagged as Trojan:Win32/ClickFix.R!ml; the poster notes VirusTotal showed 0/62 vendors flagged the script while Defender’s model considered the "irm | iex" + -ExecutionPolicy Bypass pattern suspicious. (explains why legitimate installers that use Invoke‑WebRequest/Invoke‑RestMethod with iex/irm can trip the model). ([github.com](https://github.com/DeusData/codebase-memory-mcp/issues/230))  
+- Incident writeups / playbooks (GitHub incident response and blog posts) — multiple incident-response writeups showing Defender often flags PowerShell command lines like iex(irm <url>) or PowerShell.exe with -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden as ClickFix activity; defenders provide hunting/detection recommendations. ([github.com](https://github.com/noahmurphx/clickfix-incident-response))  
+- Detection rule examples / SIEM content — community and vendor detection rules (Splunk, vendor blogs) that look for the PowerShell execution pattern (iex/irm, stealth flags, hidden windows) used by ClickFix, and guidance to treat some matches as suspicious rather than immediate blocks because legitimate tools can look similar. ([research.splunk.com](https://research.splunk.com/endpoint/d81d4d3d-76b5-4f21-ab51-b17d5164c106/))
+
+Key points relevant to your query
+- The common malicious pattern is a PowerShell one‑liner that uses Invoke‑WebRequest/Invoke‑RestMethod (irm) piped into Invoke‑Expression (iex), often with -ExecutionPolicy Bypass and hidden/no‑profile flags. Defender models flag that pattern because ClickFix campaigns have repeatedly used it. ([microsoft.com](https://www.microsoft.com/en-us/security/blog/2025/08/21/think-before-you-clickfix-analyzing-the-clickfix-social-engineering-technique/))  
+- That detection can produce false positives when legitimate scripts or installers use the same command structure (download-and-execute via irm|iex plus bypass flags). Community reports show Defender flagged benign installers/scripts for this reason. ([github.com](https://github.com/DeusData/codebase-memory-mcp/issues/230))  
+- Recommended defensive approach in published guidance is to treat such detections as high‑priority suspicions (investigate process tree, download URL, whether payload was fetched/executed, file reputation) rather than automatically assuming all irm|iex uses are malicious. SIEM/hunting rules look for the full behavioral context (scheduled task changes, persistence, stealth flags), not just the command string. ([cybercentaurs.com](https://cybercentaurs.com/blog/clickfix-malvertising-detection-threat-hunting/))
+
+If you want, I can:
+- Fetch and paste the exact Defender detection text / indicators from the Microsoft Malware Encyclopedia page. ([microsoft.com](https://www.microsoft.com/en-us/wdsi/threats/malware-encyclopedia-description?Name=Trojan%3AWin32%2FClickFix.SEC))  
+- Pull the GitHub thread (or other community posts) that describe the specific PowerShell command lines that triggered the false positive. ([github.com](https://github.com/DeusData/codebase-memory-mcp/issues/230))  
+- Search for guidance on how to whitelist or avoid false positives in Defender for a legitimate installer command line.
+
+Which of the above would you like me to expand on?
+
+
+REMINDER: You MUST include the sources above in your response to the user using markdown hyperlinks.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:22:25Z)**_
+
+<tool-use data-tool-type="search" data-tool-name="WebSearch"><details>
+<summary>Tool use: **WebSearch**</summary>
+ `ClickFix technique Defender detects powershell -Command iwr iex ExecutionPolicy Bypass hidden pattern`
+
+```text
+Web search results for query: "ClickFix technique Defender detects powershell -Command iwr iex ExecutionPolicy Bypass hidden pattern"
+
+Links: [{"title":"Think before you Click (Fix): Analyzing the ClickFix social engineering ...","url":"https://www.microsoft.com/en-us/security/blog/2025/08/21/think-before-you-clickfix-analyzing-the-clickfix-social-engineering-technique/"},{"title":"ClickFix Malware & Social Engineering Threat Grows | Proofpoint US","url":"https://www.proofpoint.com/us/blog/threat-insight/security-brief-clickfix-social-engineering-technique-floods-threat-landscape"},{"title":"And the Winner in Dominant Malware Delivery? ClickFix","url":"https://www.darkreading.com/vulnerabilities-threats/winner-dominant-malware-delivery-clickfix"},{"title":"Suspicious_PowerShell-Execution - GitHub","url":"https://github.com/harsh-codz/Cyber-Security/tree/main/KQL%20Queeries/Suspicious_PowerShell-Execution"},{"title":"GitHub - Hann1bl3L3ct3r/ClickFix: Replication of ClickFix social ...","url":"https://github.com/Hann1bl3L3ct3r/ClickFix"},{"title":"Trojan:Win32/ClickFix.R!ml' was detected in the powershell","url":"https://github.com/DeusData/codebase-memory-mcp/issues/230"},{"title":"How to Detect PowerShell Execution Attacks: T1059.001 Complete Guide","url":"https://df00tech.com/detections/blog/powershell-detection-rule-t1059-001-complete-guide"}]
+
+I searched the web for resources about the ClickFix social‑engineering technique and Microsoft Defender detections for PowerShell one‑liners that use patterns like iwr/irm | iex and -ExecutionPolicy Bypass. Below are the top results and a short synthesis of what they say.
+
+Top search hits (brief summary + source)
+- Microsoft Security Blog — “Think before you Click (Fix): Analyzing the ClickFix social engineering technique.” Overview of ClickFix attack chain and Defender protections/detections. ([microsoft.com](https://www.microsoft.com/en-us/security/blog/2025/08/21/think-before-you-clickfix-analyzing-the-clickfix-social-engineering-technique/))  
+- Proofpoint — ClickFix threat brief describing fake‑CAPTCHA lures that instruct victims to paste PowerShell one‑liners which then download payloads. ([proofpoint.com](https://www.proofpoint.com/us/blog/threat-insight/security-brief-clickfix-social-engineering-technique-floods-threat-landscape))  
+- DarkReading / CyberDaily / IBTimes / BleepingComputer — recent news coverage describing the rise and impact of ClickFix/fake CAPTCHA campaigns and vendor responses. ([darkreading.com](https://www.darkreading.com/vulnerabilities-threats/winner-dominant-malware-delivery-clickfix))  
+- Detection/playbook resources (KQL, Sigma, Detection.fyi, df00tech) — detection rules and hunting guidance for suspicious PowerShell command lines (encoded commands, iwr/irm|iex cradles, -ExecutionPolicy Bypass, -WindowStyle Hidden, -NonInteractive). Useful starter detections and queries. ([github.com](https://github.com/harsh-codz/Cyber-Security/tree/main/KQL%20Queeries/Suspicious_PowerShell-Execution))  
+- GitHub repos / reproductions (ClickFix technique demos and example scripts) — community repos that replicate ClickFix social engineering and show PowerShell one‑liner cradles, including examples that call Invoke‑WebRequest/Invoke‑RestMethod piped to iex. ([github.com](https://github.com/Hann1bl3L3ct3r/ClickFix))  
+- Discussion / issue referencing Defender model behavior — community note explaining Defender flags when it sees irm/irm|iex combined with -ExecutionPolicy ByPass (typical ClickFix dropper shape). ([github.com](https://github.com/DeusData/codebase-memory-mcp/issues/230))
+
+Short synthesis (what defenders typically see and why Defender flags it)
+- ClickFix uses fake CAPTCHA / “prove you’re human” pages to trick users into copying/pasting a short PowerShell one‑liner into a terminal or Run box; that one‑liner commonly downloads and executes a payload. This is widely documented by vendor telemetry. ([microsoft.com](https://www.microsoft.com/en-us/security/blog/2025/08/21/think-before-you-clickfix-analyzing-the-clickfix-social-engineering-technique/))  
+- A common malicious pattern is a download‑cradle like Invoke‑WebRequest (iwr) or Invoke‑RestMethod (irm) piped to Invoke‑Expression (iex), often with -ExecutionPolicy Bypass and stealth flags (e.g., -WindowStyle Hidden, -NonInteractive). That exact pattern is a strong heuristic used by detections because it maps to many ClickFix droppers. ([github.com](https://github.com/DeusData/codebase-memory-mcp/issues/230))  
+- Detection guidance recommends alerting/hunting on command lines containing iwr/irm or bitsadmin/curl/wget cradles piped to iex, the presence of -ExecutionPolicy Bypass, encoded commands, and hidden/noninteractive flags — then correlate with user interaction sources (browser, clipboard paste prompts, opened HTML attachments) to reduce false positives. ([df00tech.com](https://df00tech.com/detections/blog/powershell-detection-rule-t1059-001-complete-guide))
+
+Would you like any of the following next?
+- I can expand and return specific detection queries (KQL / Sigma / Splunk) tuned for the iwr|iex + -ExecutionPolicy Bypass pattern.  
+- I can fetch the Microsoft Defender detection names/signatures referenced in the MS blog and give exact rule names or mitigation steps.  
+- I can pull example ClickFix one‑liner samples from the GitHub repositories and show how Defender flags them (for testing/hunting).
+
+Which follow‑up would you prefer?
+
+
+REMINDER: You MUST include the sources above in your response to the user using markdown hyperlinks.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:24:32Z)**_
+
+<think><details><summary>Thought Process</summary>
+So the detection is specifically looking for that download-and-execute pattern — piping `irm` or `iwr` into `iex` combined with execution policy bypass and stealth parameters like hidden window and no profile. That's exactly what my command-line payload became.
+
+The real issue is that this is a false positive triggered by the *shape* of the command, not the actual content — a machine-learning heuristic flagging the ClickFix dropper signature. The original interactive approach wouldn't put that pattern on a process command line, so it wouldn't trigger the same detection. But wrapping it in `powershell -NoProfile -ExecutionPolicy Bypass -Command` creates the exact flagged signature. And the key point for the user is that disabling Defender isn't the answer — that's exactly what the ClickFix social engineering is trying to get people to do.
+
+Instead, I should recommend two safer alternatives that both avoid the false positive and follow better security practices. The first is to just start PowerShell interactively from cmd and run the one-liner inside it, which keeps the download-execute pattern off the process command line. The second is the genuinely secure approach: download to a file, optionally review it, then run the file — since running a `.ps1` file is a normal admin operation, not a download cradle, so it won't trip the heuristic.
+
+Now I'm reconsidering whether `-ExecutionPolicy Bypass -File` could also get flagged. The ClickFix heuristic specifically targets the download-cradle pattern on the command line, but running a local file with bypass is extremely common in legitimate automation, so it's a much weaker signal and far less likely to match the heuristic shape.
+
+For the documentation, I think the best approach is keeping the interactive `pwsh irm | iex` form as the primary recommendation since it's least likely to be flagged, and for cmd either suggesting launching PowerShell interactively or using the download-to-file-then-run pattern instead of the `powershell -Command "irm|iex"` cradle I had added.
+
+I should add a warning note that explains the ClickFix false positive — that it's triggered by the command-line shape rather than our actual content — and use it as a teaching moment about why pasting `powershell -c "irm|iex"` from untrusted sources is risky. This means revising the docs to remove that problematic cmd one-liner block and replacing it with the safer guidance.
+
+The honest answer to "can it run in cmd?" is more nuanced now: yes, but the naive approach trips Defender, so the recommended path is either opening PowerShell first or downloading and running a file. I should explain this to the user, give them the immediate working alternatives, and then propose the doc fix.
+
+Since the current docs contain the exact command that triggers the false positive, I need to revise setup.md and setup.zh-TW.md to recommend opening PowerShell from cmd first instead of the all-in-one one-liner that Defender flags.
+
+Updating the documentation... I'm realizing there's a subtlety with using `%TEMP%` in the PowerShell command string—while cmd expands it before PowerShell sees it, which works fine for most cases, it could cause issues if the temp path contains spaces, since the expansion happens at the cmd level rather than being properly quoted for PowerShell.
+
+So I'll use `$env:TEMP` in the download command to let PowerShell handle the expansion safely, and then use `%TEMP%` in the separate execution line where cmd naturally expands it. Both approaches resolve to the same directory, but this keeps each part using its native variable expansion for clarity and robustness. Variable expansion in PowerShell happens after tokenization, so spaces within `$env:TEMP\bootstrap.ps1` are handled correctly without quotes. Now I'm adding a warning about Windows Defender potentially flagging the cmd one-liner as a false positive—specifically the `Trojan:Win32/ClickFix` heuristic that detects the pattern of a PowerShell process running a remote download-and-execute cradle with execution policy bypass, which matches known malware behavior even though our script content itself is clean.
+
+I'm explaining two safer alternatives: either open PowerShell first and run the command interactively so the cradle never appears on a process command line, or download and inspect the file before executing it. The key takeaway is to never blindly paste a `powershell -c "irm|iex"` command from a web page or verification prompt, since that's exactly what social engineering attacks use.
+
+For the Chinese Traditional version, I'll apply the same structure. I should also reconsider the `-ExecutionPolicy Bypass` flag — it's only needed when running the file directly, not for interactive execution. And I'm thinking through whether pure interactive `irm|iex` gets caught by AMSI scanning, since AMSI does inspect script content when iex executes, though our bootstrap script is clean and the ClickFix detection the user encountered was specifically a command-line model. Now I'm planning the doc edits—I need to revise both the English and Traditional Chinese setup files to remove the flagged command pattern and reorder the recommendations. The interactive PowerShell approach should stay primary, with cmd users directed to either open PowerShell interactively or download-and-run instead. I'll also add a note against habitually pasting untrusted one-liners. in PowerShell since cmd is too limited for the elevation and PATH setup steps, and these dotfiles are PowerShell-based anyway (chezmoi runs all `.ps1` files under pwsh). I need to use `powershell` rather than `pwsh` because pwsh isn't installed on a fresh Windows machine yet, and the `-ExecutionPolicy Bypass` flag ensures the downloaded script runs regardless of policy settings. powershell -ExecutionPolicy Bypass -File "%TEMP%\bootstrap.ps1"
+```
+
+I should emphasize using `powershell` rather than `pwsh` since the newer version isn't available on fresh Windows installations, and the bootstrap script itself is written in PowerShell anyway. Also, I need to warn against pasting the inline invocation directly into cmd — Defender will flag it as a potential threat.
+
+The issue is that running `powershell -ExecutionPolicy Bypass -Command "irm <url> | iex"` from a cmd prompt triggers Defender's machine-learning heuristic for ClickFix malware. It's a false positive based on the command-line pattern (remote download-cradle with execution policy bypass), not the actual script content, which scans clean. The shape of the command — a PowerShell process downloading and executing code remotely with those specific flags — matches what the ClickFix trojan does.
+
+The two safer approaches avoid this: either keep the download-cradle off the process command line entirely, or run a file instead. If you're already inside PowerShell, the one-liner is safe. The key takeaway is never to paste a `powershell -c "irm|iex"` command from a web page or CAPTCHA prompt — that request itself is the attack.
+
+Now I'm working on the Traditional Chinese translation, starting with the cmd.exe execution section. 完整的 bootstrap 邏輯只需維護一份 PowerShell 版本，因為 cmd 寫這些步驟（elevation、PATH、chezmoi）會又醜又容易出錯，而且 chezmoi 本身就用 pwsh 執行所有 `.ps1` 檔案。用 `powershell`（內建的 5.1 版）而不是 `pwsh`，因為全新機器上還沒裝 pwsh；`-ExecutionPolicy Bypass` 是額外保險，`iex` 執行下載的字串不受 policy 限制，管道符在雙引號的 `-Command` 內也是安全的。 還要注意別在 cmd 裡直接貼 `powershell -Command "irm … | iex"` 這種 cradle 命令，Defender 會把它當成 ClickFix 惡意軟體來攔截，所以改用 `-ExecutionPolicy Bypass -File` 的方式執行本地檔案會更安全。
+
+這其實是 Defender 對命令列「形狀」的誤判——機器學習啟發式偵測把遠端下載加執行的模式當成威脅，但腳本內容本身是乾淨的。
+
+避開這個偵測的方法是不讓 cradle 出現在行程命令列上，或改成執行檔案，或在已開啟的 PowerShell 裡直接執行。最重要的是永遠不要貼上網頁或「驗證你是真人」提示給你的 `powershell -c "irm|iex"` 命令——那個要求本身就是攻擊。
+
+現在遇到一個技術問題：admonition 標題裡同時有反引號和雙引號還有冒號，會破壞 mkdocs 的語法。
+
+我需要改寫標題來避免內層的雙引號，改用不含引號的版本。
+
+在 Material for MkDocs 中，admonition 標題是純文字，不會渲染 markdown，所以也要避免在標題裡用反引號。不過在 admonition 的內文中，反引號和 markdown 連結都能正常渲染，雙引號也沒問題。我再檢查一下其他部分像是 `notepad "%TEMP%\bootstrap.ps1"` 和程式碼區塊的語法都沒問題。
+
+現在要進行兩個編輯（setup.md 和 setup.zh-TW 的區塊），上一輪修正的步驟 4-5 保持不變。我需要小心匹配舊文字，然後重新建置文件。
+
+不過我在考慮是否要繼續推薦 `powershell` 互動模式搭配 `irm|iex` 作為首選，還是改用下載檔案的方式。互動方式最簡單，符合「一行指令」的精神，但下載檔案的方式可能更安全。
+
+我會先列出互動方式（最簡單），再列下載檔案方式（最安全）。
+
+對於下載指令，我不會加 `-NoProfile`，因為這個指令只是下載，不涉及執行，所以保持簡潔。至於執行檔案的那一行，我會用 `-ExecutionPolicy Bypass` 來處理。
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:24:43Z)**_
+
+Confirmed — and the culprit is exactly what I added. This is a **false positive on the command-line *shape***, not on the script's content.
+
+## What's happening
+
+Defender's `Trojan:Win32/ClickFix.*!ml` is a **machine-learning heuristic** that fires on the *pattern* of the process command line, not on what the script actually does. The flagged shape is a `powershell` process whose command line is a **remote download-cradle** (`irm … | iex`) **plus** `-ExecutionPolicy Bypass` / `-NoProfile`. That's the textbook [ClickFix](https://www.microsoft.com/en-us/security/blog/2025/08/21/think-before-you-clickfix-analyzing-the-clickfix-social-engineering-technique/) dropper (fake-CAPTCHA "paste this to verify you're human" campaigns) — so common now that Defender flags the shape regardless of the URL. Community reports show the same script scoring **0/62 on VirusTotal** while Defender's model still flags the command line ([example](https://github.com/DeusData/codebase-memory-mcp/issues/230)).
+
+**My mistake:** the `-ExecutionPolicy Bypass` I added "for robustness" + wrapping it in `powershell -Command "irm|iex"` is precisely the ClickFix signature. The *original* interactive `irm | iex` (typed inside an already-open PowerShell) never puts that pattern on a process command line, so it doesn't trip this.
+
+I will **not** tell you to click "Allow" / add an exclusion as the fix — that reflex is exactly what the real ClickFix attack relies on.
+
+## What to run instead (both fix the FP and are genuinely safer)
+
+**Option 1 — open PowerShell first, then the one-liner interactively** (cradle never lands on a command line):
+```bat
+powershell
+```
+```powershell
+irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex
+```
+
+**Option 2 — download, inspect, run the *file*** (a normal op, not a download-execute):
+```bat
+powershell -Command "irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 -OutFile $env:TEMP\bootstrap.ps1"
+notepad "%TEMP%\bootstrap.ps1"
+powershell -ExecutionPolicy Bypass -File "%TEMP%\bootstrap.ps1"
+```
+
+Now let me fix the docs — the block I added last turn literally recommends the flagged command, so it needs correcting.
+
+_**Agent (claude-opus-4-8 2026-07-11 05:24:46Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/docs/setup.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:25:04Z)**_
+
+<think><details><summary>Thought Process</summary>
+Now working on the Traditional Chinese version.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:25:09Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/docs/setup.zh-TW.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:25:38Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm checking whether this ClickFix false positive detection warrants a pitfalls entry based on the debugging criteria—it's a non-obvious fix involving Defender's ML heuristic flagging a PowerShell one-liner as malware, which definitely qualifies as something that took significant time to debug and isn't easily searchable. I'm leaning toward creating the pitfall entry proactively since their CLAUDE.md is pretty explicit about the workflow, and this is exactly the kind of non-obvious trap that deserves documentation. Let me check if there's a template format to follow before I write it up.
+
+Actually, I should stay focused—the core fix is done. I'll verify the docs build cleanly with strict validation, then present the solution with an optional recommendation to add the pitfall entry rather than overstepping.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:25:38Z)**_
+
+Both docs fixed. Let me verify the build (admonitions + the new link) stays green under `--strict`.
+
+_**Agent (claude-opus-4-8 2026-07-11 05:25:46Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Rebuild docs --strict and sanity-check content
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+out=$(uv run --with mkdocs-material --with mkdocs-static-i18n mkdocs build --strict 2>&1)
+echo "$out" | grep -iE "error|no such anchor|aborted|contains a link|Documentation built" | grep -vi "mkdocs 2.0\|material for mkdocs\|lunr" || echo "(clean — no link/anchor/build errors)"
+rm -rf site
+echo "--- sanity: flagged cradle no longer recommended, safe forms present ---"
+grep -c 'powershell -NoProfile -ExecutionPolicy Bypass -Command "irm' docs/setup.md docs/setup.zh-TW.md
+grep -l "ClickFix" docs/setup.md docs/setup.zh-TW.md
+```
+
+```text
+INFO    -  Documentation built in 1.68 seconds
+--- sanity: flagged cradle no longer recommended, safe forms present ---
+docs/setup.md:0
+docs/setup.zh-TW.md:0
+docs/setup.zh-TW.md
+docs/setup.md
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:26:05Z)**_
+
+<think><details><summary>Thought Process</summary>
+Checking the build output—the problematic PowerShell command with `-NoProfile` isn't showing up as a recommended option anymore (zero occurrences in both files), only appearing inside the warning section as the example to avoid. The ClickFix note is present in both files as expected, though my grep search for the `-NoProfile` variant seems to have cut off mid-check.
+
+Now I'm ready to wrap this up: I can commit the changes (same process as before, branch to main), and optionally add a pitfalls document following the repo convention to flag this as a non-obvious ClickFix trap for future reference.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:26:08Z)**_
+
+Build is clean, and the flagged form is gone from both files (the ClickFix-shaped command now appears only *inside* the warning as a "don't do this" example, not as a copy-paste target).
+
+## Summary
+
+**Root cause (confirmed):** `Trojan:Win32/ClickFix.*!ml` is a Defender ML heuristic that fires on the command-line **shape** — a `powershell` process whose args are a remote `irm|iex` download-cradle + `-ExecutionPolicy Bypass`/`-NoProfile`. That's the exact ClickFix dropper signature; content is irrelevant (VirusTotal-clean scripts still trip it). The `-ExecutionPolicy Bypass` cmd wrapper I added last turn was the trigger.
+
+**Docs revised** (`docs/setup.md` + `setup.zh-TW.md`, bilingual):
+- Removed the flagged `powershell -c "irm|iex"` recommendation.
+- Added two safe cmd paths: (1) launch `powershell`, then run `irm|iex` interactively; (2) download → inspect → run the **file**.
+- Added a `!!! warning` that explains the false positive *and* turns it into a security lesson (never paste a `powershell -c "irm|iex"` from a web page / "verify you're human" prompt — that's the actual attack). `mkdocs --strict` green.
+
+## Two things to decide
+
+1. **Commit?** Same workflow as before (branch → fast-forward to `main`), message e.g. `docs(setup): cmd bootstrap via interactive pwsh / file; warn on ClickFix FP`. This would fold in with the earlier uncommitted `docs(setup)` change from last turn (cmd one-liner + relaunch fix), or I can split them.
+2. **Add a `pitfalls/` entry?** Per your CLAUDE.md convention, this is a textbook grep-able trap (symptom: `Trojan:Win32/ClickFix.R!ml`; non-obvious root cause + fix). I'd add `pitfalls/clickfix-defender-flags-cmd-irm-iex.md`. Want it?
+
+Which would you like — and should the two `docs(setup)` edits be one commit or two?
+
+---
+
+_**User (2026-07-11 05:41:51Z)**_
+
+one commit
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-11 05:42:12Z)**_
+
+<think><details><summary>Thought Process</summary>
+The user wants a single commit that combines both the documentation setup changes from the previous turn and the ClickFix revision from this turn. They specifically answered the "one commit or two" question, so the docs changes should be folded together, though they didn't explicitly weigh in on whether to include a pitfalls entry.
+
+I'll skip creating the pitfall entry since they didn't ask for it, and just commit the setup.md and setup.zh-TW.md changes. Following the established pattern from earlier in the session, I should branch first, make the commit, then offer to fast-forward to main — though I'm uncertain whether to proactively ff this time or wait for them to ask like they did last time.
+
+Let me check the current state with git status to see exactly what's modified, then create a branch, stage only those two files, and commit them together.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:42:12Z)**_
+
+On one commit — folding both `docs(setup)` edits (last turn's cmd one-liner + relaunch fix, and this turn's ClickFix revision) together. Let me branch, stage just the two setup files, and commit.
+
+_**Agent (claude-opus-4-8 2026-07-11 05:42:13Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Confirm setup docs changes before committing
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+echo "=== current branch + status ==="
+git branch --show-current
+git status --short -- docs/setup.md docs/setup.zh-TW.md
+echo "=== diffstat of what will be committed ==="
+git diff --stat -- docs/setup.md docs/setup.zh-TW.md
+```
+
+```text
+=== current branch + status ===
+main
+ M docs/setup.md
+ M docs/setup.zh-TW.md
+=== diffstat of what will be committed ===
+ docs/setup.md       | 48 ++++++++++++++++++++++++++++++++++++++++++++++--
+ docs/setup.zh-TW.md | 43 +++++++++++++++++++++++++++++++++++++++++--
+ 2 files changed, 87 insertions(+), 4 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:42:25Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'll create a branch, stage the changes to those two setup docs, and commit them. Then I'll push with a fast-forward to match the pattern we've been using.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:42:29Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Branch and commit the setup docs changes
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+git switch -c docs/cmd-bootstrap-clickfix
+git add docs/setup.md docs/setup.zh-TW.md
+git commit -q -F - <<'EOF'
+docs(setup): cmd bootstrap via interactive pwsh / file; warn on ClickFix FP
+
+Document how to bootstrap from cmd.exe by handing off to the in-box Windows
+PowerShell 5.1, and fix the inaccurate "re-launches under pwsh" step (bootstrap
+never relaunches -- chezmoi runs the .ps1 under pwsh via [interpreters.ps1]).
+
+Do NOT recommend `powershell -ExecutionPolicy Bypass -Command "irm | iex"`: that
+command-line shape (remote download-cradle + bypass/noprofile flags) trips
+Defender's Trojan:Win32/ClickFix.*!ml ML heuristic -- a false positive on the
+shape, not the script (content scan is clean), because it matches the ClickFix
+fake-CAPTCHA dropper pattern. Recommend two safe forms instead: open powershell
+then run irm|iex interactively (cradle never lands on a process command line), or
+download -> inspect -> run the file. Add a warning admonition that doubles as a
+security lesson (never paste an irm|iex one-liner from a web prompt). Bilingual.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+EOF
+echo "=== result ==="
+git log --oneline -1
+git branch --show-current
+```
+
+```text
+Switched to a new branch 'docs/cmd-bootstrap-clickfix'
+[WARNING] Unstaged files detected.
+[INFO] Stashing unstaged files to /Users/david/.cache/pre-commit/patch1783748547-75557.
+Auto-redact secrets in agent artifacts...............(no files to check)Skipped
+Detect hardcoded secrets.................................................Passed
+detect private key.......................................................Passed
+check for added large files..............................................Passed
+check for merge conflicts................................................Passed
+fix end of files.........................................................Passed
+trim trailing whitespace.................................................Passed
+[INFO] Restored changes from /Users/david/.cache/pre-commit/patch1783748547-75557.
+=== result ===
+c2cd642 docs(setup): cmd bootstrap via interactive pwsh / file; warn on ClickFix FP
+docs/cmd-bootstrap-clickfix
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:42:40Z)**_
+
+<think><details><summary>Thought Process</summary>
+I've pushed the changes as a single commit on the docs branch and the pre-commit checks passed. Since the user established a pattern of committing and then fast-forwarding to main, I should ask whether they want me to proceed with the fast-forward merge or if they'd prefer to handle that step themselves.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:42:40Z)**_
+
+Done — **`c2cd642`** on branch `docs/cmd-bootstrap-clickfix`, both `docs(setup)` edits in one commit, pre-commit hooks passed. It contains the cmd-bootstrap docs (interactive pwsh + download-to-file), the relaunch-step fix, and the ClickFix false-positive warning — bilingual, `mkdocs --strict` verified earlier.
+
+Want me to **fast-forward `main`** to it (same as last time)? And still open: the optional `pitfalls/clickfix-defender-flags-cmd-irm-iex.md` entry — say the word and I'll add it (separate commit).
+
+---
+
+_**User (2026-07-11 05:42:57Z)**_
+
+fast forward to main
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-11 05:43:09Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Fast-forward main and delete feature branch
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+git switch main
+git merge --ff-only docs/cmd-bootstrap-clickfix
+echo "=== main now at ==="
+git log --oneline -2
+git branch -d docs/cmd-bootstrap-clickfix
+echo "=== branches ==="
+git branch
+```
+
+```text
+Switched to branch 'main'
+M	.specstory/history/2026-07-11_00-15-23Z-powershell-starship-dos-cmd.md
+Your branch is up to date with 'origin/main'.
+Updating 3ff220f..c2cd642
+Fast-forward
+ docs/setup.md       | 48 ++++++++++++++++++++++++++++++++++++++++++++++--
+ docs/setup.zh-TW.md | 43 +++++++++++++++++++++++++++++++++++++++++--
+ 2 files changed, 87 insertions(+), 4 deletions(-)
+=== main now at ===
+c2cd642 docs(setup): cmd bootstrap via interactive pwsh / file; warn on ClickFix FP
+3ff220f feat(clink): opt-in cmd.exe support (starship + zoxide + fzf)
+Deleted branch docs/cmd-bootstrap-clickfix (was c2cd642).
+=== branches ===
+* main
++ worktree-docs-agents
++ worktree-herdr
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:43:21Z)**_
+
+<think><details><summary>Thought Process</summary>
+The merge completed successfully and the branch was deleted. Interestingly, the status now shows the branch is up to date with origin/main, which suggests the earlier divergence has been resolved—previously it indicated a 3 and 2 commit divergence, but now it's synced.
+
+Looking at the commit history, main moved from 24bce49 to 3ff220f between the first fast-forward and this one, indicating the history was rewritten or rebased (likely when reconciling with origin). After this fast-forward, local main is at c2cd642, one commit ahead of origin/main—which is expected since they didn't ask to push. The modified indicator on the transcript file is just the live update being recorded, nothing concerning.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:43:21Z)**_
+
+`main` is now at **`c2cd642`** (fast-forwarded from `3ff220f`), and the `docs/cmd-bootstrap-clickfix` branch is deleted.
+
+Current top of `main`:
+- `c2cd642` docs(setup): cmd bootstrap via interactive pwsh / file; warn on ClickFix FP
+- `3ff220f` feat(clink): opt-in cmd.exe support (starship + zoxide + fzf)
+
+Local `main` is now 1 commit ahead of `origin/main` (not pushed — you didn't ask). The `pitfalls/` entry offer still stands if you want it. Anything else?
+
+---
+
+_**User (2026-07-11 05:43:24Z)**_
+
+and can add pitfall
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-11 05:43:36Z)**_
+
+<think><details><summary>Thought Process</summary>
+I need to create a pitfalls entry following the documentation format, capturing the exact error message, explaining why it occurs, providing a copy-pasteable fix, and outlining how to prevent it in the future.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:43:36Z)**_
+
+Let me match the repo's pitfall format — reading the README template and an existing example first.
+
+_**Agent (claude-opus-4-8 2026-07-11 05:43:36Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+List pitfalls directory
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+echo "=== pitfalls/ contents ==="; ls -1 pitfalls/ 2>/dev/null
+```
+
+```text
+=== pitfalls/ contents ===
+onedrive-kfm-profile-not-loaded.md
+README.md
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:43:41Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./pitfalls/README.md`
+
+```text
+1	# Pitfalls
+2	
+3	Past traps we've stepped on. **Symptoms-first** knowledge base — when a
+4	problem recurs (on a new machine, after an upgrade, with a new tool combo),
+5	grepping the symptom here lands you on the root cause and workaround in
+6	seconds, instead of re-debugging from scratch.
+7	
+8	This folder is excluded from <DEPLOYMENT/PACKAGING MECHANISM, e.g. chezmoi via
+9	.chezmoiignore.tmpl, Python via MANIFEST.in, npm via .npmignore> — it is repo
+10	metadata for maintainers, not user-facing config to deploy.
+11	
+12	## Pitfalls vs the rest
+13	
+14	| Surface | Time direction | Question it answers | Access pattern |
+15	|---|---|---|---|
+16	| `docs/<tool>.md` | Present | "How does this tool work / how do I configure it?" | Read top to bottom |
+17	| `pitfalls/<slug>.md` | **Past** | **"I see error X — has this happened before?"** | **Grep symptoms** |
+18	| `backlog/<slug>.md` | Future | "We thought about doing Y — what was the analysis?" | Index in `TODO.md` |
+19	| `AGENTS.md` Hard invariants | Present | "What rules MUST agents follow?" | Read top to bottom |
+20	
+21	A pitfall **graduates** to a Hard invariant when the trap is serious enough
+22	that you can't rely on memory or grep — typically when (a) it recurs across
+23	machines, (b) it silently corrupts state, or (c) the workaround is non-obvious
+24	and easy to undo by accident. When graduating, leave a `pitfalls/<slug>.md`
+25	as historical record and link to it from the new invariant.
+26	
+27	## When to add a pitfall doc
+28	
+29	Add `pitfalls/<slug>.md` when you've spent more than ~15 minutes on something
+30	that wasn't googleable, AND any of:
+31	
+32	- The symptom is non-obvious from the root cause (silent state, weird side
+33	  effect, behaviour change without error)
+34	- The fix is "do nothing different but in a specific order"
+35	- The same trap could be hit by a new agent / new machine / new contributor
+36	- An upstream bug exists with no ETA — workaround needs to outlive memory
+37	- A specific tool version is required (or forbidden) and failure at the
+38	  wrong version is silent / confusing
+39	
+40	## When NOT to add a pitfall doc
+41	
+42	- Trivially googleable (next person solves in 30 seconds)
+43	- Already covered in `docs/<tool>.md` — cross-link from this README's
+44	  "Cross-referenced pitfalls" table below instead of duplicating
+45	- Already a Hard invariant (cross-link only)
+46	- One-off transient (network glitch, machine-specific config rot)
+47	
+48	## File template
+49	
+50	See [`pitfall-doc.md.template`] in the
+51	[`project-knowledge-harness` skill](https://github.com/daviddwlee84/agent-skills/tree/main/skills/local/project-knowledge-harness)
+52	for the per-doc template.
+53	
+54	Key sections (different from `backlog/` template — symptom-first, not
+55	context-first):
+56	
+57	```markdown
+58	# <Title describing the SYMPTOM, not the root cause>
+59	
+60	**Symptoms** (grep this section): <verbatim error messages, observable behaviour>
+61	**First seen**: YYYY-MM
+62	**Affects**: <tool/version/OS combo>
+63	**Status**: workaround documented / fixed upstream in vX.Y / WONTFIX
+64	
+65	## Symptom
+66	
+67	Full error messages (verbatim — preserves grep-ability).
+68	
+69	## Root cause
+70	
+71	Why this happens, with source/docs/upstream issue link.
+72	
+73	## Workaround
+74	
+75	Copy-pasteable commands or config diff.
+76	
+77	## Prevention
+78	
+79	How to avoid stepping on this again.
+80	
+81	## Related
+82	
+83	Links to docs, sibling pitfalls, TODO entries, upstream issues.
+84	```
+85	
+86	## Index
+87	
+88	Pitfalls owned by this folder. Keep alphabetical.
+89	
+90	| Slug | Symptom keywords | Status |
+91	|---|---|---|
+92	| [`onedrive-kfm-profile-not-loaded`](onedrive-kfm-profile-not-loaded.md) | `is not recognized as a name of a cmdlet`, `OneDrive - <tenant>\Documents\PowerShell`, bare prompt / no starship | fixed |
+93	
+94	## Cross-referenced pitfalls (still in their original homes)
+95	
+96	These traps are documented elsewhere and aren't duplicated here — the table
+97	exists so grepping `pitfalls/` still finds them. Move into this folder only
+98	if their original location stops being a natural reading flow.
+99	
+100	| Trap | Lives in | Why not here |
+101	|---|---|---|
+102	| (example: Tool X version Y bug) | `docs/tool-x.md` → "Known issues" | Already part of the tool's normal config narrative |
+103
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:43:41Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./pitfalls/onedrive-kfm-profile-not-loaded.md`
+
+```text
+1	# pwsh $PROFILE not loaded / "is not recognized" under OneDrive Known Folder Move
+2	
+3	**Symptoms** (grep this section): `is not recognized as a name of a cmdlet, function, script file, or executable`; `Documents\PowerShell\Microsoft.PowerShell_profile.ps1`; a bare `PS C:\...>` prompt with no starship / no aliases; the error path shows `OneDrive - <tenant>\Documents\PowerShell`.
+4	**First seen**: 2026-07
+5	**Affects**: Windows with OneDrive "Known Folder Move" (Documents redirected) — common on corporate/managed machines; chezmoi-managed pwsh `$PROFILE`.
+6	**Status**: fixed — `run_onchange_after_02_profile_redirect.ps1.tmpl` now writes the loader **content** (previously a dot-source pointer stub).
+7	
+8	## Symptom
+9	
+10	A new pwsh session errors on startup, then falls back to a bare prompt:
+11	
+12	```
+13	. : C:\Users\<user>\OneDrive - <tenant>\Documents\PowerShell\Microsoft.PowerShell_profile.ps1:4
+14	Line |
+15	   4 |  . "C:\Users\<user>\Documents\PowerShell\Microsoft.PowerShell_profi …
+16	     |    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+17	     | The term 'C:\Users\<user>\Documents\PowerShell\Microsoft.PowerShell_profile.ps1'
+18	     | is not recognized as a name of a cmdlet, function, script file, or executable program.
+19	```
+20	
+21	No starship prompt, no aliases — the managed profile never loaded.
+22	
+23	## Root cause
+24	
+25	chezmoi writes the managed loader to the **literal** `~/Documents/PowerShell/Microsoft.PowerShell_profile.ps1` (it joins `Documents` off `%USERPROFILE%`, unaware of shell Known Folders). But when OneDrive **Known Folder Move** redirects Documents, interactive pwsh resolves `$PROFILE` to `...\OneDrive - <tenant>\Documents\PowerShell\...` — a *different* path.
+26	
+27	The old redirect script bridged this by writing a **stub** at the real `$PROFILE` that dot-sourced the literal path:
+28	
+29	```powershell
+30	. "C:\Users\<user>\Documents\PowerShell\Microsoft.PowerShell_profile.ps1"
+31	```
+32	
+33	Under KFM the literal `~/Documents` copy is **not guaranteed to exist** at `$PROFILE`-load time (OneDrive may have moved/removed it), so the dot-source target is missing → "is not recognized". The stub itself was written fine; only the thing it pointed at was gone. (This is pure path topology — not a privilege issue.)
+34	
+35	## Workaround
+36	
+37	Fixed in-repo: the redirect script now writes the managed loader's **content** into `$PROFILE`. The loader is location-independent (it only sources `~/.config/powershell`), so there is nothing left to point at. To recover a broken machine by hand:
+38	
+39	```powershell
+40	chezmoi cat "$HOME\Documents\PowerShell\Microsoft.PowerShell_profile.ps1" |
+41	    Set-Content -LiteralPath $PROFILE -Encoding utf8
+42	. $PROFILE
+43	```
+44	
+45	`chezmoi cat` renders the managed file from source without needing the literal copy on disk. A following `chezmoi apply` re-runs the redirect script to keep the OneDrive copy in sync.
+46	
+47	## Prevention
+48	
+49	- The redirect writes **content, not a pointer**, so a missing literal `~/Documents` copy can no longer break `$PROFILE` load, and there's no self-source recursion risk.
+50	- The loader is embedded via `{{ include }}`, so `run_onchange` re-fires whenever the loader changes and the OneDrive copy stays current (the old plain-`.ps1` stub never updated on loader edits).
+51	
+52	## Related
+53	
+54	- `.chezmoiscripts/run_onchange_after_02_profile_redirect.ps1.tmpl`
+55	- `Documents/PowerShell/Microsoft.PowerShell_profile.ps1` (the loader)
+56	- Graduate to an `AGENTS.md` Hard invariant if it recurs across machines (see `pitfalls/README.md`).
+57
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:44:44Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm creating a documentation file for a Windows Defender security flag issue, structuring it with a symptom-focused title and organizing the content with sections for symptoms, verbatim error messages, and the specific threat detection like Trojan:Win32/ClickFix.R.
+
+ml. I'll also need to update the pitfalls README index to include this new entry in alphabetical order before the existing onedrive-kfm entry. The workaround is already documented in the setup guide with two safe alternatives, and the problematic `powershell -c "irm|iex"` form isn't recommended. When users paste the one-liner into cmd, Windows Defender blocks it with the ClickFix threat detection before the bootstrap script even executes, and a content scan of the script itself shows it's clean.
+
+The real issue is that ClickFix is a machine-learning heuristic in Defender that flags the *command line shape* rather than the actual file content — specifically, it detects the pattern of a PowerShell process with stealth flags like `-ExecutionPolicy Bypass` and `-NoProfile` combined with a remote download-and-execute cradle using `irm`/`iwr` piped to `iex`, which matches the classic dropper pattern used by malware.
+
+Because ClickFix social-engineering campaigns (fake CAPTCHA pages tricking users into pasting PowerShell one-liners) became widespread in 2024–2025, Defender aggressively flags this command-line shape, which creates false positives for legitimate tools like scoop and chezmoi that use the same installation idiom.
+
+Two factors amplify the problem: adding `-ExecutionPolicy Bypass` is unnecessary since `iex` of a downloaded string isn't governed by execution policy (only `.ps1` files are), and wrapping the cradle in `powershell -Command "…"` puts the entire `irm|iex` on a process command line, whereas running it interactively inside an already-open PowerShell session avoids this detection pattern entirely.
+
+The solution is to either start PowerShell first and run the one-liner interactively so it never lands on a process command line, or download the script file first, inspect it, then execute it — treating it as a normal operation rather than a download-execute pattern.
+
+Never "fix" this by adding Defender exclusions or clicking Allow on blocked cradles, since that's exactly what ClickFix attacks exploit; only run `irm|iex` commands you can trace to a trusted source.
+
+The documentation should ship the safe interactive forms and include a warning about false positives, explicitly avoiding recommending the one-liner `powershell -c "irm|iex"`. When writing any Windows install one-liner, keep the cradle interactive within PowerShell and drop the `-ExecutionPolicy Bypass` flag.
+
+I should also strip out `-NoProfile` and `-WindowStyle Hidden` from any `powershell -Command` line, and favor downloading to a file so users can inspect it first. The setup docs, bootstrap script, and the Microsoft security blog post on ClickFix all support this approach, and there's a community report flagging the false positive issue.
+
+Now I'm updating the README index table with a new row for the ClickFix defender flags documentation, placing it alphabetically before the OneDrive entry, then I'll create the file and offer to commit these changes. I'll skip the template placeholder since it's pre-existing and out of scope, then create the pitfall documentation and update the index.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:44:44Z)**_
+
+The format is clear. Creating the pitfall doc (symptom-titled) and adding it to the README index.
+
+_**Agent (claude-opus-4-8 2026-07-11 05:44:49Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```md
+# Windows Defender flags the cmd bootstrap one-liner as Trojan:Win32/ClickFix
+
+**Symptoms** (grep this section): `Trojan:Win32/ClickFix.R!ml`; `Trojan:Win32/ClickFix`; Windows Defender / "Threat detected" blocks or removes the command when running `powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://.../bootstrap.ps1 | iex"` from `cmd.exe`; the `irm` / `iwr` / `iex` one-liner is killed before it runs; VirusTotal shows the fetched script clean (0/NN) yet Defender still blocks.
+**First seen**: 2026-07
+**Affects**: Microsoft Defender Antivirus (ML / `!ml` cloud heuristic) on any Windows 10/11 — running the download-cradle bootstrap one-liner from cmd.exe. NOT specific to this repo (the script content is benign).
+**Status**: workaround documented — `docs/setup.md` recommends two safe forms; the flagged `powershell -c "irm|iex"` cradle is NOT shipped as the recommendation.
+
+## Symptom
+
+Pasting the cmd bootstrap one-liner:
+
+\```bat
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex"
+\```
+
+is blocked by Windows Defender real-time protection with:
+
+\```
+Trojan:Win32/ClickFix.R!ml
+\```
+
+The command is killed before `bootstrap.ps1` runs. A content scan of the script itself is clean (community reports show the same shape scoring 0/62 on VirusTotal) — Defender is blocking the **command line**, not the payload.
+
+## Root cause
+
+`ClickFix.*!ml` is a Microsoft Defender **machine-learning heuristic** that keys off the *shape of the process command line*, not file content. The flagged shape is a `powershell` process whose arguments are a **remote download-cradle** — `irm`/`iwr` (`Invoke-RestMethod`/`Invoke-WebRequest`) piped into `iex` (`Invoke-Expression`) — combined with stealth/bypass flags (`-ExecutionPolicy Bypass`, `-NoProfile`, sometimes `-WindowStyle Hidden` / `-NonInteractive`).
+
+That is exactly the dropper pattern used by the [ClickFix](https://www.microsoft.com/en-us/security/blog/2025/08/21/think-before-you-clickfix-analyzing-the-clickfix-social-engineering-technique/) social-engineering campaigns (fake CAPTCHA / "verify you're human" pages that tell victims to paste a PowerShell one-liner into Run or cmd). Those campaigns exploded in 2024–2025, so Defender flags the shape aggressively — a **false positive** on legitimate installers that use the same idiom (scoop, chezmoi, etc. all ship `irm|iex`). Community FP report: <https://github.com/DeusData/codebase-memory-mcp/issues/230>.
+
+Two things make it worse — and both were briefly in this repo's docs:
+
+- **`-ExecutionPolicy Bypass`** on the command line is a strong signal, and it is *unnecessary*: `iex` of a downloaded **string** isn't gated by execution policy anyway (policy governs `.ps1` *files*).
+- **Wrapping the cradle in `powershell -Command "…"`** (the cmd form) puts the whole `irm|iex` onto a *process command line*. Typing `irm|iex` inside an already-open PowerShell does not, so the interactive form is far less likely to trip the model.
+
+## Workaround
+
+Don't run the cradle on a cmd command line. Either:
+
+1. Start PowerShell first, then run the one-liner **interactively** (the cradle never lands on a process command line):
+
+   \```bat
+   powershell
+   \```
+   \```powershell
+   irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex
+   \```
+
+2. Download → inspect → run the **file** (a normal operation, not a download-execute — and you can read it first):
+
+   \```bat
+   powershell -Command "irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 -OutFile $env:TEMP\bootstrap.ps1"
+   notepad "%TEMP%\bootstrap.ps1"
+   powershell -ExecutionPolicy Bypass -File "%TEMP%\bootstrap.ps1"
+   \```
+
+Do **not** "fix" this by adding a Defender exclusion or clicking *Allow* on the blocked cradle — that reflex is precisely what a real ClickFix attack relies on. Only ever run an `irm|iex` you can trace to a source you trust.
+
+## Prevention
+
+- `docs/setup.md` + `docs/setup.zh-TW.md` ship the two safe forms above plus a `!!! warning` explaining the FP; they do **not** present `powershell -c "irm|iex"` as the recommended command.
+- When authoring any Windows install one-liner: keep the cradle **interactive** (inside pwsh), drop `-ExecutionPolicy Bypass` / `-NoProfile` / `-WindowStyle Hidden` from anything on a `powershell -Command` line, and prefer download-to-file for the inspectable path.
+
+## Related
+
+- `docs/setup.md` / `docs/setup.zh-TW.md` — "One-line install" + the ClickFix warning admonition
+- `bootstrap.ps1` — the (benign) script being fetched
+- Microsoft, "Think before you Click(Fix)": <https://www.microsoft.com/en-us/security/blog/2025/08/21/think-before-you-clickfix-analyzing-the-clickfix-social-engineering-technique/>
+- Community false-positive report: <https://github.com/DeusData/codebase-memory-mcp/issues/230>
+
+```
+
+```text
+File created successfully at: /Users/david/src/tries/2026-07-09-windows-dotfiles/pitfalls/clickfix-defender-flags-cmd-irm-iex.md (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:44:50Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/pitfalls/README.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:45:15Z)**_
+
+<think><details><summary>Thought Process</summary>
+I've verified that the pitfalls directory is properly excluded in `.chezmoiignore` and the README includes a note about reviewing for secrets before committing. Since there are no sensitive details in the content, I'm ready to commit these changes.
+
+Given the pattern we've established this session—where each step has been explicitly directed—I should commit this on a branch and then offer to fast-forward to main, rather than doing it automatically. This respects your control over the merge while keeping things efficient. I've verified the file is properly ignored in `.chezmoiignore` and contains no secrets, and the markdown table formatting with the escaped pipes looks correct. I'll report that it's ready and ask if they want me to commit and fast-forward to main, staying consistent with their explicit step-by-step pattern.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:45:15Z)**_
+
+Done. Created `pitfalls/clickfix-defender-flags-cmd-irm-iex.md` (symptom-titled, following the repo template: verbatim symptom → root cause with the Microsoft + FP-report links → the two safe workarounds → prevention) and added it to the `pitfalls/README.md` index, alphabetically ahead of the OneDrive entry.
+
+Notes:
+- `pitfalls/` is chezmoi-ignored (`.chezmoiignore` has `pitfalls` + `pitfalls/**`), so it won't deploy — maintainer metadata only.
+- No secrets in it (just public URLs + command examples), per the README's "not auto-redacted, review before committing" caveat.
+
+Two files changed, both untracked/modified:
+- `pitfalls/clickfix-defender-flags-cmd-irm-iex.md` (new)
+- `pitfalls/README.md` (index row)
+
+Want me to commit it (its own `docs(pitfalls): …` commit) and fast-forward `main`, same as before?
+
+---
+
+_**User (2026-07-11 05:50:55Z)**_
+
+sure commit on main
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-11 05:51:10Z)**_
+
+<think><details><summary>Thought Process</summary>
+The user wants me to commit directly to main rather than following my usual branch-first pattern. They explicitly said "commit on main," which overrides the default guidance about branching first. I should respect their direct instruction here.
+
+I'll stage the two pitfall files and commit them directly to main since that's what they're asking for.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:51:13Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit pitfall doc on main
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+git add pitfalls/clickfix-defender-flags-cmd-irm-iex.md pitfalls/README.md
+git commit -q -F - <<'EOF'
+docs(pitfalls): ClickFix false positive on the cmd irm|iex bootstrap
+
+Record why Defender flags `powershell -c "irm <url> | iex"` from cmd as
+Trojan:Win32/ClickFix.R!ml -- an ML heuristic on the command-line shape (remote
+download-cradle + -ExecutionPolicy Bypass/-NoProfile), a false positive on a
+content-clean script -- and the two safe forms (interactive pwsh, or
+download->inspect->run the file). Symptom-titled + indexed in pitfalls/README.md.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+EOF
+echo "=== result ==="
+git log --oneline -3
+git branch --show-current
+echo "=== pitfalls tracked? ==="
+git status --short -- pitfalls/
+```
+
+```text
+[WARNING] Unstaged files detected.
+[INFO] Stashing unstaged files to /Users/david/.cache/pre-commit/patch1783749071-83755.
+Auto-redact secrets in agent artifacts...............(no files to check)Skipped
+Detect hardcoded secrets.................................................Passed
+detect private key.......................................................Passed
+check for added large files..............................................Passed
+check for merge conflicts................................................Passed
+fix end of files.........................................................Passed
+trim trailing whitespace.................................................Passed
+[INFO] Restored changes from /Users/david/.cache/pre-commit/patch1783749071-83755.
+=== result ===
+a2514b7 docs(pitfalls): ClickFix false positive on the cmd irm|iex bootstrap
+c2cd642 docs(setup): cmd bootstrap via interactive pwsh / file; warn on ClickFix FP
+3ff220f feat(clink): opt-in cmd.exe support (starship + zoxide + fzf)
+main
+=== pitfalls tracked? ===
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 05:51:19Z)**_
+
+Committed directly on `main` — **`a2514b7`**, pre-commit hooks passed, `pitfalls/` now clean (both files tracked).
+
+`main` now reads:
+- `a2514b7` docs(pitfalls): ClickFix false positive on the cmd irm|iex bootstrap
+- `c2cd642` docs(setup): cmd bootstrap via interactive pwsh / file; warn on ClickFix FP
+- `3ff220f` feat(clink): opt-in cmd.exe support (starship + zoxide + fzf)
+
+That closes out the whole cmd.exe thread: the Clink feature, the bootstrap docs, and the ClickFix trap captured for future-you. Local `main` is 3 commits ahead of `origin/main` (nothing pushed). Still untracked: this session's specstory transcripts + the plan file, if you want those swept in later.

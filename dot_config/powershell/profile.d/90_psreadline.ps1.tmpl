@@ -5,14 +5,9 @@
 Import-Module PSReadLine -ErrorAction SilentlyContinue
 if (Get-Module -Name PSReadLine) {
 
-    Set-PSReadLineOption -PredictionSource HistoryAndPlugin -ErrorAction SilentlyContinue
-    Set-PSReadLineOption -PredictionViewStyle ListView       -ErrorAction SilentlyContinue
-    Set-PSReadLineOption -HistorySearchCursorMovesToEnd
-    Set-PSReadLineOption -HistoryNoDuplicates
-
-    # Up/Down search history by the prefix already typed.
-    Set-PSReadLineKeyHandler -Key UpArrow   -Function HistorySearchBackward
-    Set-PSReadLineKeyHandler -Key DownArrow -Function HistorySearchForward
+    # EditMode MUST come first: -EditMode resets PSReadLine's key-handler tables
+    # to that mode's defaults, so every custom handler below (and the PSFzf
+    # chords) has to be applied AFTER it or it gets clobbered on each shell start.
 {{- if .enableVimMode }}
 
     # vi modal editing (mirrors the shells' enableVimMode on macOS/Linux).
@@ -22,4 +17,19 @@ if (Get-Module -Name PSReadLine) {
 
     Set-PSReadLineOption -EditMode Windows
 {{- end }}
+
+    Set-PSReadLineOption -PredictionSource HistoryAndPlugin -ErrorAction SilentlyContinue
+    Set-PSReadLineOption -PredictionViewStyle ListView       -ErrorAction SilentlyContinue
+    Set-PSReadLineOption -HistorySearchCursorMovesToEnd
+    Set-PSReadLineOption -HistoryNoDuplicates
+
+    # Up/Down search history by the prefix already typed.
+    Set-PSReadLineKeyHandler -Key UpArrow   -Function HistorySearchBackward
+    Set-PSReadLineKeyHandler -Key DownArrow -Function HistorySearchForward
+
+    # PSFzf (imported in 10_tools) binds Ctrl+t files / Ctrl+r history. Re-apply
+    # here: the -EditMode reset above wipes those bindings.
+    if (Get-Module -Name PSFzf) {
+        Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+t' -PSReadlineChordReverseHistory 'Ctrl+r'
+    }
 }

@@ -368,7 +368,6 @@ Install-Herdr
 Scoop-Install @('clink')
 if (Have clink) {
     clink autorun install *> $null                 # HKCU AutoRun; inject into every cmd.exe (no admin)
-    clink set fzf.default_bindings true *> $null    # Ctrl-R history / Ctrl-T files / Alt-C dir
     $clinkDir = Join-Path $env:LOCALAPPDATA 'clink'
     New-Item -ItemType Directory -Force -Path $clinkDir | Out-Null
     $clinkPlugins = @{
@@ -380,6 +379,11 @@ if (Have clink) {
         try { Invoke-WebRequest -UseBasicParsing -Uri $clinkPlugins[$name] -OutFile (Join-Path $clinkDir $name) }
         catch { Register-Failure "clink-plugin:$name" }
     }
+    # fzf.default_bindings is a setting DEFINED INSIDE fzf.lua, and `clink set`
+    # reloads the profile scripts first -- so this must run AFTER fzf.lua is
+    # downloaded above, else the setting is unknown and the value is silently
+    # not persisted (the *> $null swallows the "unknown setting" error).
+    clink set fzf.default_bindings true *> $null    # Ctrl-R history / Ctrl-T files / Alt-C dir
 } else { Register-Failure 'clink (autorun/plugins not configured)' }
 {{ end -}}
 

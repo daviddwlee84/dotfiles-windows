@@ -54,10 +54,9 @@ if (Get-Command fzf -ErrorAction SilentlyContinue) {
     # Import directly — a `Get-Module -ListAvailable` guard scans all of
     # PSModulePath (slow, esp. under OneDrive-hydrated Documents\PowerShell\Modules).
     # `Get-Module -Name` checks only loaded modules, so it's cheap.
+    # The Ctrl+t / Ctrl+r chords are bound in 90_psreadline.ps1 — they must be
+    # applied AFTER `Set-PSReadLineOption -EditMode`, which resets key handlers.
     Import-Module PSFzf -ErrorAction SilentlyContinue
-    if (Get-Module -Name PSFzf) {
-        Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+t' -PSReadlineChordReverseHistory 'Ctrl+r'
-    }
 }
 
 # direnv — per-directory environments
