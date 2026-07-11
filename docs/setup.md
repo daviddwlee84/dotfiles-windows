@@ -8,6 +8,46 @@ From a fresh Windows PowerShell (or PowerShell 7) session:
 irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex
 ```
 
+Or from **cmd.exe** — there's no native-cmd bootstrap to maintain; you hand off to
+the in-box **Windows PowerShell (5.1)**, present on every Windows machine. Start
+it, then run the one-liner interactively:
+
+```bat
+powershell
+```
+```powershell
+irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex
+```
+
+Or download the script, read it, and run the **file** (safer — and it sidesteps
+the Defender warning below):
+
+```bat
+powershell -Command "irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 -OutFile $env:TEMP\bootstrap.ps1"
+notepad "%TEMP%\bootstrap.ps1"
+powershell -ExecutionPolicy Bypass -File "%TEMP%\bootstrap.ps1"
+```
+
+Use `powershell`, **not** `pwsh` — pwsh isn't installed yet on a fresh box. The
+bootstrap logic lives once, in PowerShell (`bootstrap.ps1`): cmd is a poor
+language for the elevation / `PATH` / `chezmoi` steps, and these dotfiles are
+PowerShell anyway, so a machine with *no* PowerShell couldn't use the repo.
+
+!!! warning "Defender may flag the cmd irm|iex one-liner as ClickFix"
+    Wrapping the cradle on a cmd command line —
+    `powershell -ExecutionPolicy Bypass -Command "irm <url> | iex"` — can trip
+    Defender's **`Trojan:Win32/ClickFix.*!ml`** machine-learning heuristic. It's a
+    **false positive on the command-line _shape_**, not our script (a content scan
+    is clean): a `powershell` process whose command line is a remote
+    download-cradle (`irm|iex`) plus `-ExecutionPolicy Bypass` / `-NoProfile` is
+    exactly the shape the
+    [ClickFix](https://www.microsoft.com/en-us/security/blog/2025/08/21/think-before-you-clickfix-analyzing-the-clickfix-social-engineering-technique/)
+    fake-CAPTCHA campaigns use. The two forms above avoid it — the cradle never
+    lands on a process command line, or you run a file instead — and inside an
+    already-open PowerShell the one-liner is fine. Bigger lesson: **never paste a
+    `powershell -c "irm|iex"` handed to you by a web page or a "verify you're
+    human" prompt — that request _is_ the attack.**
+
 `bootstrap.ps1` does the following, idempotently:
 
 1. Sets the execution policy to `RemoteSigned` for the current user.
@@ -16,8 +56,12 @@ irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstr
    otherwise refuses with *"Running the installer as administrator is disabled
    by default"*).
 3. Installs `git`, PowerShell 7 (`pwsh`), `chezmoi`, and `uv` via scoop.
-4. Re-launches under `pwsh` if it started in Windows PowerShell 5.1.
-5. Runs `chezmoi init --apply` against this repo.
+4. Refreshes `PATH` from the registry so the just-installed scoop shims
+   (`chezmoi`, `pwsh`, `uv`) resolve in the same session.
+5. Runs `chezmoi init --apply` (or `chezmoi update` if the source is already
+   cloned) — chezmoi runs the repo's `.ps1` scripts under pwsh itself
+   (`[interpreters.ps1]`), so it never relaunches the shell. Works from Windows
+   PowerShell 5.1 or pwsh 7.
 
 !!! warning "Behind the GFW"
     Keep a VPN on for the bootstrap — scoop downloads git / pwsh / chezmoi / uv

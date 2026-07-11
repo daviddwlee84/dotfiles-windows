@@ -8,6 +8,42 @@
 irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex
 ```
 
+也可以從 **cmd.exe** 執行 —— 不需要維護原生 cmd 版 bootstrap，直接交棒給內建的
+**Windows PowerShell（5.1）**（每台 Windows 都有）。先啟動它，再互動式執行那行：
+
+```bat
+powershell
+```
+```powershell
+irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex
+```
+
+或把腳本下載下來、看過內容、再執行**檔案**（比較安全，也能避開下面那個 Defender 警告）：
+
+```bat
+powershell -Command "irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 -OutFile $env:TEMP\bootstrap.ps1"
+notepad "%TEMP%\bootstrap.ps1"
+powershell -ExecutionPolicy Bypass -File "%TEMP%\bootstrap.ps1"
+```
+
+用 `powershell`，**不是** `pwsh` —— 全新機器上 pwsh 還沒裝。bootstrap 邏輯只維護一份、
+寫在 PowerShell（`bootstrap.ps1`）：elevation / `PATH` / `chezmoi` 這些步驟用 cmd 寫
+會又醜又易錯，而且這份 dotfiles 本來就是 PowerShell，一台完全沒有 PowerShell 的機器
+本來就用不了這個 repo。
+
+!!! warning "Defender 可能把 cmd 的 irm|iex 一行版當成 ClickFix"
+    把 cradle 包成 cmd 命令列 ——
+    `powershell -ExecutionPolicy Bypass -Command "irm <url> | iex"` —— 可能觸發
+    Defender 的 **`Trojan:Win32/ClickFix.*!ml`** 機器學習啟發式偵測。這是對**命令列
+    「形狀」的誤判**，不是我們的腳本有問題（內容掃描是乾淨的）：一個 `powershell`
+    行程的命令列是遠端 download-cradle（`irm|iex`）再加上 `-ExecutionPolicy Bypass` /
+    `-NoProfile`，正是
+    [ClickFix](https://www.microsoft.com/en-us/security/blog/2025/08/21/think-before-you-clickfix-analyzing-the-clickfix-social-engineering-technique/)
+    假 CAPTCHA 攻擊用的形狀。上面兩種寫法都能避開 —— cradle 不會落在行程命令列上，或
+    改成執行檔案 —— 而在**已經開著的 PowerShell 裡**跑那行是沒問題的。更重要的教訓：
+    **絕對不要貼上任何網頁或「驗證你是真人」提示塞給你的 `powershell -c "irm|iex"`
+    —— 那個要求本身就是攻擊。**
+
 `bootstrap.ps1` 會依序（且可重複執行）完成：
 
 1. 將目前使用者的 execution policy 設為 `RemoteSigned`。
@@ -15,8 +51,11 @@ irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstr
    系統管理員身分，會自動帶上 `-RunAsAdmin`；否則安裝程式會以
    *「Running the installer as administrator is disabled by default」* 拒絕執行）。
 3. 透過 scoop 安裝 `git`、PowerShell 7（`pwsh`）、`chezmoi`、`uv`。
-4. 若是從 Windows PowerShell 5.1 啟動，會改用 `pwsh` 重新執行。
-5. 對此 repo 執行 `chezmoi init --apply`。
+4. 從 registry 重新載入 `PATH`，讓剛裝好的 scoop shim（`chezmoi`、`pwsh`、`uv`）
+   在同一個 session 就能被找到。
+5. 執行 `chezmoi init --apply`（若 source 已經 clone 過則改用 `chezmoi update`）
+   —— chezmoi 會透過 `[interpreters.ps1]` 自己用 pwsh 跑 repo 的 `.ps1`，所以**不會**
+   重啟 shell。從 Windows PowerShell 5.1 或 pwsh 7 起手都可以。
 
 !!! warning "在 GFW 後面"
     bootstrap 期間請開著 VPN —— scoop 會從 **GitHub releases** 下載
