@@ -14,6 +14,7 @@
 #   installLlmTools      = {{ .installLlmTools }}
 #   installTunnelTools   = {{ .installTunnelTools }}
 #   installIacTools      = {{ .installIacTools }}
+#   installHerdr         = {{ .installHerdr }}
 #   useChineseMirror     = {{ .useChineseMirror }}
 #   managedMachine       = {{ .managedMachine }}
 
@@ -128,6 +129,25 @@ function Npm-InstallGlobal([string[]]$pkgs) {
         Info "npm i -g $p"
         npm install -g $p 2>&1 | Out-Host
         if ($LASTEXITCODE -ne 0) { Register-Failure "npm:$p" }
+    }
+}
+
+# --- herdr (native Windows terminal multiplexer, preview beta) --------------
+# No scoop/winget/npm manifest — installs via herdr.dev's irm|iex bootstrap
+# (same shape as Ensure-Scoop). Windows builds are preview-only; the bin junction
+# is %LOCALAPPDATA%\Programs\Herdr\bin (added to PATH in profile.d/00_env.ps1).
+function Install-Herdr {
+    $herdrBin = Join-Path $env:LOCALAPPDATA 'Programs\Herdr\bin\herdr.exe'
+    if ((Have herdr) -or (Test-Path -LiteralPath $herdrBin)) { Info 'herdr already installed'; return }
+    Info 'installing herdr (preview) via herdr.dev/install.ps1'
+    try {
+        $env:HERDR_CHANNEL = 'preview'   # Windows builds are preview-only
+        $installer = [scriptblock]::Create((Invoke-RestMethod https://herdr.dev/install.ps1))
+        & $installer
+        if (-not (Test-Path -LiteralPath $herdrBin)) { Register-Failure 'herdr' }
+    } catch {
+        Write-Warning "herdr install error: $_"
+        Register-Failure 'herdr'
     }
 }
 
@@ -330,6 +350,10 @@ if (Have az) {
     az extension add --name azure-devops --upgrade --only-show-errors
     if ($LASTEXITCODE -ne 0) { Register-Failure 'az-ext:azure-devops' }
 }
+{{ end -}}
+
+{{ if .installHerdr -}}
+Install-Herdr
 {{ end -}}
 
 if ($script:Failures.Count -gt 0) {

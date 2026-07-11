@@ -25,6 +25,7 @@
     installTunnelTools   = {{ promptBoolOnce . "installTunnelTools" "Install tunnel tools (ngrok, cloudflared)" false }}
     installIacTools      = {{ promptBoolOnce . "installIacTools" "Install Infrastructure-as-Code tools (Azure CLI, Terraform, OpenTofu)" false }}
     installSshServer     = {{ promptBoolOnce . "installSshServer" "Install and enable the OpenSSH server / sshd (needs admin, opens inbound port 22)" false }}
+    installHerdr         = {{ promptBoolOnce . "installHerdr" "Install herdr (native Windows terminal multiplexer, preview beta)" false }}
     useChineseMirror     = {{ promptBoolOnce . "useChineseMirror" "Use China (GFW) mirrors for pip/npm/cargo/go/node" false }}
     managedMachine       = {{ promptBoolOnce . "managedMachine" "Managed or corporate machine (skip org-policy-blocked apps like Tailscale and Grammarly)" false }}
     backupMode           = {{ promptChoiceOnce . "backupMode" "Back up existing files before apply (smart|full|off)" (list "smart" "full" "off") "smart" | quote }}

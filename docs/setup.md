@@ -41,6 +41,7 @@ irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstr
 | Tunnel tools | off | ngrok, cloudflared |
 | IaC tools | off | Azure CLI, Terraform, OpenTofu |
 | OpenSSH server | off | install + enable sshd (needs admin; opens inbound TCP 22) |
+| herdr multiplexer | off | native Windows terminal multiplexer (preview beta) |
 | China mirrors | off | pip / npm / cargo / go / node via GFW mirrors |
 | Managed machine | off | skip apps org policy usually blocks (Tailscale, Grammarly) |
 | Backup mode | `smart` | snapshot existing files before the first apply (`smart`/`full`/`off`) |

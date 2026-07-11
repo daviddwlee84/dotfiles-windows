@@ -52,22 +52,28 @@ scoop 的 shims 在 `~/scoop/shims`，scoop 會把它寫進 user PATH（`profile
 mise` 自己直接用 —— 這裡沒有任何東西依賴它。完整除錯過程見
 `backlog/windows-arm64-managed-machine-rough-edges.md`。
 
-## 終端多工器：WezTerm，而非 tmux/zellij
+## 終端多工器：WezTerm（穩定預設）+ herdr（原生 beta）
 
-`tmux` 與 `zellij` 是**只有 Unix** —— 沒有原生 Windows 版 —— 所以此處沒有（你仍可在
-WSL 裡跑）。要在 Windows 上取得類 tmux 體驗，選項是：
+`tmux` 與 `zellij` 是**只有 Unix** —— 過去沒有原生 Windows 版，所以此處沒有（你仍可在
+WSL 裡跑）。這點正在改變：**herdr** 推出了實驗性的原生 Windows beta。原生選項有：
 
 | 選項 | 分割/分頁 | 卸離+保留 | 備註 |
 |---|---|---|---|
-| **WezTerm** | 有（panes/tabs、Lua `wezterm.mux`） | 有（mux server + `wezterm connect`） | 原生 Windows；最接近 tmux |
+| **WezTerm** | 有（panes/tabs、Lua `wezterm.mux`） | 有（mux server + `wezterm connect`） | 原生 Windows；穩定預設 |
+| **herdr** | 有（滑鼠優先的 panes/splits） | 有（常駐 session、卸離/重連） | 原生 Windows、**preview beta**；最接近 tmux/zellij —— 透過 `installHerdr` 選用 |
 | Windows Terminal | 有（panes/tabs） | 無 | 很好的終端，但無 session 保留 |
 | Alacritty | 無 | 無 | 快、極簡；搭配多工器用 |
 | tmux / zellij | — | — | 只有 Unix；在 WSL 裡用 |
 
-我們安裝 **WezTerm**（`wez.wezterm`）作為多工器的答案：原生 Windows 終端、內建多工器
-—— 分割 panes、分頁，以及可卸離再重連的常駐 mux server（`wezterm connect`），還能用
-Lua `wezterm.mux` API 腳本化版面。它不是 1:1 的 tmux（session/保留模型不同），但已是
-最接近的原生體驗。Windows Terminal 保留給 panes/tabs；Alacritty 保留為快速極簡選項。
+**WezTerm**（`wez.wezterm`）是穩定預設：原生 Windows 終端、內建多工器 —— 分割 panes、
+分頁，以及可卸離再重連的常駐 mux server（`wezterm connect`），還能用 Lua `wezterm.mux`
+API 腳本化版面。它不是 1:1 的 tmux（session/保留模型不同），但已是最接近的穩定原生體驗。
+
+**herdr**（選用，`installHerdr`）是更新、最接近 tmux/zellij 的答案：滑鼠優先的原生多工器
+（ConPTY），有 panes、splits、常駐 session 與卸離/重連。它沒有 scoop/winget manifest ——
+透過 herdr.dev 的 `irm | iex` 腳本安裝（Windows 僅有 preview channel），設定則受管於
+`~/.config/herdr/config.toml`（以 pwsh 為預設 shell）。它仍是 beta，所以預設關閉。Windows
+Terminal 保留給 panes/tabs；Alacritty 保留為快速極簡選項。
 
 ## starship，而非 oh-my-posh
 

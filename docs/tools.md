@@ -132,6 +132,7 @@ Off by default; enable the matching init prompt:
 | Tunnel tools | ngrok, cloudflared (scoop) |
 | IaC tools | Terraform, OpenTofu (scoop) + Azure CLI & the `azure-devops` extension (`az devops`/`az repos`, winget) |
 | OpenSSH server | Microsoft OpenSSH Server (sshd): Windows capability + auto-start service + inbound TCP 22 firewall rule, with pwsh as the default shell. Needs admin — set up on an elevated `chezmoi apply`, or run `just enable-sshd` from an elevated pwsh. |
+| herdr multiplexer | herdr, a native Windows terminal multiplexer (**preview beta**). No scoop/winget manifest — installs via herdr.dev's `irm \| iex` script; config managed at `~/.config/herdr/config.toml` (pwsh as the default shell). See [rationale](rationale.md#terminal-multiplexer-wezterm-stable-default-herdr-native-beta). |
 
 **China mirrors** routes pip / npm / cargo / go / node package fetches through GFW
 mirrors (Tsinghua / npmmirror / goproxy.cn / rsproxy), applied both at install time

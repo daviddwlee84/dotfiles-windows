@@ -1,0 +1,16 @@
+# herdr — native Windows terminal multiplexer (preview beta).
+# Managed by chezmoi; read via $env:HERDR_CONFIG_PATH (profile.d/00_env.ps1).
+# Full default: `herdr --default-config`. Docs: https://herdr.dev/docs/configuration/
+
+[update]
+# Windows builds are preview-only; the installer rejects "stable" here.
+channel = "preview"
+
+[terminal]
+# Match the rest of this repo (WezTerm / Windows Terminal default to pwsh).
+default_shell = "pwsh"
+
+[ui]
+# "auto" draws herdr's own cursor on Windows to avoid ConPTY flicker;
+# set "native" to hand the cursor to the outer terminal.
+host_cursor = "auto"

@@ -40,6 +40,7 @@ irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstr
 | Tunnel tools | 關 | ngrok、cloudflared |
 | IaC tools | 關 | Azure CLI、Terraform、OpenTofu |
 | OpenSSH server | 關 | 安裝並啟用 sshd（需系統管理員；開放 inbound TCP 22） |
+| herdr multiplexer | 關 | 原生 Windows 終端多工器（preview beta） |
 | China mirrors | 關 | pip / npm / cargo / go / node 走 GFW 鏡像 |
 | Managed machine | 關 | 略過 org 政策常擋的 app（Tailscale、Grammarly） |
 | Backup mode | `smart` | 首次 apply 前備份既有檔案（`smart`/`full`/`off`） |
