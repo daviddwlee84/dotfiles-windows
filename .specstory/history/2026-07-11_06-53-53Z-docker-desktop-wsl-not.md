@@ -13762,3 +13762,763 @@ no stray backticks: OK
 bash -n: OK (valid syntax)
 ```
 </details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:26:25Z)**_
+
+<think><details><summary>Thought Process</summary>
+The bash syntax is valid—all the variable expansions and command substitutions are correct, and it passes a syntax check. The string interpolation for the name, email, and mirror values is working as expected.
+
+I've verified everything works, so I'm ready to commit this fix. The user's machine still needs to retry the enrollment with a VPN enabled and re-run the setup command.
+
+But there's a timing issue — their current checkout has the old version of the script before my retry hardening. They'd need to pull the latest changes first to get the improved retry logic, but I haven't pushed the commits yet. Let me think through whether the remote actually has these changes or if they're still local only. So the remote must already have these commits since the Dev Box pulled them successfully. David likely pushed them to the shared repo, which means my fixes will be pullable once I push them. For their immediate situation, re-running `just enable-wsl-ubuntu` with VPN access should work even with the current version—it'll detect the missing dotfiles and re-run the bootstrap process.
+
+Once they pull the new commit with the retry hardening, the bootstrap will automatically retry up to 3 times with clearer error messages. I'm considering whether to commit and push these changes now, though ultimately they control when to push.
+
+Let me first verify the git state to see if we're actually ahead of origin or if commits were already pushed — I'll check for unpushed commits and compare the local and remote main branches to understand what the Dev Box is actually missing.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:26:25Z)**_
+
+Runtime bash is valid (`bash -n` passes), values interpolate, no stray backticks, and `$i/$HOME/$script` stay literal. Lint clean. Before committing, let me check the remote state — your Dev Box's `chezmoi update` said "already up to date" and had `enable-wsl-ubuntu`, so the WSL commits appear to be on the remote already:
+
+_**Agent (claude-opus-4-8 2026-07-11 11:26:25Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check remote/unpushed state and stage the fix
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+echo "== remote =="; git remote -v | head -2
+echo "== unpushed commits (origin/main..main) =="; git log --oneline origin/main..main 2>/dev/null || echo "(no origin/main ref locally)"
+echo "== ahead/behind =="; git rev-list --left-right --count origin/main...main 2>/dev/null || echo "n/a"
+echo "== staged for this fix =="; git add -A && git diff --cached --stat
+```
+
+```text
+== remote ==
+origin	https://github.com/daviddwlee84/dotfiles-windows.git (fetch)
+origin	https://github.com/daviddwlee84/dotfiles-windows.git (push)
+== unpushed commits (origin/main..main) ==
+cb08a99 feat(aliases,docs): reboot alias; cau uses `chezmoi update --init`
+== ahead/behind ==
+0	1
+== staged for this fix ==
+ .../2026-07-11_06-53-53Z-docker-desktop-wsl-not.md | 446 +++++++++++++++++++++
+ pitfalls/wsl-ubuntu-oobe-and-wsl-l-encoding.md     |  11 +
+ scripts/enable-wsl-ubuntu.ps1                      |  29 +-
+ 3 files changed, 478 insertions(+), 8 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:27:09Z)**_
+
+<think><details><summary>Thought Process</summary>
+Looking at the git status, I see that my WSL commits are already pushed to origin/main — only one new commit (`cb08a99`) about aliases and docs remains unpushed, which appears to be from someone else. So my WSL commits must have been pushed between my turns—likely by the user or an automated process—which is why the Dev Box was able to pull them via `chezmoi update`. Now there are two unpushed commits: the aliases one (`cb08a99`) that someone else made locally, and the retry hardening fix I'm about to commit. The aliases commit also seems to include that unrelated `20_aliases.ps1` change and a `cau` modification that leaked from a system reminder. I'm second-guessing whether to commit now since there's an unpushed commit `cb08a99` that isn't mine (aliases/docs changes), but it's a legitimate commit someone else made and my fix is completely separate, so pushing both together is fine. My staged changes are clean — just the three files I need — so I'll go ahead and commit.
+
+Once that's done, I should tell the user the immediate workaround for their machine (VPN + re-run the WSL command, which works with the current deployed version), and then offer to push this fix since the Dev Box clearly pulls from the remote and needs the retry-hardening to work properly. ects the shared remote the Dev Box pulls from. I'm committing now with a message that wraps the bootstrap in retry logic using curl's built-in retry flags to handle mid-transfer failures, and adds clearer guidance for network issues like proxies or GFW blocks instead of just failing silently.
+
+The fix keeps the process idempotent by checking for a sentinel file, so it only re-runs the bootstrap if chezmoi isn't already installed. I'm updating the PowerShell script to include the retry loop and curl flags, and documenting the curl-56 error symptom and solution in the pitfalls guide.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:27:09Z)**_
+
+The git state clarifies things: my four WSL commits are **already on `origin/main`** (someone pushed them — that's why your Dev Box's `chezmoi update` pulled `enable-wsl-ubuntu`). The only other unpushed local commit is `cb08a99` (the aliases/`cau` change — not mine). My fix is staged cleanly (3 files). Committing:
+
+_**Agent (claude-opus-4-8 2026-07-11 11:27:12Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit the bootstrap-retry fix
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+git commit -F - <<'EOF'
+fix(wsl): retry the in-WSL dotfiles bootstrap; clearer GFW guidance
+
+The headless Ubuntu bootstrap downloads chezmoi + the repo from GitHub, which a
+proxy/GFW resets mid-transfer (`curl: (56) Failure when receiving data`), leaving
+`chezmoi: command not found` in the distro. Wrap the bootstrap in a 3x retry loop
+with `curl --retry --retry-all-errors --retry-connrefused`, and on failure print
+network-specific guidance (idempotent retry via `just enable-wsl-ubuntu`,
+VPN / Windows-side proxy, or the manual one-liner) instead of a bare "Retry".
+
+Stays idempotent: the sentinel marks the distro ours, but a missing
+~/.local/share/chezmoi makes a re-run redo only the bootstrap.
+
+- scripts/enable-wsl-ubuntu.ps1: retry loop + curl retries + guidance
+- pitfalls/wsl-ubuntu-oobe-and-wsl-l-encoding.md: curl-56 symptom + fix
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+EOF
+echo "== result =="; git log --oneline -3
+echo "== unpushed (origin/main..main) =="; git log --oneline origin/main..main
+```
+
+```text
+[WARNING] Unstaged files detected.
+[INFO] Stashing unstaged files to /Users/david/.cache/pre-commit/patch1783769230-59918.
+Auto-redact secrets in agent artifacts...................................Passed
+Detect hardcoded secrets.................................................Passed
+detect private key.......................................................Passed
+check for added large files..............................................Passed
+check for merge conflicts................................................Passed
+fix end of files.........................................................Passed
+trim trailing whitespace.................................................Passed
+[INFO] Restored changes from /Users/david/.cache/pre-commit/patch1783769230-59918.
+[main e8b1336] fix(wsl): retry the in-WSL dotfiles bootstrap; clearer GFW guidance
+ 3 files changed, 478 insertions(+), 8 deletions(-)
+== result ==
+e8b1336 fix(wsl): retry the in-WSL dotfiles bootstrap; clearer GFW guidance
+cb08a99 feat(aliases,docs): reboot alias; cau uses `chezmoi update --init`
+6daca1b fix(wsl): offline DISM fallback when the WSL app download is blocked (proxy/GFW)
+== unpushed (origin/main..main) ==
+e8b1336 fix(wsl): retry the in-WSL dotfiles bootstrap; clearer GFW guidance
+cb08a99 feat(aliases,docs): reboot alias; cau uses `chezmoi update --init`
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:27:56Z)**_
+
+<think><details><summary>Thought Process</summary>
+I've got the fix committed and there are two unpushed commits in the queue. Let me walk through what happened: the WSL and Ubuntu setup worked fine, but the dotfiles bootstrap inside WSL hit a wall because of the Great Firewall. The immediate fix is for them to enable a VPN and re-run the bootstrap—that'll work with the current deployed version too. I should also mention the new fix that's now in place.
+
+For getting them unstuck right now, they've got Ubuntu running with auto-login working, but no dotfiles yet. They can either reconnect a VPN on Windows and re-run the enable command (which will detect the missing dotfiles and retry the bootstrap), or manually run the chezmoi initialization command inside WSL with a VPN active. The reason `chezmoi apply` failed before is that ~/.local/bin wasn't on their PATH yet. I should offer to push the fix to the remote rather than doing it automatically, since they've been managing commits explicitly. Now I'm organizing the key points to explain in Chinese: the WSL2 and Ubuntu setup is complete with the user account ready, but the dotfiles installation inside WSL failed due to a network reset (curl error 56), so chezmoi never got installed.
+
+There are two ways to finish: either enable VPN on Windows and rerun the provisioning command to detect the incomplete state and bootstrap just the dotfiles, or manually enter WSL with VPN active and install chezmoi directly via curl, then refresh the shell to update the PATH. The "command not found" error for chezmoi apply simply means the bootstrap didn't complete and chezmoi wasn't installed in the first place. I've already committed a fix for this. 即使他們還沒 pull 我的修復,VPN + 重新執行也能正常運作,只是沒有自動重試的功能。一旦他們 pull 了 e8b1336,就會自動重試。我會把這點講清楚。
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:28:03Z)**_
+
+Committed as **`e8b1336`**. Two commits now sit unpushed: this fix + `cb08a99` (someone's aliases/`cau` commit, not mine).
+
+## 現況(其實已經很接近了)
+
+你那台的狀態:**WSL2 + Ubuntu-24.04 裝好了、user `hanruzhou` 也建好了(自動登入 OK)**。唯一失敗的是「在 WSL 裡裝 dotfiles」那一步 —— `curl: (56)` 被 GFW/proxy reset,所以 chezmoi 沒下載進去 →(你後面看到的)`chezmoi: command not found`。不是 `chezmoi apply` 的問題,是 chezmoi 根本還沒裝。
+
+## 現在就能收尾(擇一,**記得先在 Windows 掛 VPN**)
+
+WSL 走的是 Windows 的網路,所以 VPN 掛在 **Windows** 上,WSL 就吃得到。
+
+**A. 用我們的工具(推薦):**
+```powershell
+just enable-wsl-ubuntu
+```
+它會偵測「這個 distro 是我們建的、但還沒 dotfiles」→ **只重跑 bootstrap**(不會重裝 distro/user)。就算你還沒 pull 我的新 commit,現在部署的版本也會這樣重試,只是少了自動 3 次 retry。
+
+**B. 或進 WSL 手動:**
+```bash
+sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin" init --apply daviddwlee84
+exec $SHELL     # 讓 ~/.local/bin 進 PATH,之後 chezmoi / cau 才找得到
+```
+
+## 這次補的強化(`e8b1336`,pull 後自動生效)
+
+- WSL 內 bootstrap 包成 **3× retry 迴圈** + `curl --retry --retry-all-errors --retry-connrefused` → 對 transient reset 撐得住。
+- 失敗訊息改成講清楚「是網路/GFW reset,掛 VPN 後重跑 `just enable-wsl-ubuntu`(idempotent),或手動一行版」,不再只是乾巴巴的 "Retry"。
+- 已驗證:lint exit 0、`bash -n` 過、runtime here-string 展開正確(`$i/$HOME` 保留、name/email/mirror 有代入、無殘留 backtick)。
+
+> 註:`daviddwlee84/dotfiles`(Linux 那個 repo)本身若能對 chezmoi 安裝 + git clone 做 GFW 鏡像,才是根治;那屬於父 repo 的範圍,我在 pitfall 裡記了一筆。
+
+要我 **push** 嗎?remote 已經有前面 4 個 WSL commit(你 Dev Box 就是從 remote pull 的),push 會把 `e8b1336` 跟 `cb08a99`(那個 aliases commit)一起送上去 —— 送上去後 Dev Box `cau` 一下就能吃到 retry 版。
+
+---
+
+_**User (2026-07-11 11:40:10Z)**_
+
+BTW 我們是否有可能用 wsl.exe 把 「sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin" init --apply daviddwlee84」傳進去執行？
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-11 11:42:15Z)**_
+
+<think><details><summary>Thought Process</summary>
+The user is asking whether we can use `wsl.exe` to run the chezmoi installation command, but I'm realizing that's already what our PowerShell script does — it pipes a bash script through stdin to `wsl.exe` with the specified distro and user.
+
+I think they might be asking about an alternative approach: passing the command directly to `wsl.exe` as an argument instead of piping via stdin, or perhaps they're wondering if we can trigger this bootstrap from Windows without manually entering the WSL shell. Either way, we're already handling this headlessly by piping the command through. ical issue: the shell expansion happens on the wrong side. If you run this from PowerShell, it tries to expand `$(curl ...)` and `$HOME` using Windows PowerShell syntax and the Windows home directory, which breaks everything. From cmd.exe it's different, but the core problem remains—you need the expansion to happen inside WSL, not on the Windows side. Right, so the critical distinction is whether the `$(curl...)` expansion happens on the Windows side before anything gets passed to WSL, or if it makes it through to the Linux shell where `sh -c` would then expand it. Since the command substitution syntax isn't valid in cmd.exe, the literal string gets passed through to WSL, and then `sh -c` receives it as a script argument where it DOES get expanded by the shell. So cmd passes those literal strings to wsl.exe, which then invokes sh with the script containing the unsubstituted `$(curl...)` command. When sh processes it, the command substitution finally happens—running the Linux curl to fetch the actual install script. is that the install script gets the literal string `$HOME/.local/bin` instead of the expanded path, which would create a directory with that name rather than using the actual home directory — a critical bug in how the arguments are passed through the command substitution. Hmm, so the `$HOME` doesn't expand properly in this direct form. That's a problem.
+
+Actually, the canonical chezmoi one-liner is `sh -c "$(curl -fsLS get.chezmoi.io)"` where the `"$(...)"` IS meant to be expanded by the OUTER shell (the interactive sh/bash you're in), so `sh -c "<actual install script text>"`. The install script runs as the -c argument. And `$HOME` in a normal interactive context... actually the standard one-liner is `sh -c "$(curl -fsLS get.chezmoi.io)"` and that's it (no -b/-- args usually). When you add args, they go after.
+
+The real issue is that when running through `wsl.exe -- sh -c "..."` from Windows, the expansion happens in the wrong context—the Windows shell doesn't handle it correctly, and passing it literally means sh sees `$(...)` as script text but leaves `$HOME` unexpanded as a positional argument. The cleanest solution is wrapping everything in `bash -lc` so a login bash on the Linux side handles all the expansions properly before executing the one-liner.
+
+From PowerShell, single-quoted strings are literal (no expansion), so `bash -lc 'sh -c "$(curl...)" ...'` gets passed through Windows and wsl as-is, then bash -lc on Linux expands `$(...)` and `$HOME` correctly. This works cleanly without quote escaping hell.
+
+But there's a catch with PowerShell's native command argument handling — when passing a single-quoted string containing embedded double-quotes to wsl.exe, those inner quotes might get mangled depending on the PowerShell version, even though PS7 improved this. That's why the script uses `bash -s` instead.
+
+The real solution is wrapping the entire one-liner in single quotes so bash handles all the expansions, not PowerShell. Something like `wsl.exe -d Ubuntu-24.04 -u hanruzhou -- bash -lc 'sh -c "$(curl -fs...)'` ensures the Linux environment does the variable and command substitution, avoiding the quoting nightmare entirely.
+
+But honestly, that's still fragile with embedded quotes across PowerShell versions — which is exactly why piping the script via stdin is better. The stdin approach bypasses all Windows-side quote parsing, so everything reaches bash untouched and intact. We're already doing what they're asking for, just through the more robust method.
+
+Now I'm wondering if they actually want a manual one-off command to run directly from Windows PowerShell instead of opening WSL first. If that's the case, I should give them a tested, safe version that avoids the nested-quote problem entirely. Writing PowerShell examples... Writing the complete command... The encoding shouldn't be an issue since PowerShell 7 defaults to UTF-8 without a BOM, and our script already handles this. So the core approach is solid: we're piping the install command through stdin to avoid quote escaping nightmares, which is cleaner than trying to pass everything inline to `sh -c`. The reason we can't just run the curl substitution directly from PowerShell is that it would expand on the Windows side first, which defeats the purpose.
+
+For manual runs, the safest options are either dropping into the WSL shell directly and pasting the command, or using the same stdin approach from PowerShell with the user flag set to `hanruzhou` and the VPN active on Windows. I'm verifying that the stdin method works correctly with the bash flags. I'm testing the PowerShell quoting approach by verifying that single-quoted strings don't expand `$(...)` or variables, and that piping to a native command like `cat` safely passes the literal string to stdin without any shell interpretation. I'm running into quoting hell with nested bash and pwsh — the bash single quotes can't contain single quotes, but my pwsh code needs them. I'll sidestep this by writing the test to a temporary PowerShell file and executing that instead.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:42:15Z)**_
+
+Good question — and the short answer is **that's exactly what our script already does**, just via the more robust stdin form. Let me verify the quoting behavior so I give you a command that actually works, rather than hand-waving.
+
+_**Agent (claude-opus-4-8 2026-07-11 11:42:17Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```ps1
+$one = 'sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin" init --apply daviddwlee84'
+
+Write-Host '--- as a single-quoted PS string, does PS expand $(...) or $HOME? ---'
+Write-Host "literal? : $one"
+
+Write-Host ''
+Write-Host '--- piped to a native command stdin (here: cat) — what bytes arrive? ---'
+$one | & cat
+
+Write-Host ''
+Write-Host '--- contrast: a DOUBLE-quoted string (what happens if you inline it) ---'
+try { $bad = "sh -c `"$(echo WINDOWS-RAN-THIS)`" -- init"; Write-Host "expanded? : $bad" } catch { Write-Host "err: $_" }
+
+```
+
+```text
+File created successfully at: /tmp/quote_test.ps1 (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:43:02Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Verify PowerShell quoting/stdin behavior for the one-liner
+
+`pwsh -NoProfile -File /tmp/quote_test.ps1`
+
+```text
+--- as a single-quoted PS string, does PS expand $(...) or $HOME? ---
+literal? : sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin" init --apply daviddwlee84
+
+--- piped to a native command stdin (here: cat) — what bytes arrive? ---
+sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin" init --apply daviddwlee84
+
+--- contrast: a DOUBLE-quoted string (what happens if you inline it) ---
+expanded? : sh -c "WINDOWS-RAN-THIS" -- init
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:43:43Z)**_
+
+<think><details><summary>Thought Process</summary>
+The test results show that single-quoted PowerShell strings treat everything literally—command substitutions and variable expansions don't happen—while double-quoted strings do expand, which creates a security risk if you're piping untrusted input like curl output directly into a shell command.
+
+The safest approach is what the script already does: pass the command through stdin via `wsl.exe bash -s`, and from Windows PowerShell manually, I'd use a single-quoted string piped to `bash -l -s` to avoid any expansion on the Windows side. Let me verify that `bash -l -s` actually reads from stdin when invoked this way. The `-u hanruzhou` flag is explicit but optional if the default user is already set in wsl.conf, and `--cd ~` isn't necessary since chezmoi init installs to home anyway. The key point is that the command must pipe through stdin or use single quotes so the Linux shell expands `$(...)` and `$HOME`, not PowerShell—that's why the double-quote approach would fail. 我想到最穩妥的做法是直接在 Windows 上手動執行一次,用單引號包裹整個命令字串,這樣 PowerShell 就不會展開任何變數,然後透過 stdin 管道傳給 wsl.exe,讓 bash 在 Linux 端才去解析 `$(...)` 和 `$HOME`。我剛才的測試驗證了這個方法確實有效——單引號字串保持字面意思,管道傳輸完全不經過 Windows 的引號解析。
+
+相比之下,雙引號版本會被 PowerShell 搶先展開,所以容易出問題。
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:43:48Z)**_
+
+驗證結果很清楚,直接回答你的問題:
+
+## 可以 —— 而且我們的 script 已經是這樣做的
+
+`enable-wsl-ubuntu.ps1` 在 headless 模式就是把那條指令**透過 `wsl.exe -d Ubuntu-24.04 -u <user> -- bash -s` 從 stdin 餵進去執行**的。所以「用 wsl.exe 把它傳進去跑」= 我們正在做的事,只是刻意走 stdin 而不是 inline。
+
+## 為什麼**不能**直接 inline `wsl.exe -- sh -c "$(curl...)"`
+
+關鍵:`$(...)` 和 `$HOME` 必須由 **Linux 的 shell** 展開,但從 PowerShell 打這行,PowerShell 會**搶先在 Windows 端展開**。我剛剛實測給你看:
+
+```
+--- double-quoted string (等同 inline 的情況) ---
+輸入： sh -c "$(echo WINDOWS-RAN-THIS)" -- init
+結果： sh -c "WINDOWS-RAN-THIS" -- init      ← $(...) 在 Windows 就被跑掉了
+```
+
+`$(curl...)` 會變成跑 Windows 的 curl、`$HOME` 會變成 Windows 家目錄 → 全錯。
+
+## 你要手動從 Windows 跑一次,最穩的寫法(stdin 餵)
+
+```powershell
+'sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin" init --apply daviddwlee84' | wsl.exe -d Ubuntu-24.04 -u hanruzhou -- bash -l -s
+```
+
+為什麼這個穩(同樣實測過):
+- **single-quote** → PowerShell 完全不動它(`literal? : sh -c "$(curl...)" ...` 原封不動);
+- **透過 stdin(pipe)** → 不經 Windows 的引號解析,bytes 原封不動到 bash;
+- `bash -l -s` 在 **Linux 端**才展開 `$(...)` / `$HOME` / 引號 → 正確。
+
+(記得 Windows 先掛 VPN,WSL 走的是 Windows 的網路。)
+
+> 這正是我們 script 用 `bash -s`(stdin)而不是 `-- sh -c "..."` 的原因 —— 一勞永逸避開 PowerShell→wsl→sh 的三層引號地獄。所以其實你**不用手動**,`just enable-wsl-ubuntu`(掛 VPN 後)就會偵測「已建好但沒 dotfiles」→ 只重跑這條 bootstrap。
+
+需要我把這個「手動一行版」也寫進 pitfall 或 docs 當備援指令嗎?
+
+---
+
+_**User (2026-07-11 11:44:53Z)**_
+
+好啊 可以也加到justfile裡面方便一點
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-11 11:47:07Z)**_
+
+<think><details><summary>Thought Process</summary>
+I need to add the manual one-liner to the documentation as a fallback option, and then create a justfile recipe for convenience. The recipe should handle bootstrapping dotfiles in an existing WSL Ubuntu distro when the initial setup failed—though I'm realizing `just enable-wsl-ubuntu` might already cover this scenario.
+
+The user wants a lightweight command that just runs the bootstrap directly without the full script logic for registration and user creation. I'm thinking of a justfile recipe that takes parameters for the distro name and username, with sensible defaults so it can work with minimal input.
+
+The tricky part is handling the quoting layers when piping the one-liner through just to pwsh or sh. I could either embed the logic directly in the justfile recipe or keep it thin and delegate to a script, but for something this simple, piping the bootstrap command via stdin to wsl might be the cleanest approach to avoid quote escaping issues.
+
+I need to check what shell the justfile is actually using on Windows — the docker-up recipe with a bash shebang failed because cygpath wasn't available, which suggests just is trying to use bash when a shebang is present. The enable-wsl-ubuntu recipe works without a shebang, so it's running under just's default shell. I should verify the justfile's shell configuration to understand what I'm working with.
+
+The cleanest approach is to create a standalone PowerShell script that handles the stdin piping logic, similar to how enable-wsl-ubuntu works but as its own file, avoiding the quoting nightmare of trying to pass a complex one-liner through multiple shell layers. Option 3 seems cleanest — I'll create a parameterized recipe that lets users pass in the distro name and runs the bootstrap one-liner directly through WSL, reusing the same chezmoi data for defaults like the username.
+
+The quoting gets messy though when piping through just → shell → pwsh → wsl → bash, especially with variable expansion and nested quotes. Option 1 might be safer — keep the recipe thin and delegate the actual bootstrap logic to a dedicated PowerShell script that handles the escaping properly.
+
+I'm thinking about designing `scripts/bootstrap-wsl-dotfiles.ps1` to read the WSL configuration (distro name, user, email, mirror) from chezmoi data or accept parameters, then construct and pipe the frozen bootstrap bash script to `wsl -d $Distro -u $user -- bash -s`. This mirrors what enable-wsl-ubuntu.ps1 already does for headless setup. The challenge is avoiding duplication of the bootstrap block between the two scripts.
+
+Actually, stepping back — maybe the simpler approach is to recognize that `enable-wsl-ubuntu.ps1` already handles the case where a distro exists but lacks dotfiles, so it can re-run the bootstrap. In that case, `just enable-wsl-ubuntu` itself becomes the convenient command, and I don't need a separate recipe unless the user wants a shorter alias or a raw one-liner for a distro we don't manage.
+
+Let me refocus on what the user actually needs here.
+
+They want a `just` recipe for that manual one-liner I showed — something to bootstrap dotfiles into any existing WSL distro. The advantage over `just enable-wsl-ubuntu` is that it works on any distro (even ones they created themselves, without our sentinel), and it's lightweight, just the bootstrap step without the register or user setup logic. So a dedicated recipe makes sense. I'll create a small script to keep the quoting clean and avoid repetition.
+
+Writing bootstrap script... I'm pulling configuration data from chezmoi to get the user's name, email, and mirror preference, then setting up the WSL username if it wasn't provided. I'm also preparing command arguments and starting to build a bootstrap script that checks for curl and installs it if needed.
+
+Writing shell script... I'm noticing this duplicates the bootstrap logic from the existing enable-wsl-ubuntu.ps1 script, which violates the DRY principle. I should refactor to either extract a shared function or have enable-wsl-ubuntu.ps1 call this new script for the bootstrap step instead.
+
+The cleaner approach is making bootstrap-wsl-dotfiles.ps1 the single source of truth for the bootstrap logic, then having enable-wsl-ubuntu.ps1's headless branch invoke it with the appropriate parameters. But there's a complication: since enable-wsl-ubuntu.ps1 is embedded in a run_onchange via template inclusion, the path to bootstrap-wsl-dotfiles.ps1 needs to be resolvable at apply time, and the embedded script runs from a temporary location.
+
+The scripts directory isn't deployed (it's chezmoiignored), so during apply, the relative path won't exist in the temp directory where the embedded script runs. This means enable-wsl-ubuntu.ps1 can't easily call a sibling script, which is why the current design embeds everything instead—accepting some duplication between the two files as a trade-off.
+
+Option B is cleaner: add a `-BootstrapOnly` parameter to enable-wsl-ubuntu.ps1 that skips the registration guard and forces bootstrap on an existing distro, reusing the single script instead of duplicating the bootstrap logic. I'm realizing the param() approach won't work because it has to be the first statement in a PowerShell script, but the prelude variables are already set before the include happens. Instead, I could use an environment variable or pre-set `$BootstrapOnly` that the just recipe passes in via a command invocation like `pwsh -Command '$BootstrapOnly=$true; . ./scripts/enable-wsl-ubuntu.ps1'`.
+
+But that's getting messy — using environment variables or pre-set variables feels hacky. Let me reconsider whether we even need a separate recipe at all. The real issue is when a distro already exists (either one we created or the user's own) but dotfiles didn't install. The existing `just enable-wsl-ubuntu` handles retrying our case, but skips the user's distro since there's no sentinel file. What we actually need is a way to bootstrap dotfiles into any distro, not just ours.
+
+Given the embed constraint makes keeping things DRY difficult, I'll accept some duplication as a pragmatic trade-off: create a standalone `scripts/bootstrap-wsl-dotfiles.ps1` that runs only via `just`, with its own copy of the bootstrap logic. I'll add comments in both files pointing to each other to keep them in sync. It's honest about the duplication rather than hiding it.
+
+The repo already has accepted duplication patterns like Test-Admin copied in multiple places, so a small 15-line bootstrap duplicated once with a sync note fits the existing norms. Now I'm reconsidering whether a whole new script is necessary or if I can simplify this further with a justfile-only approach that avoids quote escaping issues, maybe by accepting the distro as a parameter.
+
+Actually, a dedicated standalone script makes sense here — I'll create `scripts/bootstrap-wsl-dotfiles.ps1` with parameters for distro and user, so it can read chezmoi data for name/email/mirror/username and pipe the bootstrap via stdin with retry logic. Then the justfile recipe just calls it with `pwsh -NoProfile -File ./scripts/bootstrap-wsl-dotfiles.ps1 -Distro {{distro}}`.
+
+For the just recipe itself, I'll default to Ubuntu-24.04 but allow overrides for flexibility — `just wsl-dotfiles` uses the default, while `just wsl-dotfiles MyDistro` passes a custom distro name. Now I'm wondering if I should extract the retry bootstrap logic into a shared PowerShell module that both the embedded enable-wsl-ubuntu.ps1 and the new bootstrap script can use, rather than duplicating it.
+
+Actually, that won't work cleanly — the embedded version can't access external scripts during apply, so I'd end up with inconsistent behavior between `just enable-wsl-ubuntu` and the embedded path. Better to just keep two copies and add a sync note. I'll add a sync comment to the PowerShell script noting that the bootstrap bash is mirrored in the other script to keep them in sync. The user explicitly asked for a dedicated recipe in the justfile, so the cleanest approach is a small dedicated script that runs the bootstrap logic — I'll keep that bootstrap code in the new script. I could extract the bootstrap logic into a reusable function within bootstrap-wsl-dotfiles.ps1, then have the run_onchange wrapper include both enable-wsl-ubuntu.ps1 and that bootstrap function — this way the bootstrap code lives in one place but can be embedded when needed for the apply path.
+
+That's getting complex though, so I'll go with pragmatic duplication and add a sync note instead. Time to implement: write the bootstrap-wsl-dotfiles.ps1 script with retry logic for GFW resilience, add the just recipe, update the docs to mention the new command, then lint and verify everything parses cleanly.
+
+Writing the PowerShell script... Writing the bootstrap script... I could set an environment variable to put the script in bootstrap-only mode, skipping the distro registration and jumping straight to the headless setup on an existing distro. But that requires restructuring the script to expose the bootstrap logic early, adds complexity to a single-purpose file, only works with the default user and distro, and using an env var feels a bit implicit and hidden compared to an explicit parameter.
+
+A separate small bootstrap script would duplicate about fifteen lines, but it's clearer to understand and use, allows passing a distro parameter, and aligns with how the repo already tolerates small duplication elsewhere. Given that the user wants a straightforward recipe, I'll go with the separate script approach and add a note about keeping it in sync.
+
+Now I'm writing the bootstrap-wsl-dotfiles.ps1 script.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:47:07Z)**_
+
+Good idea. I'll add a small dedicated convenience script (so the recipe stays clean and quote-hell-free) plus a `just wsl-dotfiles` recipe, and cross-reference it in the docs/pitfall.
+
+_**Agent (claude-opus-4-8 2026-07-11 11:47:08Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskCreate"><details>
+<summary>Tool use: **TaskCreate**</summary>
+New scripts/bootstrap-wsl-dotfiles.ps1 (standalone, params) that pipes the chezmoi bootstrap via bash -s into an existing WSL distro with retry. just wsl-dotfiles recipe. Sync note in enable-wsl-ubuntu.ps1. Update pitfall + skill recipe list. Verify.
+
+```text
+Task #16 created successfully: Add just wsl-dotfiles convenience recipe
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:47:31Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskUpdate"><details>
+<summary>Tool use: **TaskUpdate**</summary>
+
+```text
+Updated task #16 status
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:47:32Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```ps1
+#Requires -Version 7
+# bootstrap-wsl-dotfiles.ps1 — run the cross-platform dotfiles bootstrap
+# (github.com/daviddwlee84/dotfiles) inside an EXISTING WSL distro, headless.
+#
+# Convenience wrapper behind `just wsl-dotfiles`. Unlike `enable-wsl-ubuntu`, it
+# does NOT register a distro or create a user — it only runs the chezmoi
+# bootstrap in a distro that already exists. Use it to:
+#   - finish the install after `enable-wsl-ubuntu`'s in-distro step failed on the
+#     network (idempotent — chezmoi init is safe to re-run), or
+#   - install the dotfiles into a WSL distro you set up yourself.
+#
+# The frozen answers come from the persisted chezmoi config (`chezmoi data`), and
+# the bootstrap is piped via `bash -s` on stdin — so `$(...)`, `$HOME` and quotes
+# are expanded by the Linux shell, never mangled by PowerShell / wsl (see the
+# pitfall doc). Behind a proxy / GFW: connect a VPN first (WSL routes through the
+# Windows network). NB: the bootstrap here is kept in sync with the headless
+# block of scripts/enable-wsl-ubuntu.ps1.
+param(
+    [string]$Distro = 'Ubuntu-24.04',
+    [string]$WslUser   # default: the distro's own default user
+)
+
+$ErrorActionPreference = 'Continue'
+if (Test-Path variable:PSNativeCommandUseErrorActionPreference) { $PSNativeCommandUseErrorActionPreference = $false }
+$OutputEncoding = [System.Text.UTF8Encoding]::new($false)   # BOM-free stdin to wsl/bash
+$env:WSL_UTF8 = '1'
+
+function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
+
+# Frozen answers from the persisted chezmoi config.
+$Name = ''; $Email = ''; $Mirror = 'false'
+try {
+    $d = & chezmoi data --format json 2>$null | ConvertFrom-Json
+    $Name   = $d.name
+    $Email  = $d.email
+    $Mirror = "$($d.useChineseMirror)".ToLower()
+    if (-not $WslUser) { $WslUser = $d.wslUsername }
+} catch { Write-Verbose "chezmoi data unavailable; using defaults: $_" }
+if (-not $Mirror) { $Mirror = 'false' }
+
+# -u <user> only if we have one (else use the distro's default user).
+$wslArgs = @('-d', $Distro)
+if ($WslUser) {
+    $u = ((("$WslUser" -replace '.*\\', '') -replace '[^A-Za-z0-9_-]', '')).ToLower()
+    if ($u) { $wslArgs += @('-u', $u) }
+}
+
+$boot = @"
+command -v curl >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq curl; }
+i=1
+while [ "`$i" -le 3 ]; do
+  script="`$(curl -fsSL --retry 5 --retry-connrefused --retry-all-errors https://get.chezmoi.io)"
+  if [ -n "`$script" ] && printf '%s' "`$script" | sh -s -- -b "`$HOME/.local/bin" \
+       init --apply "https://github.com/daviddwlee84/dotfiles.git" --promptDefaults \
+       --promptString "What is your full name=$Name" \
+       --promptString "What is your email address=$Email" \
+       --promptChoice "Which profile=ubuntu_server" \
+       --promptBool "Are you in China (behind GFW) and need to use mirrors=$Mirror"; then
+    exit 0
+  fi
+  echo "chezmoi bootstrap attempt `$i failed (likely a proxy/GFW reset); retrying in 5s..." >&2
+  i=`$((i + 1)); sleep 5
+done
+exit 1
+"@ -replace "`r`n", "`n"
+
+try {
+    Info "Bootstrapping cross-platform dotfiles in $Distro (headless)"
+    $boot | & wsl.exe @wslArgs -- bash -s
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "dotfiles bootstrap in $Distro failed (exit $LASTEXITCODE) — usually a proxy/GFW reset fetching chezmoi/the repo from GitHub (curl 56). Connect a VPN (WSL uses the Windows network) and re-run: just wsl-dotfiles"
+        return
+    }
+    Info "Done — open it with: wsl -d $Distro"
+} catch {
+    Write-Warning "WSL dotfiles bootstrap failed (non-fatal): $_"
+}
+
+```
+
+```text
+File created successfully at: /Users/david/src/tries/2026-07-09-windows-dotfiles/scripts/bootstrap-wsl-dotfiles.ps1 (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:47:41Z)**_
+
+Now the `just` recipe, the sync note in `enable-wsl-ubuntu.ps1`, and the skill recipe list:
+
+_**Agent (claude-opus-4-8 2026-07-11 11:47:45Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/justfile has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:47:48Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/scripts/enable-wsl-ubuntu.ps1 has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:47:49Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/.chezmoitemplates/dotfiles-windows-skill.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:47:57Z)**_
+
+<think><details><summary>Thought Process</summary>
+I need to update the prevention bullet in the wsl-ubuntu-oobe-and-wsl-l-encoding.md file to include `just wsl-dotfiles` as a convenient backup command option alongside the existing VPN and manual shell command approaches.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:47:57Z)**_
+
+Now surface `just wsl-dotfiles` in the pitfall guidance:
+
+_**Agent (claude-opus-4-8 2026-07-11 11:48:02Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/pitfalls/wsl-ubuntu-oobe-and-wsl-l-encoding.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:48:16Z)**_
+
+Now verify — lint both scripts, parse the new one, check `just` sees the recipe, and confirm the runtime bash is valid:
+
+_**Agent (claude-opus-4-8 2026-07-11 11:48:20Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Lint, parse, list recipe, validate bash
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+echo "== lint both WSL scripts =="
+pwsh -NoProfile -c "Invoke-ScriptAnalyzer -Path ./scripts/bootstrap-wsl-dotfiles.ps1,./scripts/enable-wsl-ubuntu.ps1 -Settings ./PSScriptAnalyzerSettings.psd1" 2>&1 | tail -12; echo "EXIT: $?"
+echo "== parse new script =="
+pwsh -NoProfile -c '$e=$null;[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path ./scripts/bootstrap-wsl-dotfiles.ps1),[ref]$null,[ref]$e)|Out-Null; if($e){$e|%{Write-Host "  $_"}}else{Write-Host "PARSE OK"}'
+echo "== just sees the recipe? =="
+just --list 2>/dev/null | grep -E 'wsl-dotfiles|enable-wsl' || echo "(just --list failed)"
+echo "== runtime bash from the new script is valid (bash -n) =="
+pwsh -NoProfile -c '
+$Name="Han Ru"; $Email="hr@e.com"; $Mirror="true"
+$boot = @"
+command -v curl >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq curl; }
+i=1
+while [ "`$i" -le 3 ]; do
+  script="`$(curl -fsSL --retry 5 --retry-connrefused --retry-all-errors https://get.chezmoi.io)"
+  if [ -n "`$script" ] && printf ''%s'' "`$script" | sh -s -- -b "`$HOME/.local/bin" \
+       init --apply "https://github.com/daviddwlee84/dotfiles.git" --promptDefaults \
+       --promptString "What is your full name=$Name" \
+       --promptString "What is your email address=$Email" \
+       --promptChoice "Which profile=ubuntu_server" \
+       --promptBool "Are you in China (behind GFW) and need to use mirrors=$Mirror"; then
+    exit 0
+  fi
+  i=`$((i + 1)); sleep 5
+done
+exit 1
+"@ -replace "`r`n","`n"
+Set-Content -Path /tmp/boot2.sh -Value $boot -NoNewline
+'
+bash -n /tmp/boot2.sh && echo "bash -n: OK" || echo "bash -n: FAIL"
+```
+
+```text
+== lint both WSL scripts ==
+Invoke-ScriptAnalyzer: Cannot convert 'System.Object[]' to the type 'System.String' required by parameter 'Path'. Specified method is not supported.
+EXIT: 0
+== parse new script ==
+PARSE OK
+== just sees the recipe? ==
+    enable-wsl                         # install WSL2 (Docker Desktop backend) — pops one UAC prompt; reboot required after
+    enable-wsl-ubuntu                  # install a WSL2 Ubuntu distro + bootstrap cross-platform dotfiles (needs installWsl + reboot first)
+    wsl-dotfiles distro="Ubuntu-24.04" # install the cross-platform dotfiles inside an EXISTING WSL distro (VPN on if behind GFW)
+== runtime bash from the new script is valid (bash -n) ==
+bash -n: OK
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:48:31Z)**_
+
+<think><details><summary>Thought Process</summary>
+The lint call failed because I passed multiple paths as an array to `-Path`, which Invoke-ScriptAnalyzer doesn't handle that way, so I need to lint each script individually. The new script parses fine, the `just` recipe shows up correctly with the distro parameter, and bash syntax validation passes. Now I'm running the linter on each script separately to make sure there are no errors.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:48:31Z)**_
+
+The array `-Path` tripped the analyzer call — let me lint each script separately to confirm they're clean:
+
+_**Agent (claude-opus-4-8 2026-07-11 11:48:51Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Lint each WSL script separately + docs build
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+for f in ./scripts/bootstrap-wsl-dotfiles.ps1 ./scripts/enable-wsl-ubuntu.ps1 ./scripts/enable-wsl.ps1; do
+  echo "== $f =="
+  out=$(pwsh -NoProfile -c "Invoke-ScriptAnalyzer -Path '$f' -Settings ./PSScriptAnalyzerSettings.psd1" 2>&1)
+  if [ -z "$out" ]; then echo "  clean (no findings)"; else echo "$out" | tail -10; fi
+done
+echo "== docs still build (skill/tools untouched here, but confirm) =="
+just docs-build >/tmp/d4.log 2>&1; echo "DOCS EXIT: $?"; grep -q 'Documentation built' /tmp/d4.log && echo "built OK" || tail -8 /tmp/d4.log
+```
+
+```text
+== ./scripts/bootstrap-wsl-dotfiles.ps1 ==
+  clean (no findings)
+== ./scripts/enable-wsl-ubuntu.ps1 ==
+  clean (no findings)
+== ./scripts/enable-wsl.ps1 ==
+  clean (no findings)
+== docs still build (skill/tools untouched here, but confirm) ==
+DOCS EXIT: 0
+built OK
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:49:04Z)**_
+
+<think><details><summary>Thought Process</summary>
+All the validation checks pass—the WSL scripts lint clean, the new script parses correctly, the justfile recipe is recognized, bash syntax is valid, and the docs build successfully. The user asked to add this to the justfile for convenience, which I've done, so now I'm staging my changes and committing them.
+
+I need to be careful with git status to include only my files—the justfile, the updated WSL script with synced comments, the template documentation, the pitfalls guide, and this session's transcript—while excluding any unrelated aliases or other work from different sessions.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:49:04Z)**_
+
+All clean — three scripts lint-free, new one parses, `just` lists `wsl-dotfiles`, bash valid, docs build. Let me commit (staging only my files, watching for unrelated changes).
+
+_**Agent (claude-opus-4-8 2026-07-11 11:49:04Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskUpdate"><details>
+<summary>Tool use: **TaskUpdate**</summary>
+
+```text
+Updated task #16 status
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:49:04Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Review working tree before staging
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+echo "== full status =="; git status --short
+```
+
+```text
+== full status ==
+ M .chezmoitemplates/dotfiles-windows-skill.md
+ M .specstory/history/2026-07-11_06-53-53Z-docker-desktop-wsl-not.md
+ M justfile
+ M pitfalls/wsl-ubuntu-oobe-and-wsl-l-encoding.md
+ M scripts/enable-wsl-ubuntu.ps1
+?? scripts/bootstrap-wsl-dotfiles.ps1
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:49:19Z)**_
+
+<think><details><summary>Thought Process</summary>
+The working tree is clean with only my changes, so I can safely stage everything and commit.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:49:19Z)**_
+
+Clean — only my WSL convenience-recipe files (no unrelated changes). Staging and committing:
+
+_**Agent (claude-opus-4-8 2026-07-11 11:49:24Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit the wsl-dotfiles recipe
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+git add -A
+git diff --cached --stat
+git commit -F - <<'EOF'
+feat(wsl): `just wsl-dotfiles` — bootstrap dotfiles into an existing WSL distro
+
+Adds a convenience recipe + scripts/bootstrap-wsl-dotfiles.ps1 that runs the
+cross-platform dotfiles bootstrap inside an already-existing WSL distro, without
+the register/user-creation of enable-wsl-ubuntu. Use it to finish the install
+after the in-distro step failed on the network, or to install the dotfiles into
+a distro you set up yourself.
+
+Like enable-wsl-ubuntu it pipes the chezmoi one-liner via `bash -s` on stdin
+(so $(...) / $HOME / quotes are expanded by the Linux shell, never mangled by
+PowerShell->wsl) and retries 3x for proxy/GFW resets. Reads name/email/mirror/
+username from `chezmoi data`; `just wsl-dotfiles [distro=Ubuntu-24.04]`.
+
+- scripts/bootstrap-wsl-dotfiles.ps1 (new) + justfile recipe
+- enable-wsl-ubuntu.ps1: keep-in-sync note on the shared bootstrap block
+- skill recipe list + pitfall guidance mention `just wsl-dotfiles`
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+EOF
+echo "== result =="; git log --oneline -3; echo "== unpushed =="; git log --oneline origin/main..main
+```
+
+```text
+ .chezmoitemplates/dotfiles-windows-skill.md        |   1 +
+ .../2026-07-11_06-53-53Z-docker-desktop-wsl-not.md | 662 +++++++++++++++++++++
+ justfile                                           |   4 +
+ pitfalls/wsl-ubuntu-oobe-and-wsl-l-encoding.md     |   3 +-
+ scripts/bootstrap-wsl-dotfiles.ps1                 |  77 +++
+ scripts/enable-wsl-ubuntu.ps1                      |   2 +
+ 6 files changed, 748 insertions(+), 1 deletion(-)
+[WARNING] Unstaged files detected.
+[INFO] Stashing unstaged files to /Users/david/.cache/pre-commit/patch1783770560-72507.
+Auto-redact secrets in agent artifacts...................................Passed
+Detect hardcoded secrets.................................................Passed
+detect private key.......................................................Passed
+check for added large files..............................................Passed
+check for merge conflicts................................................Passed
+fix end of files.........................................................Passed
+trim trailing whitespace.................................................Passed
+[INFO] Restored changes from /Users/david/.cache/pre-commit/patch1783770560-72507.
+[main e632b7d] feat(wsl): `just wsl-dotfiles` — bootstrap dotfiles into an existing WSL distro
+ 6 files changed, 748 insertions(+), 1 deletion(-)
+ create mode 100644 scripts/bootstrap-wsl-dotfiles.ps1
+== result ==
+e632b7d feat(wsl): `just wsl-dotfiles` — bootstrap dotfiles into an existing WSL distro
+e8b1336 fix(wsl): retry the in-WSL dotfiles bootstrap; clearer GFW guidance
+cb08a99 feat(aliases,docs): reboot alias; cau uses `chezmoi update --init`
+== unpushed ==
+e632b7d feat(wsl): `just wsl-dotfiles` — bootstrap dotfiles into an existing WSL distro
+e8b1336 fix(wsl): retry the in-WSL dotfiles bootstrap; clearer GFW guidance
+cb08a99 feat(aliases,docs): reboot alias; cau uses `chezmoi update --init`
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:49:39Z)**_
+
+Committed as **`e632b7d`**. Pre-commit passed.
+
+## `just wsl-dotfiles` is in
+
+```
+wsl-dotfiles distro="Ubuntu-24.04"   # bootstrap the cross-platform dotfiles into an EXISTING WSL distro
+```
+
+- **`scripts/bootstrap-wsl-dotfiles.ps1`** (new) — runs only the chezmoi bootstrap (no register/user-creation), so it works on **any** existing distro, including one you set up yourself. Pipes via `bash -s` on stdin (the robust form we verified) + 3× retry for GFW resets. Reads name/email/mirror/username from `chezmoi data`.
+- For you specifically: once you've got the distro (you do) and a VPN on, `just wsl-dotfiles` finishes the dotfiles install. `just enable-wsl-ubuntu` also still works (it's the ours-only path with register/guard).
+
+Verification: all three WSL scripts lint clean, new one parses, `just --list` shows the recipe, the runtime bash passes `bash -n`, docs build `--strict` green.
+
+## Unpushed state (3 commits)
+```
+e632b7d feat(wsl): just wsl-dotfiles ...
+e8b1336 fix(wsl): retry the in-WSL bootstrap ...
+cb08a99 feat(aliases,docs): reboot alias ...   ← not mine
+```
+The two `wsl` commits are mine; `cb08a99` is the aliases change from the other session. Want me to `git push`? That sends all three to the remote your Dev Box pulls from — after which `cau` on the Dev Box picks up `just wsl-dotfiles` + the retry hardening.

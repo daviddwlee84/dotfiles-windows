@@ -53,6 +53,10 @@ enable-wsl:
 enable-wsl-ubuntu:
     pwsh -NoProfile -File ./scripts/enable-wsl-ubuntu.ps1
 
+# install the cross-platform dotfiles inside an EXISTING WSL distro (VPN on if behind GFW)
+wsl-dotfiles distro="Ubuntu-24.04":
+    pwsh -NoProfile -File ./scripts/bootstrap-wsl-dotfiles.ps1 -Distro {{distro}}
+
 # install Hack Nerd Font machine-wide so Alacritty sees it (run from ELEVATED pwsh)
 install-fonts-machine-wide:
     pwsh -NoProfile -File ./scripts/install-fonts-machine-wide.ps1

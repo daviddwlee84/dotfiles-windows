@@ -81,7 +81,8 @@ wsl.exe --terminate Ubuntu-24.04                      # (3) re-read wsl.conf
   marks the distro ours, but `~/.local/share/chezmoi` missing → it re-runs just
   the bootstrap). If it still fails: connect a **VPN** on Windows (WSL routes
   through the host, so a Windows-side proxy works too) and re-run
-  `just enable-wsl-ubuntu`, or open the distro and run
+  `just enable-wsl-ubuntu` (ours) or **`just wsl-dotfiles`** (bootstrap into *any*
+  existing distro), or open the distro and run
   `sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply daviddwlee84` by hand.
   GFW-mirror support for the Linux chezmoi/git clone belongs in the
   cross-platform repo (`daviddwlee84/dotfiles`), not here.

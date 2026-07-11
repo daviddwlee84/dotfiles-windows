@@ -133,6 +133,8 @@ printf 'provisioned by dotfiles-windows (installWslUbuntu)\n' > /etc/dotfiles-wi
     # Headless: run the frozen, non-interactive dotfiles bootstrap as the user.
     # Retry the whole thing up to 3× — behind a proxy/GFW the chezmoi/repo
     # download from GitHub is often reset mid-transfer (curl error 56).
+    # (This bootstrap block is mirrored in scripts/bootstrap-wsl-dotfiles.ps1,
+    # which `just wsl-dotfiles` runs against an existing distro — keep in sync.)
     Info "Bootstrapping cross-platform dotfiles in $Distro (headless)"
     $boot = @"
 command -v curl >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq curl; }
