@@ -60,6 +60,17 @@ function Test-DotfilesInstalled {
     try { & wsl.exe -d $Distro -u $user -- bash -lc 'test -d "$HOME/.local/share/chezmoi"' *> $null } catch { return $false }
     return ($LASTEXITCODE -eq 0)
 }
+function Test-OurProvisioning {
+    # Sentinel written during our user creation — distinguishes a distro this tool
+    # set up from one the user installed + OOBE'd themselves (which we must NOT touch).
+    try { & wsl.exe -d $Distro -u root -- test -f /etc/dotfiles-windows-provisioned *> $null } catch { return $false }
+    return ($LASTEXITCODE -eq 0)
+}
+function Test-OtherUbuntu {
+    # Any Ubuntu* distro (called only when $Distro itself is not registered).
+    try { $list = & wsl.exe -l -q 2>$null } catch { return $false }
+    return (($list -join "`n") -match 'Ubuntu')
+}
 
 try {
     if (-not (Test-WslPlatform)) {
@@ -68,12 +79,21 @@ try {
     }
 
     $registered = Test-DistroRegistered
-    if ($registered -and (Test-DotfilesInstalled)) {
-        Info "$Distro already set up with dotfiles — nothing to do."
-        return
-    }
-
-    if (-not $registered) {
+    if ($registered) {
+        if (-not (Test-OurProvisioning)) {
+            Write-Warning "$Distro already exists and wasn't set up by this tool — leaving it untouched."
+            Write-Host "    To install the dotfiles into it yourself:  wsl -d $Distro  then:" -ForegroundColor Yellow
+            Write-Host '    sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply daviddwlee84' -ForegroundColor Yellow
+            Write-Host "    Or for a clean unattended setup:  wsl --unregister $Distro  then re-run 'just enable-wsl-ubuntu'." -ForegroundColor Yellow
+            return
+        }
+        if (Test-DotfilesInstalled) {
+            Info "$Distro already set up with dotfiles — nothing to do."
+            return
+        }
+        Info "$Distro was provisioned by this tool but has no dotfiles yet — (re)running the bootstrap."
+    } else {
+        if (Test-OtherUbuntu) { Info "Another Ubuntu distro is registered — adding a separate $Distro for the dotfiles." }
         Info "Registering $Distro (no launch, no OOBE)"
         & wsl.exe --install -d $Distro --no-launch
         if ($LASTEXITCODE -ne 0) {
@@ -84,6 +104,8 @@ try {
 
         # Create the user as root — bypasses the interactive OOBE. Pipe a bash
         # script via stdin (bash -s) to avoid PowerShell->wsl->bash quote hell.
+        # The sentinel marks this distro as ours, so a later run never clobbers a
+        # distro the user set up themselves.
         Info "Creating user '$user' (passwordless sudo, WSL auto-login)"
         $rootScript = @"
 set -e
@@ -93,6 +115,7 @@ passwd -l "`$u" >/dev/null 2>&1 || true
 printf '%s ALL=(ALL) NOPASSWD:ALL\n' "`$u" > "/etc/sudoers.d/90-`$u"
 chmod 0440 "/etc/sudoers.d/90-`$u"
 printf '[user]\ndefault=%s\n' "`$u" > /etc/wsl.conf
+printf 'provisioned by dotfiles-windows (installWslUbuntu)\n' > /etc/dotfiles-windows-provisioned
 "@ -replace "`r`n", "`n"
         $rootScript | & wsl.exe -d $Distro -u root -- bash -s
         if ($LASTEXITCODE -ne 0) { Write-Warning "user setup in $Distro failed (exit $LASTEXITCODE)."; return }

@@ -5,6 +5,7 @@
 - First `wsl -d Ubuntu-24.04` launch drops into the interactive **"Enter new UNIX username:"** / **"New password:"** OOBE instead of provisioning unattended.
 - After scripting `/etc/wsl.conf` `[user] default=<name>`, `wsl` still logs in as **root** (the default-user change "did nothing").
 - Piped bash script fails with `$'\r': command not found` / `set -e` aborting on the first line.
+- `enable-wsl-ubuntu` prints **"Ubuntu-24.04 already exists and wasn't set up by this tool"** and does nothing — an `Ubuntu-24.04` you installed + OOBE'd yourself is deliberately left untouched.
 
 **First seen**: 2026-07
 **Affects**: `scripts/enable-wsl-ubuntu.ps1`, WSL2 on Windows 10/11, Ubuntu-24.04
@@ -65,6 +66,14 @@ wsl.exe --terminate Ubuntu-24.04                      # (3) re-read wsl.conf
 - Always `wsl --terminate` after writing `/etc/wsl.conf`.
 - Pipe bash via `bash -s` with `-replace "\`r\`n","\`n"` — never interpolate a
   complex command through `wsl -- bash -c "…"` (quote hell + CRLF).
+- **Don't clobber a hand-made distro.** A distro this tool created carries the
+  sentinel `/etc/dotfiles-windows-provisioned`; `enable-wsl-ubuntu` refuses to
+  touch an `Ubuntu-24.04` that lacks it (so it never overwrites a distro you set
+  up + OOBE'd yourself, and never fails trying to bootstrap as a user that
+  doesn't exist there). To let the tool own it: `wsl --unregister Ubuntu-24.04`
+  and re-run. To keep yours: install the dotfiles manually with the chezmoi
+  one-liner. A separate pre-existing `Ubuntu` (not `-24.04`) is left alone — the
+  tool adds its own `Ubuntu-24.04` and logs a note.
 
 ## Related
 

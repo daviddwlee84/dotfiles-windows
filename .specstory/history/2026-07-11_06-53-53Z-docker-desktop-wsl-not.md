@@ -11877,3 +11877,587 @@ main
 == unpushed? ==
 ```
 </details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 09:05:53Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm checking the current state of the working tree and noticing that the `backlog/wsl-ubuntu-auto-dotfiles.md` file I created last turn shows as untracked, which means it wasn't included in the previous commit that added the WSL backend feature. "-snappy-lemon") doesn't match the actual feature name, but that's just a naming quirk from the planning session and doesn't affect anything. Now I'm staging everything with `git add -A` and committing to main with a message describing the WSL Ubuntu feature: unattended distro setup with passwordless sudo, auto-login via wsl.conf, and a headless chezmoi bootstrap that pulls the dotfiles configuration.
+
+The implementation uses PowerShell scripts to register Ubuntu-24.04 without the OOBE, then runs chezmoi with frozen defaults so the cross-platform dotfiles install with zero prompts inside WSL. I'm setting up the wslUbuntuBootstrap mode as headless, interactive, or none, and the whole thing requires WSL2 to be installed first with a reboot. The scripts handle UTF-8 encoding and avoid quote escaping by piping bash via stdin, plus they detect and guide on elevation errors without ever aborting the apply.
+
+I'm also documenting the setup process in English and Traditional Chinese, adding a "What's enabled" skill section, and capturing common pitfalls like OOBE bypass issues and wsl.conf termination traps. Then I'll promote the wsl-ubuntu-auto-dotfiles backlog item to shipped and commit everything.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 09:05:53Z)**_
+
+The tree holds exactly the WSL-Ubuntu feature + this session's plan and transcript — nothing unrelated (the earlier features are already committed). Matching the repo's demonstrated workflow (direct to `main`, artifacts bundled), I'll stage and commit.
+
+_**Agent (claude-opus-4-8 2026-07-11 09:05:53Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Stage all WSL Ubuntu feature files + artifacts
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+git add -A
+echo "== staged =="; git diff --cached --stat
+```
+
+```text
+== staged ==
+ .chezmoi.toml.tmpl                                 |    3 +
+ .../run_onchange_after_46_wsl_ubuntu.ps1.tmpl      |   17 +
+ .chezmoitemplates/dotfiles-windows-skill.md        |    3 +-
+ .claude/plans/docker-desktop-wsl-snappy-lemon.md   |  300 +-
+ .github/workflows/windows.yml                      |    3 +
+ .../2026-07-11_06-53-53Z-docker-desktop-wsl-not.md | 4752 ++++++++++++++++++++
+ TODO.md                                            |    1 +
+ backlog/README.md                                  |    1 +
+ backlog/wsl-ubuntu-auto-dotfiles.md                |  129 +
+ docs/rationale.md                                  |    6 +-
+ docs/rationale.zh-TW.md                            |    5 +-
+ docs/setup.md                                      |    3 +
+ docs/setup.zh-TW.md                                |    3 +
+ docs/tools.md                                      |   12 +
+ docs/tools.zh-TW.md                                |   10 +
+ justfile                                           |    4 +
+ pitfalls/README.md                                 |    1 +
+ pitfalls/wsl-ubuntu-oobe-and-wsl-l-encoding.md     |   74 +
+ scripts/enable-wsl-ubuntu.ps1                      |  130 +
+ 19 files changed, 5310 insertions(+), 147 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 09:06:10Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit the WSL Ubuntu feature
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+git commit -F - <<'EOF'
+feat(wsl): unattended WSL2 Ubuntu distro + cross-platform dotfiles bootstrap
+
+Layer a real Ubuntu on the WSL2 platform: an opt-in (default-off)
+installWslUbuntu toggle registers Ubuntu-24.04 with NO OOBE — creates the
+user via `wsl -u root` (name from wslUsername, passwordless sudo, wsl.conf
+default -> auto-login) — then, in the default `headless` mode, runs a
+frozen-from-Windows `chezmoi init --apply daviddwlee84 --promptDefaults`
+(name/email/profile=ubuntu_server seeded) so the cross-platform dotfiles
+install with zero prompts inside WSL. wslUbuntuBootstrap = headless |
+interactive | none.
+
+This repo only triggers the parent installer; Linux config stays there.
+Requires the WSL2 platform (installWsl) + reboot first; distro registration
+needs no admin, so no self-elevation — detect-and-guide on elevation errors.
+Never aborts the apply.
+
+- scripts/enable-wsl-ubuntu.ps1 + run_onchange_after_46_wsl_ubuntu.ps1.tmpl
+  (bash via stdin to dodge quote hell; WSL_UTF8; BOM-free stdin)
+- installWslUbuntu / wslUsername / wslUbuntuBootstrap prompts + CI flags;
+  just enable-wsl-ubuntu recipe
+- docs (setup/tools/rationale EN+zh-TW, WSLg note) + skill "What's enabled"
+- pitfalls/ for OOBE-bypass / wsl -l encoding / wsl.conf-terminate traps
+- promote the wsl-ubuntu-auto-dotfiles backlog item to Done/shipped
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+EOF
+echo "== result =="; git log --oneline -1; echo "-- remaining --"; git status --short
+```
+
+```text
+[WARNING] Unstaged files detected.
+[INFO] Stashing unstaged files to /Users/david/.cache/pre-commit/patch1783760766-93840.
+Auto-redact secrets in agent artifacts...................................Passed
+Detect hardcoded secrets.................................................Passed
+detect private key.......................................................Passed
+check for added large files..............................................Passed
+check for merge conflicts................................................Passed
+fix end of files.........................................................Passed
+trim trailing whitespace.................................................Passed
+[INFO] Restored changes from /Users/david/.cache/pre-commit/patch1783760766-93840.
+[main c81e35d] feat(wsl): unattended WSL2 Ubuntu distro + cross-platform dotfiles bootstrap
+ 19 files changed, 5310 insertions(+), 147 deletions(-)
+ create mode 100644 .chezmoiscripts/run_onchange_after_46_wsl_ubuntu.ps1.tmpl
+ create mode 100644 backlog/wsl-ubuntu-auto-dotfiles.md
+ create mode 100644 pitfalls/wsl-ubuntu-oobe-and-wsl-l-encoding.md
+ create mode 100644 scripts/enable-wsl-ubuntu.ps1
+== result ==
+c81e35d feat(wsl): unattended WSL2 Ubuntu distro + cross-platform dotfiles bootstrap
+-- remaining --
+ M .specstory/history/2026-07-11_06-53-53Z-docker-desktop-wsl-not.md
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 09:06:22Z)**_
+
+Committed as **`c81e35d`** on `main`. All pre-commit hooks passed (secret-redaction, hardcoded-secrets, private-key, large-file, merge-conflict, EOF/whitespace).
+
+**`c81e35d`** — `feat(wsl): unattended WSL2 Ubuntu distro + cross-platform dotfiles bootstrap` — 19 files:
+- Feature: `scripts/enable-wsl-ubuntu.ps1`, `run_onchange_after_46_wsl_ubuntu.ps1.tmpl`, 3 prompts + CI flags, `just enable-wsl-ubuntu`
+- Docs: setup/tools/rationale (EN + zh-TW) + skill template
+- Knowledge base: pitfall doc + backlog promoted to shipped + TODO → Done
+- Session artifacts: updated plan file + this session's transcript (bundled per convention)
+
+The lone remaining `M .specstory/history/…` is just the transcript still growing this turn — it'll fold into a later commit, same as before.
+
+Not pushed. This is now two commits ahead on `main` (`59946ae` WSL backend, `c81e35d` WSL Ubuntu) — say the word if you want me to `git push`.
+
+---
+
+_**User (2026-07-11 09:09:54Z)**_
+
+我們是否會檢查user是否已經提前裝過Ubuntu且登入過了？這種情況會怎樣嗎？
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-11 09:11:10Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm thinking through what happens when Ubuntu is already installed and the user has logged in before. Let me trace through the script logic: first it checks if WSL itself is running with `wsl --status`, then it verifies whether Ubuntu is already registered by looking at the list of installed distributions.
+
+The key question is whether the distro name matches exactly — if they installed `Ubuntu-24.04` specifically versus the generic `Ubuntu` or a different version like `Ubuntu-22.04`, the behavior diverges. I'm working through each scenario: if they have `Ubuntu-24.04` registered with their own username already created, the script would check whether dotfiles are installed by running a test command as that user, and depending on what it finds, it either skips setup or proceeds with the bootstrap. failed with a warning but never actually creates the `david` user or sets up dotfiles, leaving things in a broken state. The real issue is that user creation only happens if the distro isn't already registered, so if someone manually installed it first, we skip that step and then try to bootstrap as a user that doesn't exist. Now let me trace through what happens if their OOBE username actually matches our expected wslUsername—in that case both would be `david`, so the bootstrap should work.
+
+But here's the trap: if they've already installed dotfiles manually, the bootstrap runs `chezmoi init --apply` on their existing account, which could overwrite their existing configuration files. That's potentially destructive and surprising behavior.
+
+There are three failure modes I'm seeing. First, if they pre-installed Ubuntu with a different username than what we expect, the bootstrap fails entirely. Second, if they used the same username, we'd apply our dotfiles into their existing environment without running the setup for passwordless sudo and wsl.conf — so the account gets partially configured. Third, if they installed a generic Ubuntu instead of Ubuntu-24.04 specifically, our script won't find it and registers a separate Ubuntu-24.04 distro, leaving them with two Ubuntu instances.
+
+The core issue is that we only check whether the distro is registered and whether our user's dotfiles exist — we don't actually verify whether OOBE already ran or detect if a different user is already logged in. I should re-examine the actual script logic to give you a precise assessment of what's happening and then propose a more robust approach. unt it as a separate distro, so we'd try to register and set up `Ubuntu` instead of `Ubuntu-24.04`. There's also the risk that if someone manually installs dotfiles or configs beforehand, our bootstrap could overwrite them depending on chezmoi's backup settings, which defaults to 'smart' mode and backs up changed files but still applies our dotfiles into their environment without explicit consent.
+
+The safest approach would be to detect if `Ubuntu-24.04` already exists and looks manually configured — if the expected user account doesn't exist but the distro is registered, we should bail out with clear guidance rather than risk overwriting their setup, letting them either bootstrap dotfiles themselves or clean up the distro first. the distro was already set up by us before, we should bail out with a clear message rather than risk overwriting someone else's configuration. The key is to add a safety check that detects whether this Ubuntu instance is one we created or if it's a pre-existing setup, and only proceed if it's safe to do so. er that marker exists. That way, even if someone's username collides with ours, we won't accidentally provision their account unless we explicitly set that sentinel during our own setup.
+
+I should give the user a straightforward answer: the current check is incomplete, here's exactly what could go wrong, and here's the safest fix—adding a sentinel file to distinguish our fresh distro from a pre-existing one with a matching username. If the marker exists, it's ours—so I skip if dotfiles are already there, otherwise run bootstrap. If the marker's missing, it's a pre-existing distro we shouldn't touch, so I warn the user and give them options: manually bootstrap it, or unregister and re-run for a clean setup. This handles both our provisioned distros and foreign ones safely. There's also the case where someone installed generic `Ubuntu` instead of `Ubuntu-24.04`, which would still result in us registering a separate `Ubuntu-24.04`. The user asked a diagnostic question, so I should explain what happens first, then propose the safety guard and offer to implement it. Given the pattern in our conversation where they ask and then approve changes, I'll present the fix concretely so they can decide whether to apply it.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 09:11:10Z)**_
+
+Good catch — that's exactly the edge case worth scrutinizing. Let me re-read the committed logic to answer precisely rather than from memory.
+
+_**Agent (claude-opus-4-8 2026-07-11 09:11:10Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./scripts/enable-wsl-ubuntu.ps1`
+
+```text
+64	try {
+65	    if (-not (Test-WslPlatform)) {
+66	        Write-Warning "WSL2 platform not ready. Enable installWsl and REBOOT first, then run 'just enable-wsl-ubuntu'."
+67	        return
+68	    }
+69	
+70	    $registered = Test-DistroRegistered
+71	    if ($registered -and (Test-DotfilesInstalled)) {
+72	        Info "$Distro already set up with dotfiles — nothing to do."
+73	        return
+74	    }
+75	
+76	    if (-not $registered) {
+77	        Info "Registering $Distro (no launch, no OOBE)"
+78	        & wsl.exe --install -d $Distro --no-launch
+79	        if ($LASTEXITCODE -ne 0) {
+80	            $hint = if (Test-Admin) { '' } else { " If this failed with an elevation error, run 'just enable-wsl-ubuntu' from an admin pwsh." }
+81	            Write-Warning ("wsl --install -d $Distro failed (exit $LASTEXITCODE).$hint")
+82	            return
+83	        }
+84	
+85	        # Create the user as root — bypasses the interactive OOBE. Pipe a bash
+86	        # script via stdin (bash -s) to avoid PowerShell->wsl->bash quote hell.
+87	        Info "Creating user '$user' (passwordless sudo, WSL auto-login)"
+88	        $rootScript = @"
+89	set -e
+90	u='$user'
+91	id "`$u" >/dev/null 2>&1 || useradd -m -s /bin/bash -G sudo,adm "`$u"
+92	passwd -l "`$u" >/dev/null 2>&1 || true
+93	printf '%s ALL=(ALL) NOPASSWD:ALL\n' "`$u" > "/etc/sudoers.d/90-`$u"
+94	chmod 0440 "/etc/sudoers.d/90-`$u"
+95	printf '[user]\ndefault=%s\n' "`$u" > /etc/wsl.conf
+96	"@ -replace "`r`n", "`n"
+97	        $rootScript | & wsl.exe -d $Distro -u root -- bash -s
+98	        if ($LASTEXITCODE -ne 0) { Write-Warning "user setup in $Distro failed (exit $LASTEXITCODE)."; return }
+99	
+100	        & wsl.exe --terminate $Distro *> $null   # apply /etc/wsl.conf default user
+101	    }
+102	
+103	    if ($WslMode -ne 'headless') {
+104	        Info "$Distro ready. Bootstrap mode '$WslMode' — open it and install dotfiles yourself:"
+105	        Write-Host "    wsl -d $Distro" -ForegroundColor Yellow
+106	        Write-Host '    sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply daviddwlee84' -ForegroundColor Yellow
+107	        return
+108	    }
+109	
+110	    # Headless: run the frozen, non-interactive dotfiles bootstrap as the user.
+111	    Info "Bootstrapping cross-platform dotfiles in $Distro (headless)"
+112	    $boot = @"
+113	set -e
+114	command -v curl >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq curl; }
+115	sh -c "`$(curl -fsLS get.chezmoi.io)" -- -b "`$HOME/.local/bin" \
+116	  init --apply "https://github.com/daviddwlee84/dotfiles.git" --promptDefaults \
+117	  --promptString "What is your full name=$WslName" \
+118	  --promptString "What is your email address=$WslEmail" \
+119	  --promptChoice "Which profile=ubuntu_server" \
+120	  --promptBool "Are you in China (behind GFW) and need to use mirrors=$WslMirror"
+121	"@ -replace "`r`n", "`n"
+122	    $boot | & wsl.exe -d $Distro -u $user -- bash -s
+123	    if ($LASTEXITCODE -ne 0) {
+124	        Write-Warning "dotfiles bootstrap in $Distro failed (exit $LASTEXITCODE). Retry: just enable-wsl-ubuntu"
+125	        return
+126	    }
+127	    Info "WSL Ubuntu ready — open it with: wsl -d $Distro"
+128	} catch {
+129	    Write-Warning "WSL Ubuntu setup failed (non-fatal): $_"
+130	}
+131
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 09:11:38Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm tracing through the logic: when Ubuntu 24.04 is already registered and the user has completed OOBE, the script skips the registration block entirely. The issue is that `Test-DotfilesInstalled` uses our configured username, but if their OOBE setup used a different username, the WSL probe command fails.
+
+Then the headless bootstrap tries to run commands as our user in a distro where that user doesn't exist, which errors out silently with just a warning—nothing actually gets provisioned. Even worse, if their OOBE username happens to match ours and dotfiles are missing, we'd run `chezmoi init` directly into their existing account, potentially overwriting their Linux configuration.
+
+The generic `Ubuntu` distro case also isn't detected, so we'd register a duplicate. The real problem is we have no way to distinguish between a distro we provisioned versus one the user set up manually. I need to add a sentinel file check—during our user creation, write a marker to `/etc/dotfiles-windows-provisioned`, then at startup verify it exists before touching the distro. I'll structure my response to walk through the current behavior, show the three scenarios and their outcomes, highlight the risk of clobbering an existing environment, then propose a sentinel marker approach that skips with a warning, and offer to implement it.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 09:11:44Z)**_
+
+Confirmed — and you've found a real gap. Today the check is **shallow**: we only look at whether `Ubuntu-24.04` is registered (`Test-DistroRegistered`) and whether **our** user has `~/.local/share/chezmoi` (`Test-DotfilesInstalled`). We do **not** detect "the user already installed Ubuntu and did the OOBE themselves." Here's exactly what happens if they did:
+
+**1. They pre-installed `Ubuntu-24.04` with their own OOBE user (e.g. `alice`), our `wslUsername` = `david`:**
+- `$registered` = true → the whole register + user-creation block (lines 76–101) is **skipped** (so no `david` user, no wsl.conf/sudoers).
+- `Test-DotfilesInstalled` probes `wsl -u david` → **`david` doesn't exist** → false → not a no-op.
+- Headless bootstrap runs `wsl -u david -- bash -s` → **user doesn't exist → wsl errors → graceful `Write-Warning`** ("bootstrap failed… Retry"). Net: never aborts, but it's broken and the message is confusing.
+
+**2. They pre-installed `Ubuntu-24.04`, and their OOBE user happens to equal our `wslUsername` (both `david`), no dotfiles yet:**
+- Register block skipped, but `wsl -u david` works → headless bootstrap runs `chezmoi init --apply daviddwlee84` **inside their existing account** → it would apply our dotfiles over their environment. ⚠️ The parent repo's `backupMode=smart` backs up changed files first, so it's not a silent wipe, but it's still intrusive and unwanted.
+
+**3. They installed the generic `Ubuntu` app (registers as `Ubuntu`, not `Ubuntu-24.04`):**
+- We don't match it → we register a **second** distro `Ubuntu-24.04`. Not destructive, but now they have two Ubuntus.
+
+So: no crash (invariant #2 holds), but case 1 fails confusingly and **case 2 can clobber a working setup** — that violates the "look at the target; if it contradicts how it was described, surface it, don't proceed" principle.
+
+## Proposed fix (safe: never touch a distro we didn't create)
+
+Write a **provisioning sentinel** when *we* create the user, and branch on it:
+
+- In the user-creation block: also `touch /etc/dotfiles-windows-provisioned`.
+- Up top, when `$registered`:
+  - **marker present** → it's ours: dotfiles present → no-op; else → run bootstrap (the legit retry path).
+  - **marker absent** → a pre-existing / manually-set-up Ubuntu → **skip and warn**, e.g.:
+    > `Ubuntu-24.04 already exists and wasn't set up by this tool — leaving it untouched. To install the dotfiles into it yourself: wsl -d Ubuntu-24.04, then the chezmoi one-liner. Or `wsl --unregister Ubuntu-24.04` and re-run for a clean unattended setup.`
+- Plus a non-blocking `Info` note if some other `Ubuntu*` distro exists (case 3), so the second-distro surprise is at least announced.
+
+This makes it impossible to clobber a user's existing distro/account, fixes the confusing case-1 failure, and keeps a clean retry path for our own installs.
+
+Want me to implement this guard (and add it to the pitfall doc)?
+
+---
+
+_**User (2026-07-11 10:19:23Z)**_
+
+Sure implement this
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-11 10:20:33Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm setting up a sentinel-based guard by adding a helper function that checks for a provisioning marker file in the WSL distro, then modifying the root script to create that marker once provisioning completes.
+
+The restructured logic will check if the distro is registered, and if it is, verify whether it's our provisioning by looking for the sentinel — if the marker is missing, we skip with a warning; if present, we either return early (dotfiles already installed) or proceed to bootstrap. For unregistered distros, I'll register and create the user first, then add a note if other Ubuntu distros exist to clarify we're adding a separate Ubuntu-24.04 instance. The `Test-DotfilesInstalled` check will work as-is since the sentinel confirms the distro is ours and the user should exist. Checking for other Ubuntu distros and registering the new one if needed, then falling through to the bootstrap phase regardless of whether this is a fresh registration or an existing distro that's missing dotfiles — that's the key flow I need to preserve.
+
+Now I'm writing helper functions to test whether our provisioning has already run and to detect if other Ubuntu instances exist on the system.
+
+For the sentinel file that marks successful provisioning, I'll write a readable marker to `/etc/dotfiles-windows-provisioned` after the wsl.conf setup completes.
+
+The sentinel check using `test -f /etc/dotfiles-windows-provisioned` runs as root, which works fine since root can always access /etc, and the distro is either ours (already initialized) or a foreign OOBE distro where root exists. Booting the distro via `wsl -u root` for this read-only check is harmless.
+
+Now I need to handle the warning message carefully since it contains a curl one-liner with nested quotes that could cause PowerShell escaping issues.
+
+Writing warning messages... Adding helper functions... Writing the WSL installation logic... Writing shell setup script... Checking if another Ubuntu distro exists and registering a new one without launching it, then handling any installation errors with appropriate guidance depending on admin privileges, before moving on to user creation.
+
+Now I'm piping a bash script through stdin to avoid quoting issues, setting up the user with passwordless sudo access and WSL auto-login while marking this distro as managed so future runs don't interfere with it. Adding test helper functions...
+
+Now I need to verify the parsing and linting work correctly after these changes, then update the pitfall documentation to note the sentinel guard that prevents touching pre-existing Ubuntu installations.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:20:33Z)**_
+
+Let me implement the sentinel-based guard.
+
+_**Agent (claude-opus-4-8 2026-07-11 10:20:36Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/scripts/enable-wsl-ubuntu.ps1 has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:20:56Z)**_
+
+Now restructure the top logic block (guard on the sentinel; add the second-Ubuntu note + the sentinel write):
+
+_**Agent (claude-opus-4-8 2026-07-11 10:21:03Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/scripts/enable-wsl-ubuntu.ps1 has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:21:17Z)**_
+
+<think><details><summary>Thought Process</summary>
+I need to update the pitfalls documentation to include this pre-existing Ubuntu scenario and the sentinel guard approach. I'll add a new symptom bullet point and create a section under the "Work" area that explains the pre-existing distro situation. I'm adding a note about the sentinel file that the tool creates—distros it manages have `/etc/dotfiles-windows-provisioned`, and `enable-wsl-ubuntu` won't touch an `Ubuntu-24.04` lacking it to avoid clobbering user-installed distros. I'll explain the two paths: unregister and re-run to let the tool own it, or manually install dotfiles with chezmoi if you want to keep your setup.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:21:17Z)**_
+
+Now update the pitfall doc to cover the pre-existing-distro case + sentinel:
+
+_**Agent (claude-opus-4-8 2026-07-11 10:21:20Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+<tool_use_error>String to replace not found in file.
+String: - `/etc/wsl.conf` `[user] default=<name>` still logs in as **root** (the default-user change "did nothing").
+- Piped bash script fails with `$'\r': command not found` / `set -e` aborting on the first line.</tool_use_error>
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:21:27Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/pitfalls/wsl-ubuntu-oobe-and-wsl-l-encoding.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:21:35Z)**_
+
+<think><details><summary>Thought Process</summary>
+I see the actual symptoms text didn't match what I tried to edit — the wording was different, particularly around the WSL configuration issue and the bash script error. Let me look at the correct text more carefully to make the right edit.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:21:35Z)**_
+
+The Prevention edit landed; the Symptoms edit missed on exact text. Let me fix it with the correct string:
+
+_**Agent (claude-opus-4-8 2026-07-11 10:21:37Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/pitfalls/wsl-ubuntu-oobe-and-wsl-l-encoding.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:21:59Z)**_
+
+Now re-verify: lint, render/parse, and confirm the new branch logic is well-formed.
+
+_**Agent (claude-opus-4-8 2026-07-11 10:22:03Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Lint + parse + render-parse the updated script
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+echo "== lint =="
+pwsh -NoProfile -c "Invoke-ScriptAnalyzer -Path ./scripts/enable-wsl-ubuntu.ps1 -Settings ./PSScriptAnalyzerSettings.psd1" 2>&1 | tail -10
+echo "EXIT: $?"
+echo "== standalone parse of the script =="
+pwsh -NoProfile -c '$e=$null; [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path ./scripts/enable-wsl-ubuntu.ps1),[ref]$null,[ref]$e)|Out-Null; if($e){$e|%{Write-Host "  $_"}}else{Write-Host "PARSE OK"}'
+echo "== render+parse embedded (headless) =="
+TMPD=$(mktemp -d); mkdir -p "$TMPD/home"
+chezmoi init --source="$PWD" --config="$TMPD/c.toml" --persistent-state="$TMPD/s.db" --destination="$TMPD/home" --no-tty \
+  --promptChoice='Role: workstation (full desktop) or minimal (shell only)=minimal' \
+  --promptString='Your full name (git)=T' --promptString='Your git email=t@e.com' \
+  --promptBool='Install coding agents (Claude Code, OpenCode, Codex, Copilot CLI, SpecStory)=false' \
+  --promptBool='Install GUI apps via winget (VSCode, Cursor, Notepad++, Terminal, Alacritty, PowerToys, Raycast)=false' \
+  --promptBool='Install WSL2 (Docker Desktop backend; needs admin + reboot)=false' \
+  --promptBool='Install a WSL2 Ubuntu distro and bootstrap cross-platform dotfiles inside it (needs admin; requires WSL2 platform)=true' \
+  --promptString='WSL Ubuntu username=dev' \
+  --promptChoice='WSL Ubuntu dotfiles bootstrap (headless|interactive|none)=headless' \
+  --promptBool='Install utility apps via winget (CPU-Z, GPU-Z, TreeSize, VLC, Everything, ShareX, HWiNFO)=false' \
+  --promptBool='Install gaming apps (Steam)=false' \
+  --promptBool='Install extra runtimes (rust, go, ruby) beyond node/bun/uv=false' \
+  --promptBool='Install media CLIs (ffmpeg, imagemagick)=false' \
+  --promptBool='Install local LLM tools (Ollama, LiteLLM)=false' \
+  --promptBool='Install tunnel tools (ngrok, cloudflared)=false' \
+  --promptBool='Install Infrastructure-as-Code tools (Azure CLI, Terraform, OpenTofu)=false' \
+  --promptBool='Install and enable the OpenSSH server / sshd (needs admin, opens inbound port 22)=false' \
+  --promptBool='Install herdr (native Windows terminal multiplexer, preview beta)=false' \
+  --promptBool='Install Clink + starship/zoxide/fzf for cmd.exe (DOS prompt)=false' \
+  --promptBool='Use China (GFW) mirrors for pip/npm/cargo/go/node=false' \
+  --promptBool='Managed or corporate machine (skip org-policy-blocked apps like Tailscale and Grammarly)=false' \
+  --promptChoice='Back up existing files before apply (smart|full|off)=off' \
+  --promptBool='Enable PSReadLine vi editing mode=true' >/dev/null 2>&1 && echo "init OK" || echo "INIT FAIL"
+chezmoi execute-template --config="$TMPD/c.toml" --source="$PWD" < .chezmoiscripts/run_onchange_after_46_wsl_ubuntu.ps1.tmpl > /tmp/u2.ps1
+pwsh -NoProfile -c '$e=$null;[System.Management.Automation.Language.Parser]::ParseInput((Get-Content -Raw /tmp/u2.ps1),[ref]$null,[ref]$e)|Out-Null; if($e){$e|%{Write-Host "  $_"}}else{Write-Host "EMBEDDED PARSE OK"}'
+echo "== sentinel + guard present in rendered output? =="
+grep -c 'dotfiles-windows-provisioned' /tmp/u2.ps1 | xargs echo "sentinel refs:"
+grep -q "wasn't set up by this tool" /tmp/u2.ps1 && echo "guard present" || echo "guard MISSING"
+rm -rf "$TMPD"
+```
+
+```text
+== lint ==
+EXIT: 0
+== standalone parse of the script ==
+PARSE OK
+== render+parse embedded (headless) ==
+init OK
+EMBEDDED PARSE OK
+== sentinel + guard present in rendered output? ==
+sentinel refs: 2
+guard present
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:22:26Z)**_
+
+<think><details><summary>Thought Process</summary>
+All the checks are passing—linting is clean, the standalone parse works, embedded rendering and parsing both work, and I've got the sentinel references accounted for with the guard in place. Now I'm checking whether running the docs build will cause any issues, though it looks like the pitfalls directory won't affect the docs site since it's ignored by chezmoi and not included in the mkdocs navigation.
+
+Since I only modified the pitfall doc and the script, neither of which are in the docs folder, the docs build should be unaffected. I'll skip that step. For the commit, the user said "implement this" rather than explicitly asking for a commit like they did before, so I'll present the implementation as complete and verified, then ask if they want me to commit it.
+
+Let me outline the new behavior across the different scenarios: if there's a pre-existing Ubuntu-24.04 that isn't ours, we skip it and warn with guidance to avoid clobbering; if it's ours with dotfiles present, it's a no-op; if it's ours but missing dotfiles, we re-run bootstrap as a retry; a fresh system gets registered with the user, sentinel, and bootstrap; and if there's another Ubuntu variant present, we note it and add a separate Ubuntu-24.04 entry.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:22:26Z)**_
+
+All green — lint clean (exit 0), script and embedded render both parse, sentinel appears twice (write + check), guard present.
+
+## What the guard now does
+
+Behavior when the script runs, by distro state:
+
+| State of `Ubuntu-24.04` | Before | Now |
+|---|---|---|
+| **Pre-installed by user, OOBE'd** (no sentinel) | tried to bootstrap as a user that may not exist → confusing failure, or clobbered a matching account | **Skipped + warned**, untouched, with guidance (`wsl --unregister` to hand it over, or the one-liner to DIY) |
+| **Ours, dotfiles present** | no-op | no-op |
+| **Ours, dotfiles missing** (partial run) | re-ran bootstrap | re-runs bootstrap (unchanged, correct retry) |
+| **Not registered, fresh** | register + user + bootstrap | same, **+ writes `/etc/dotfiles-windows-provisioned`** sentinel |
+| **A different `Ubuntu*` exists** (e.g. plain `Ubuntu`) | silently added a 2nd distro | adds `Ubuntu-24.04` **+ logs a note** it's separate |
+
+The sentinel `/etc/dotfiles-windows-provisioned` (written as root during user creation) is the "ours vs. theirs" signal — so the tool can **never overwrite a distro or account you set up by hand**, which was the real risk in case 2. Also updated `pitfalls/wsl-ubuntu-oobe-and-wsl-l-encoding.md` (new symptom line + a Prevention bullet).
+
+Changed files: `scripts/enable-wsl-ubuntu.ps1`, `pitfalls/wsl-ubuntu-oobe-and-wsl-l-encoding.md` (both already tracked from `c81e35d`).
+
+Want me to commit this as `fix(wsl): don't touch a pre-existing WSL Ubuntu; sentinel-guard provisioning`?
+
+---
+
+_**User (2026-07-11 10:23:55Z)**_
+
+sure
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-11 10:24:02Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'll commit the changes now — staging the modified script, pitfall documentation, and transcript, then pushing to main.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:24:03Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Stage the guard fix + transcript
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+git add -A
+git diff --cached --stat
+```
+
+```text
+ .../2026-07-11_06-53-53Z-docker-desktop-wsl-not.md | 489 +++++++++++++++++++++
+ pitfalls/wsl-ubuntu-oobe-and-wsl-l-encoding.md     |   9 +
+ scripts/enable-wsl-ubuntu.ps1                      |  35 +-
+ 3 files changed, 527 insertions(+), 6 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:24:16Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit the sentinel-guard fix
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+git commit -F - <<'EOF'
+fix(wsl): don't touch a pre-existing WSL Ubuntu; sentinel-guard provisioning
+
+enable-wsl-ubuntu previously only checked whether Ubuntu-24.04 was registered
+and whether OUR user had dotfiles — so a distro the user installed and OOBE'd
+themselves would either fail cryptically (bootstrap as a user that doesn't
+exist) or, if the username coincided, run `chezmoi init --apply` into their
+existing account and overwrite their config.
+
+Write an `/etc/dotfiles-windows-provisioned` sentinel when we create the user,
+and branch on it:
+- registered but no sentinel -> leave it untouched, warn with guidance
+  (`wsl --unregister` to hand it over, or the one-liner to DIY);
+- ours + dotfiles present -> no-op; ours + missing -> re-run bootstrap;
+- a different Ubuntu* distro present -> add a separate Ubuntu-24.04 + log a note.
+
+Never clobbers a distro/account the user set up by hand.
+
+- scripts/enable-wsl-ubuntu.ps1: Test-OurProvisioning / Test-OtherUbuntu guards
+- pitfalls/wsl-ubuntu-oobe-and-wsl-l-encoding.md: new symptom + prevention note
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+EOF
+echo "== result =="; git log --oneline -3; echo "-- remaining --"; git status --short
+```
+
+```text
+[WARNING] Unstaged files detected.
+[INFO] Stashing unstaged files to /Users/david/.cache/pre-commit/patch1783765454-20695.
+Auto-redact secrets in agent artifacts...................................Passed
+Detect hardcoded secrets.................................................Passed
+detect private key.......................................................Passed
+check for added large files..............................................Passed
+check for merge conflicts................................................Passed
+fix end of files.........................................................Passed
+trim trailing whitespace.................................................Passed
+[INFO] Restored changes from /Users/david/.cache/pre-commit/patch1783765454-20695.
+[main c8359c8] fix(wsl): don't touch a pre-existing WSL Ubuntu; sentinel-guard provisioning
+ 3 files changed, 527 insertions(+), 6 deletions(-)
+== result ==
+c8359c8 fix(wsl): don't touch a pre-existing WSL Ubuntu; sentinel-guard provisioning
+c81e35d feat(wsl): unattended WSL2 Ubuntu distro + cross-platform dotfiles bootstrap
+220f144 feat(wsl): install WSL2 as the Docker Desktop backend (self-elevating, opt-out)
+-- remaining --
+ M .specstory/history/2026-07-11_06-53-53Z-docker-desktop-wsl-not.md
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:24:21Z)**_
+
+Committed as **`c8359c8`**. Pre-commit hooks all passed.
+
+The WSL work now stands as three commits on `main`:
+- `220f144` — WSL2 platform (Docker Desktop backend)
+- `c81e35d` — unattended WSL2 Ubuntu + cross-platform dotfiles bootstrap
+- `c8359c8` — sentinel guard so a pre-existing/hand-made Ubuntu is never clobbered
+
+The remaining `M .specstory/…` is just the live transcript growing this turn, as before. Nothing pushed — three commits ahead of the remote whenever you want me to `git push`.
