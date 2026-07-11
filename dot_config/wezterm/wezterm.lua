@@ -45,4 +45,26 @@ config.default_cursor_style = 'SteadyBlock'
 config.scrollback_lines = 10000
 config.audible_bell = 'Disabled'
 
+-- CSI-u key encodings — parity with the Alacritty config (AppData/Roaming/
+-- alacritty/alacritty.toml.tmpl), which shares these with the macOS/Linux
+-- dotfiles. The load-bearing one for TUI agents (Claude Code, Codex, …) is
+-- Shift+Enter -> ESC[13;2u: they read it as "insert newline" instead of
+-- "submit". Without it WezTerm sends a bare CR for Shift+Enter, byte-identical
+-- to Enter, so the agent can't tell them apart. The ESC (\x1b) prefix is
+-- load-bearing so tmux / Neovim pass the sequence through untouched.
+local act = wezterm.action
+config.keys = {
+  { key = 'Enter', mods = 'SHIFT', action = act.SendString('\x1b[13;2u') }, -- newline in agents
+  { key = 'Enter', mods = 'CTRL',  action = act.SendString('\x1b[13;5u') },
+  { key = '/',     mods = 'CTRL',  action = act.SendString('\x1f')       },
+}
+-- Ctrl+0..9 -> CSI-u (the number is the digit's ASCII code), e.g. Ctrl+1 -> ESC[49;5u.
+for _, d in ipairs({ '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' }) do
+  table.insert(config.keys, {
+    key = d,
+    mods = 'CTRL',
+    action = act.SendString(string.format('\x1b[%d;5u', string.byte(d))),
+  })
+end
+
 return config
