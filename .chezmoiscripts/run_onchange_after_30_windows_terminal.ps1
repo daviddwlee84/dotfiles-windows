@@ -49,5 +49,29 @@ if ($s.profiles.ContainsKey('list')) {
     if ($pwshProfile -and $pwshProfile.guid) { $s['defaultProfile'] = $pwshProfile.guid }
 }
 
+# CSI-u key bindings so TUI agents (Claude Code, Codex, …) can tell Shift+Enter
+# apart from Enter: Shift+Enter -> ESC[13;2u is read as "insert newline" instead
+# of "submit". Without it WT sends a bare CR for Shift+Enter, byte-identical to
+# Enter. Parity with the WezTerm (dot_config/wezterm/wezterm.lua) and Alacritty
+# (AppData/Roaming/alacritty/alacritty.toml.tmpl) configs, which share these.
+# Non-destructive: append only bindings whose `keys` aren't already present, so a
+# hand-added user binding always wins. The ESC ([char]27) is load-bearing —
+# ConvertTo-Json serializes that ESC to its JSON escape form, which is what WT's sendInput
+# wants; hand-typing the escape tends to drop it (see AGENTS.md invariant #3).
+$esc = [char]27
+$wantActions = @(
+    @{ keys = 'shift+enter'; command = @{ action = 'sendInput'; input = "$esc[13;2u" } }
+    @{ keys = 'ctrl+enter';  command = @{ action = 'sendInput'; input = "$esc[13;5u" } }
+)
+$actions = @()
+if ($s.ContainsKey('actions')) { $actions = @($s['actions']) }
+# NB: read the 'keys' FIELD as $_['keys']; $_.keys returns the hashtable's own
+# .Keys collection (the -AsHashtable gotcha), not the JSON value 'shift+enter'.
+$existingKeys = @($actions | ForEach-Object { $_['keys'] })
+foreach ($b in $wantActions) {
+    if ($b['keys'] -notin $existingKeys) { $actions += $b }
+}
+$s['actions'] = $actions
+
 $s | ConvertTo-Json -Depth 20 | Set-Content -Path $path -Encoding utf8
 Write-Host "Windows Terminal defaults updated -> $path"

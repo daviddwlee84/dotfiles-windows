@@ -108,11 +108,18 @@ Enabled by **Install utility apps**:
     then restart Alacritty. Diagnose the family name with
     `[System.Drawing.FontFamily]::Families.Name | Select-String Hack`.
 
-## AI agents (npm)
+## AI agents
 
-`@anthropic-ai/claude-code`, `opencode-ai`, `@openai/codex`, `@github/copilot`
-— installed globally via npm (provided by the scoop `node`). **OpenCode Desktop**
-(GUI companion to the `opencode-ai` CLI) installs via scoop (`extras/opencode-desktop`).
+Enabled by **Install coding agents**:
+
+- **Claude Code** — `Anthropic.ClaudeCode` via **winget** (the native Windows
+  build; distinct from `Anthropic.Claude`, the desktop app under GUI apps).
+  Upgraded with `just upgrade-winget`, not npm.
+- **OpenCode** (`opencode-ai`), **Codex** (`@openai/codex`), **Copilot CLI**
+  (`@github/copilot`) — installed globally via **npm** (provided by the scoop `node`).
+- **OpenCode Desktop** — GUI companion to the `opencode-ai` CLI, via scoop
+  (`extras/opencode-desktop`).
+
 The official **ChatGPT** desktop app installs via the Microsoft Store (see GUI
 apps); **Codex** is the `@openai/codex` npm CLI above, not a Store app. SpecStory
 has no native-Windows CLI package, so it's omitted here.

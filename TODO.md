@@ -35,6 +35,7 @@ Someday / nice-to-have.
 
 - [ ] **[S] Example deferred item** — low signal-to-effort, but easy.
 - [ ] **[S] Windows ssh-agent profile fragment** — parallel to the parent repo's `94_ssh_agent.zsh`. A `dot_config/powershell/profile.d/` fragment that ensures the OpenSSH Authentication Agent service is running (`Set-Service ssh-agent -StartupType Automatic`; `Start-Service`) and optionally detects Bitwarden desktop's `//./pipe/openssh-ssh-agent`. Config skeleton (`dot_ssh/`) already shipped; this only automates the agent side.
+- [ ] **[S] Windows Terminal full CSI-u parity (Ctrl+/, Ctrl+digits)** — the WT merger (`run_onchange_after_30_windows_terminal.ps1`) currently injects only `Shift+Enter → ESC[13;2u` and `Ctrl+Enter → ESC[13;5u`. WezTerm/Alacritty also send `Ctrl+/ → \x1f` and `Ctrl+0..9 → ESC[<ascii>;5u`; add the same `sendInput` actions for full parity, checking they don't clash with WT's own default keybindings.
 
 ## P?
 

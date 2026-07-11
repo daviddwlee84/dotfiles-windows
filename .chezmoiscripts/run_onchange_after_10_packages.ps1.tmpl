@@ -250,9 +250,12 @@ Scoop-Install @('ffmpeg', 'imagemagick')
 {{ end -}}
 
 {{ if .installCodingAgents -}}
-# AI coding agents (npm-based CLIs; Antigravity IDE goes via winget below).
+# AI coding agents. Claude Code ships a native Windows build via winget
+# (Anthropic.ClaudeCode — distinct from Anthropic.Claude, the desktop app in the
+# GUI block below), so it no longer rides on npm; upgrades come with
+# `just upgrade-winget`. The rest are npm-based CLIs; Antigravity IDE is winget.
+Winget-Install 'Anthropic.ClaudeCode'
 Npm-InstallGlobal @(
-    '@anthropic-ai/claude-code',
     'opencode-ai',
     '@openai/codex',
     '@github/copilot'

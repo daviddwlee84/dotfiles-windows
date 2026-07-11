@@ -105,13 +105,21 @@ app-alias 前面），所以 `python`、`uv run`、`uv venv`
     Hack-NF`），再重啟 Alacritty。用
     `[System.Drawing.FontFamily]::Families.Name | Select-String Hack` 診斷字型家族名。
 
-## AI agents（npm）
+## AI agents
 
-`@anthropic-ai/claude-code`、`opencode-ai`、`@openai/codex`、`@github/copilot`
-—— 透過 npm 全域安裝（由 scoop 的 `node` 提供）。**OpenCode Desktop**（`opencode-ai`
-CLI 的 GUI 版）由 scoop 安裝（`extras/opencode-desktop`）。官方 **ChatGPT** 桌面程式
-透過 Microsoft Store 安裝（見 GUI 應用程式）；**Codex** 是上面的 `@openai/codex` npm
-CLI，不是 Store app。SpecStory 沒有原生 Windows CLI 套件，故此處略過。
+由 **Install coding agents** 啟用：
+
+- **Claude Code** —— `Anthropic.ClaudeCode`，透過 **winget** 安裝（原生 Windows
+  版；與 GUI 應用程式中的桌面程式 `Anthropic.Claude` 不同）。以
+  `just upgrade-winget` 升級，不再走 npm。
+- **OpenCode**（`opencode-ai`）、**Codex**（`@openai/codex`）、**Copilot CLI**
+  （`@github/copilot`）—— 透過 **npm** 全域安裝（由 scoop 的 `node` 提供）。
+- **OpenCode Desktop** —— `opencode-ai` CLI 的 GUI 版，由 scoop 安裝
+  （`extras/opencode-desktop`）。
+
+官方 **ChatGPT** 桌面程式透過 Microsoft Store 安裝（見 GUI 應用程式）；**Codex**
+是上面的 `@openai/codex` npm CLI，不是 Store app。SpecStory 沒有原生 Windows CLI
+套件，故此處略過。
 
 ## PowerShell 模組（PSGallery）
 

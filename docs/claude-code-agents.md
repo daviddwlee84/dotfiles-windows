@@ -8,6 +8,44 @@
     to re-derive it. Behaviour below is Claude Code **2.1.x** (mid-2026); press
     `?` in Agent View for the live keybinding list, since these evolve.
 
+## Prompt editing: newline & external editor
+
+Two prompt-input questions that bite on Windows specifically. (These are about the
+terminal → Claude Code input layer; the `Shift+Enter` in the **Agent View** table
+further down is a *different* binding — it dispatches a new session.)
+
+### Shift+Enter, and the newline that always works
+
+Enter **submits**. To insert a line break *without* submitting:
+
+- **`Ctrl+J`** — or type **`\`** then Enter. Both work in *every* terminal with no
+  setup. This is the reliable fallback; reach for it first if in doubt.
+- **`Shift+Enter`** — also mapped to newline, but only fires when the terminal
+  emits a distinct escape sequence (CSI-u `ESC[13;2u`) so Claude Code can tell it
+  apart from a bare Enter.
+
+| Terminal | Shift+Enter → newline |
+|---|---|
+| **WezTerm** | yes — sent by `dot_config/wezterm/wezterm.lua` |
+| **Alacritty** | yes — sent by `AppData/Roaming/alacritty/alacritty.toml.tmpl` |
+| **Windows Terminal** | yes — a `sendInput` action added by `run_onchange_after_30_windows_terminal.ps1` |
+| **Plain pwsh / conhost** | no CSI-u possible — use `Ctrl+J` |
+
+After a fresh `chezmoi apply`, **restart the terminal** so the new keybinding
+loads. If Shift+Enter still submits, fall back to `Ctrl+J` — and prefer WezTerm or
+Windows Terminal over the bare console window.
+
+### Ctrl+G — compose the prompt in nvim
+
+**`Ctrl+G`** (or the `Ctrl+X Ctrl+E` chord) opens the current prompt in `$EDITOR`.
+This repo already sets `$env:EDITOR = 'nvim'` in
+`dot_config/powershell/profile.d/00_env.ps1` (when nvim is on PATH), so `Ctrl+G`
+drops you straight into nvim; save and quit to load the edited text back. Works in
+pwsh on Windows.
+
+All three are Claude Code defaults; remap them in `~/.claude/keybindings.json`
+via the `chat:newline`, `chat:submit`, and `chat:externalEditor` actions.
+
 ## The mental model: three ways to parallelize
 
 | Approach | What it is | Isolation | Use when |

@@ -7,6 +7,40 @@
     以下行為以 Claude Code **2.1.x**(2026 年中)為準;鍵位會演進,在 Agent View 按 `?`
     可看即時清單。
 
+## 提示編輯:換行與外部編輯器
+
+兩個在 Windows 上特別容易踩到的輸入問題。(這裡談的是終端機 → Claude Code 的輸入層；
+下方 **Agent View** 表格裡的 `Shift+Enter` 是*另一個*綁定 —— 它會派發一個新 session。)
+
+### Shift+Enter，以及一定有效的換行
+
+Enter 是**送出**。要在不送出的情況下換行:
+
+- **`Ctrl+J`** —— 或先打 **`\`** 再按 Enter。兩者在*任何*終端機都免設定可用,是最可靠的
+  後備;不確定時先用這個。
+- **`Shift+Enter`** —— 同樣對應到換行,但只有當終端機送出一個可辨識的跳脫序列
+  (CSI-u `ESC[13;2u`)、讓 Claude Code 能和單純的 Enter 區分時才會生效。
+
+| 終端機 | Shift+Enter → 換行 |
+|---|---|
+| **WezTerm** | 有 —— 由 `dot_config/wezterm/wezterm.lua` 送出 |
+| **Alacritty** | 有 —— 由 `AppData/Roaming/alacritty/alacritty.toml.tmpl` 送出 |
+| **Windows Terminal** | 有 —— 由 `run_onchange_after_30_windows_terminal.ps1` 合併器加入的 `sendInput` action |
+| **純 pwsh / conhost** | 無法送 CSI-u —— 請用 `Ctrl+J` |
+
+剛 `chezmoi apply` 之後,**重開終端機**讓新的鍵綁定載入。若 Shift+Enter 仍然送出,就
+退回用 `Ctrl+J` —— 並優先用 WezTerm 或 Windows Terminal,而非裸的主控台視窗。
+
+### Ctrl+G —— 用 nvim 撰寫提示
+
+**`Ctrl+G`**(或 `Ctrl+X Ctrl+E` 和弦)會用 `$EDITOR` 打開目前的提示。這個 repo 已在
+`dot_config/powershell/profile.d/00_env.ps1` 設定 `$env:EDITOR = 'nvim'`(當 nvim 在
+PATH 上時),所以 `Ctrl+G` 會直接進入 nvim;存檔離開即把編輯後的文字帶回。在 Windows
+的 pwsh 下可用。
+
+以上三者都是 Claude Code 的預設鍵;可在 `~/.claude/keybindings.json` 以
+`chat:newline`、`chat:submit`、`chat:externalEditor` 這幾個 action 重新綁定。
+
 ## 心智模型:三種並行方式
 
 | 方式 | 是什麼 | 隔離 | 何時用 |
