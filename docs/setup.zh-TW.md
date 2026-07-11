@@ -96,12 +96,17 @@ powershell -ExecutionPolicy Bypass -File "%TEMP%\bootstrap.ps1"
 ## 日常操作
 
 ```powershell
-chezmoi diff          # 預覽即將套用的變更
-chezmoi apply         # 套用
-chezmoi update        # git pull 後套用
+chezmoi diff            # 預覽即將套用的變更
+chezmoi apply           # 只套用本機 source 的改動（不 pull）
+chezmoi update --init   # git pull 後套用；--init 會補問新增的 prompt（沒新增則 noop）
 just upgrade-scoop     # 升級 CLI 工具
 just upgrade-winget    # 升級 GUI 應用程式
 ```
+
+在已載入的 pwsh session 中,`cau`(= `chezmoi update --init` 後 reload
+`$PROFILE`)與 `cas`(= `chezmoi apply` 後 reload)是快捷指令。日常「同步
+dotfiles」建議一律用 `cau` —— `--init` 表示落後於新增 init prompt 的機器,
+會在下次 pull 時被補問。
 
 ## 本機覆寫
 

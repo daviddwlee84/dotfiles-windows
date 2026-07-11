@@ -102,12 +102,17 @@ Re-run the prompts later with `chezmoi init` again, or edit
 ## Day-to-day
 
 ```powershell
-chezmoi diff          # preview pending changes
-chezmoi apply         # apply
-chezmoi update        # git pull + apply
+chezmoi diff            # preview pending changes
+chezmoi apply           # apply local source edits only (no pull)
+chezmoi update --init   # git pull + apply; --init re-asks any newly-added prompts (noop if none)
 just upgrade-scoop     # upgrade CLI tools
 just upgrade-winget    # upgrade GUI apps
 ```
+
+Inside a loaded pwsh session, `cau` (= `chezmoi update --init` + reload
+`$PROFILE`) and `cas` (= `chezmoi apply` + reload) are the shortcuts. Prefer
+`cau` as the normal "sync my dotfiles" verb — `--init` means a machine that's
+behind on newly-added init prompts gets asked them on the next pull.
 
 ## Local overrides
 

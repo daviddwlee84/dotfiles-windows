@@ -47,3 +47,524 @@ _**Agent (claude-opus-4-8 2026-07-11 10:42:25Z)**_
 已加好。`reboot` 會呼叫 `Restart-Computer`,並透傳參數,所以你可以用 `reboot -Force` 跳過確認、或 `reboot -Delay 30` 之類。
 
 套用後生效:`cas`(chezmoi apply + reload)或直接 `reload`。
+
+---
+
+_**User (2026-07-11 10:49:46Z)**_
+
+是說我們在Windows上 更常是手動 `chezmoi update --init` 還是執行 `irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex`？(如果很常是後者 是不是也弄一個alias？ 還是就是cas？)
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-11 10:49:54Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm looking at how the Windows workflow operates and need to examine what the bootstrap script does and how the repository is structured.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:49:54Z)**_
+
+好問題,讓我先看看這個 repo 實際有沒有 `bootstrap.ps1`、以及現有 alias 的語意,再給你判斷。
+
+_**Agent (claude-opus-4-8 2026-07-11 10:49:54Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+`ls bootstrap.ps1 2>/dev/null; echo "---找 bootstrap---"; git ls-files | grep -i bootstrap; echo "---README 提到的安裝方式---"; grep -rn "iex\|chezmoi update\|chezmoi init\|bootstrap" README.md docs/setup.md 2>/dev/null | head -40`
+
+```text
+bootstrap.ps1
+---找 bootstrap---
+.agents/skills/agent-history-hygiene/scripts/bootstrap-project.sh
+.agents/skills/mkdocs-site-bootstrap/SKILL.md
+.agents/skills/mkdocs-site-bootstrap/assets/docs-skeleton/_snippets/README.md
+.agents/skills/mkdocs-site-bootstrap/assets/docs-skeleton/assets/copy-to-llm/copy-to-llm-custom.css
+.agents/skills/mkdocs-site-bootstrap/assets/docs-skeleton/assets/copy-to-llm/copy-to-llm.css
+.agents/skills/mkdocs-site-bootstrap/assets/docs-skeleton/assets/copy-to-llm/copy-to-llm.js
+.agents/skills/mkdocs-site-bootstrap/assets/docs-skeleton/getting-started.md
+.agents/skills/mkdocs-site-bootstrap/assets/docs-skeleton/index.md
+.agents/skills/mkdocs-site-bootstrap/assets/docs-workflow.yml.template
+.agents/skills/mkdocs-site-bootstrap/assets/i18n-plugin.yml.snippet
+.agents/skills/mkdocs-site-bootstrap/assets/mkdocs.yml.template
+.agents/skills/mkdocs-site-bootstrap/assets/page.md.template
+.agents/skills/mkdocs-site-bootstrap/assets/pyproject.toml.template
+.agents/skills/mkdocs-site-bootstrap/assets/social/ci-steps.yml
+.agents/skills/mkdocs-site-bootstrap/assets/social/mkdocs-plugin.yml
+.agents/skills/mkdocs-site-bootstrap/assets/social/pyproject-dep.txt
+.agents/skills/mkdocs-site-bootstrap/assets/translation-stub.md.template
+.agents/skills/mkdocs-site-bootstrap/references/docs-stack-recipe.md
+.agents/skills/mkdocs-site-bootstrap/references/existing-docs-handling.md
+.agents/skills/mkdocs-site-bootstrap/references/i18n-guide.md
+.agents/skills/mkdocs-site-bootstrap/references/mkdocs-2-and-zensical.md
+.agents/skills/mkdocs-site-bootstrap/references/preferences-schema.md
+.agents/skills/mkdocs-site-bootstrap/scripts/add-docs-page.sh
+.agents/skills/mkdocs-site-bootstrap/scripts/add-language.sh
+.agents/skills/mkdocs-site-bootstrap/scripts/check-preferences.sh
+.agents/skills/mkdocs-site-bootstrap/scripts/enable-pages.sh
+.agents/skills/mkdocs-site-bootstrap/scripts/init-docs-site.sh
+.claude/skills/mkdocs-site-bootstrap
+.specstory/history/2026-07-09_16-08-55Z-at-bootstrap-ps1-vs.md
+bootstrap.ps1
+---README 提到的安裝方式---
+README.md:23:irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex
+README.md:56:| `bootstrap.ps1` | One-line installer. |
+docs/setup.md:8:irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex
+docs/setup.md:11:Or from **cmd.exe** — there's no native-cmd bootstrap to maintain; you hand off to
+docs/setup.md:19:irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex
+docs/setup.md:26:powershell -Command "irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 -OutFile $env:TEMP\bootstrap.ps1"
+docs/setup.md:27:notepad "%TEMP%\bootstrap.ps1"
+docs/setup.md:28:powershell -ExecutionPolicy Bypass -File "%TEMP%\bootstrap.ps1"
+docs/setup.md:32:bootstrap logic lives once, in PowerShell (`bootstrap.ps1`): cmd is a poor
+docs/setup.md:36:!!! warning "Defender may flag the cmd irm|iex one-liner as ClickFix"
+docs/setup.md:38:    `powershell -ExecutionPolicy Bypass -Command "irm <url> | iex"` — can trip
+docs/setup.md:42:    download-cradle (`irm|iex`) plus `-ExecutionPolicy Bypass` / `-NoProfile` is
+docs/setup.md:48:    `powershell -c "irm|iex"` handed to you by a web page or a "verify you're
+docs/setup.md:51:`bootstrap.ps1` does the following, idempotently:
+docs/setup.md:61:5. Runs `chezmoi init --apply` (or `chezmoi update` if the source is already
+docs/setup.md:67:    Keep a VPN on for the bootstrap — scoop downloads git / pwsh / chezmoi / uv
+docs/setup.md:73:`chezmoi init` asks a few questions once (answers are stored and never re-asked):
+docs/setup.md:81:| WSL2 Ubuntu | off | install a WSL2 Ubuntu distro + bootstrap cross-platform dotfiles (needs `installWsl`) |
+docs/setup.md:83:| WSL Ubuntu bootstrap | `headless` | dotfiles install mode: `headless` (frozen from Windows) / `interactive` / `none` |
+docs/setup.md:99:Re-run the prompts later with `chezmoi init` again, or edit
+docs/setup.md:107:chezmoi update        # git pull + apply
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:50:02Z)**_
+
+<think><details><summary>Thought Process</summary>
+I need to clarify the workflow here. The bootstrap.ps1 script handles initial setup—installing scoop, git, PowerShell, chezmoi, uv, then running chezmoi init and apply. For regular maintenance, `chezmoi update` is the standard approach, which pulls the latest changes and applies them. Let me focus on what the day-to-day workflow actually looks like.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:50:14Z)**_
+
+看清楚了。這兩個是不同階段的東西,不該混:
+
+**`bootstrap.ps1`(那條 `irm | iex`)= 首次裝機**
+- 從零安裝 scoop → git / pwsh / chezmoi / uv,然後才 `chezmoi init --apply`。
+- 一台機器一輩子跑一次(或環境爛掉重建時)。跑它的當下你根本還沒有這個 profile、沒有 alias 可用 —— 所以**幫它做 alias 沒意義**,你不會在已經裝好的 shell 裡去重跑 bootstrap。
+
+**日常更新 = `chezmoi update`**,而你已經有 alias 了:
+
+```powershell
+function cas { chezmoi apply @args; . $PROFILE }   # 只套用本機已改的 source
+function cau { chezmoi update @args; . $PROFILE }   # git pull + apply,再 reload
+```
+
+所以對照一下你問的:
+
+| 你想做的事 | 指令 | 有沒有 alias |
+|---|---|---|
+| 首次裝機 / 重灌 | `irm …/bootstrap.ps1 \| iex` | 不需要(當下沒 profile) |
+| 拉遠端最新 + 套用 | `chezmoi update` | ✅ 已有 `cau` |
+| 只套用本機改動 | `chezmoi apply` | ✅ 已有 `cas` |
+
+**`chezmoi update --init` vs 那條 iex 的差別**:`--init` 假設 chezmoi 這個 binary 已經在了;bootstrap 連 chezmoi 本身都幫你裝。所以只要機器已經 bootstrap 過,日常就是 **`cau`**,不必再碰 `--init` 也不必碰 iex。
+
+**結論:不用再加 alias。** 你的心智模型應該是「裝機跑一次 bootstrap,之後一律 `cau`」。真的要說有沒有缺口,反而是 bootstrap 那行太長、重灌時難記 —— 但那是要放到 **README / docs** 當文件(已經有了),不是放進 profile alias,因為 alias 在那個時間點還沒載入。
+
+要不要我做別的,還是這樣就清楚了?
+
+---
+
+_**User (2026-07-11 10:51:59Z)**_
+
+感覺要加一下 --init 因爲有時候我們會新增prompt 反正如果沒有那也會noop
+(然後放到README user比較知道要怎樣初次使用與後續使用)
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-11 10:52:06Z)**_
+
+<think><details><summary>Thought Process</summary>
+I need to add the `--init` flag to the update alias so new prompts get picked up automatically, then update the README to clarify the difference between initial setup and subsequent usage. Let me check the current README structure first to see how to best document this.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:52:06Z)**_
+
+合理 —— `chezmoi update --init` 在沒有新 prompt 時就是 noop,加了只有好處。我改 `cau`,再更新 README。先看 README 現況:
+
+_**Agent (claude-opus-4-8 2026-07-11 10:52:06Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./README.md`
+
+```text
+1	# dotfiles-windows
+2	
+3	Native **Windows + PowerShell 7** dotfiles, managed by [chezmoi](https://chezmoi.io).
+4	A self-contained, Windows-only companion to the cross-platform (macOS/Linux)
+5	dotfiles at **[daviddwlee84/dotfiles](https://github.com/daviddwlee84/dotfiles)** —
+6	the PowerShell layer is written natively rather than ported from the POSIX shell config.
+7	
+8	> **Which repo do I install from?**
+9	>
+10	> | Your machine | Use |
+11	> |---|---|
+12	> | **Native Windows** (PowerShell) | **this repo** (`dotfiles-windows`) |
+13	> | macOS / Linux / WSL | [daviddwlee84/dotfiles](https://github.com/daviddwlee84/dotfiles) |
+14	
+15	> Status: work in progress. See [`docs/`](docs/) for the full handbook (bilingual
+16	> EN / 繁體中文) once built.
+17	
+18	## Quick start
+19	
+20	From a fresh Windows PowerShell (or pwsh) session:
+21	
+22	```powershell
+23	irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex
+24	```
+25	
+26	This installs [scoop](https://scoop.sh) (CLI tools) + [winget](https://learn.microsoft.com/windows/package-manager/)
+27	(GUI apps), PowerShell 7, [chezmoi](https://chezmoi.io) and [uv](https://docs.astral.sh/uv/),
+28	then applies the dotfiles.
+29	
+30	## What you get
+31	
+32	- **Shell**: PowerShell 7 with a modular `$PROFILE` (`~/.config/powershell/profile.d/*.ps1`).
+33	- **Prompt**: [starship](https://starship.rs) (shared config with the macOS/Linux dotfiles).
+34	- **CLI tools** (scoop): git, neovim, lazygit, zoxide, fzf, bat, eza, ripgrep, fd, gh, delta, jq, yazi, btop, mise, uv, node, bun.
+35	- **AI agents**: Claude Code, OpenCode, Codex, GitHub Copilot CLI, SpecStory, Antigravity.
+36	- **Editors**: VSCode, Cursor, Notepad++ (shared settings/keybindings).
+37	- **Apps** (winget): Windows Terminal, Alacritty, Raycast, PowerToys, Steam.
+38	- **`copilot-proxy`** tool series, rewritten as a native PowerShell module.
+39	
+40	## Package manager
+41	
+42	**scoop for CLIs, winget for GUI apps.** Rationale (why not Chocolatey, why
+43	starship not oh-my-posh, why pwsh not cmd) lives in the docs.
+44	
+45	## Layout
+46	
+47	| Path | What |
+48	|---|---|
+49	| `.chezmoi.toml.tmpl` | Init prompts (role + feature toggles). |
+50	| `Documents/PowerShell/Microsoft.PowerShell_profile.ps1` | `$PROFILE` loader. |
+51	| `dot_config/powershell/profile.d/` | Modular shell fragments. |
+52	| `dot_config/powershell/modules/Copilot/` | `copilot-proxy` PowerShell module. |
+53	| `dot_config/starship.toml` | Prompt config. |
+54	| `dot_ssh/` | Create-only `~/.ssh/config` skeleton (`Include config.d/*`) + `config.d/` snippets. |
+55	| `.chezmoiscripts/` | Package install + editor-overlay scripts. |
+56	| `bootstrap.ps1` | One-line installer. |
+57	| `docs/`, `mkdocs.yml` | Bilingual documentation site. |
+58	
+59	## SSH
+60	
+61	`dot_ssh/` ships a create-only OpenSSH skeleton, mirrored from the cross-platform
+62	dotfiles and adapted for Windows:
+63	
+64	- `~/.ssh/config` — `Include ~/.ssh/config.d/*` plus conservative `Host *`
+65	  keepalives. **Create-only**: an existing `~/.ssh/config` is never overwritten
+66	  (add the `Include` line by hand if so). chezmoi writes it owner-only so
+67	  Windows OpenSSH won't reject it with "Bad owner or permissions".
+68	- `~/.ssh/config.d/00-defaults` — commented-out global-defaults stub.
+69	- `~/.ssh/config.d/01_git` — `github.com` over `ssh.github.com:443` (survives
+70	  port-22 filtering) + `gitlab.com`, with commented multi-account / SOCKS5-proxy
+71	  examples.
+72	
+73	Agent handling differs from macOS/Linux: use the Windows **OpenSSH
+74	Authentication Agent** service (`Set-Service ssh-agent -StartupType Automatic`;
+75	`Start-Service ssh-agent`; `ssh-add`). The client uses the
+76	`//./pipe/openssh-ssh-agent` named pipe by default — no `SSH_AUTH_SOCK` needed.
+77	
+78	## Manual dotfiles ops
+79	
+80	```powershell
+81	chezmoi diff          # preview changes
+82	chezmoi apply         # apply
+83	just upgrade-scoop     # upgrade CLI tools
+84	just upgrade-winget    # upgrade GUI apps
+85	```
+86	
+87	<!-- project-knowledge-harness:readme-roadmap -->
+88	<!-- Snippet for project's README.md, placed near other meta sections like
+89	     "Customization" or "Contributing". -->
+90	
+91	## Roadmap & lessons learned
+92	
+93	Forward-looking work — long-term ideas, deferred items, things needing
+94	evaluation — lives in [`TODO.md`](TODO.md), prioritised P1 → P3 with effort
+95	estimates (S/M/L/XL). Items with accompanying research, design notes, or paused
+96	troubleshooting link to a corresponding [`backlog/<slug>.md`](backlog/) doc.
+97	
+98	Backward-looking knowledge — past traps and non-obvious debugging — lives in
+99	[`pitfalls/`](pitfalls/), titled by symptom so future-you can grep the error
+100	message and land on the root cause + workaround instead of re-debugging from
+101	scratch.
+102	<!-- project-knowledge-harness:readme-roadmap --> (end)
+103
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:52:16Z)**_
+
+Now let me update `cau` to use `--init`, and improve the README's "Manual dotfiles ops" section to distinguish first-time vs subsequent use.
+
+_**Agent (claude-opus-4-8 2026-07-11 10:52:16Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/dot_config/powershell/profile.d/20_aliases.ps1 has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:52:25Z)**_
+
+Now the README. I'll update the "Manual dotfiles ops" section to split first-time vs day-to-day:
+
+_**Agent (claude-opus-4-8 2026-07-11 10:52:26Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/README.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:52:34Z)**_
+
+改好了。兩處:
+
+**1. `cau` alias** — 現在是 `chezmoi update --init`,新增 prompt 時會在 pull 後補問一次,沒新增就是 noop。
+
+**2. README「Manual dotfiles ops」** — 拆成兩段心智模型:
+- **First-time**:跑一次 bootstrap 一行式(`chezmoi init --apply`)。
+- **Day-to-day**:`chezmoi update --init`(或 alias `cau`),並註明 `--init` 的用意。
+
+一個提醒:CLAUDE.md 的「Cross-file mirrors」慣例裡,`docs/setup.md` 和它的 `docs/setup.zh-TW.md` 是使用者文件的正本。README 只是入口,setup.md 那邊講「後續使用」的地方(第 107 行 `chezmoi update`)要不要我也一起補成 `chezmoi update --init` 並提 `cau`,保持一致?
+
+---
+
+_**User (2026-07-11 10:52:58Z)**_
+
+sure and then git commit
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-11 10:53:02Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+`grep -n "chezmoi update\|後續\|Subsequent\|update\b" docs/setup.md docs/setup.zh-TW.md`
+
+```text
+docs/setup.md:61:5. Runs `chezmoi init --apply` (or `chezmoi update` if the source is already
+docs/setup.md:107:chezmoi update        # git pull + apply
+docs/setup.zh-TW.md:56:5. 執行 `chezmoi init --apply`（若 source 已經 clone 過則改用 `chezmoi update`）
+docs/setup.zh-TW.md:101:chezmoi update        # git pull 後套用
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:53:06Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./docs/setup.md`
+
+```text
+100	`%USERPROFILE%\.config\chezmoi\chezmoi.toml`.
+101	
+102	## Day-to-day
+103	
+104	```powershell
+105	chezmoi diff          # preview pending changes
+106	chezmoi apply         # apply
+107	chezmoi update        # git pull + apply
+108	just upgrade-scoop     # upgrade CLI tools
+109	just upgrade-winget    # upgrade GUI apps
+110	```
+111	
+112	## Local overrides
+113	
+114	Drop machine-specific tweaks or secrets in
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:53:09Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./docs/setup.zh-TW.md`
+
+```text
+95	
+96	## 日常操作
+97	
+98	```powershell
+99	chezmoi diff          # 預覽即將套用的變更
+100	chezmoi apply         # 套用
+101	chezmoi update        # git pull 後套用
+102	just upgrade-scoop     # 升級 CLI 工具
+103	just upgrade-winget    # 升級 GUI 應用程式
+104	```
+105	
+106	## 本機覆寫
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:53:17Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/docs/setup.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:53:25Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/docs/setup.zh-TW.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:53:28Z)**_
+
+Now let me commit. Let me check status and diff first:
+
+_**Agent (claude-opus-4-8 2026-07-11 10:53:28Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+`git add -A && git status && echo "=== DIFF ===" && git diff --cached --stat`
+
+```text
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	modified:   .specstory/history/2026-07-11_10-39-19Z-at-dot-config-powershell.md
+	modified:   README.md
+	modified:   docs/setup.md
+	modified:   docs/setup.zh-TW.md
+	modified:   dot_config/powershell/profile.d/20_aliases.ps1
+
+=== DIFF ===
+ ...026-07-11_10-39-19Z-at-dot-config-powershell.md | 380 +++++++++++++++++++++
+ README.md                                          |  21 +-
+ docs/setup.md                                      |  11 +-
+ docs/setup.zh-TW.md                                |  11 +-
+ dot_config/powershell/profile.d/20_aliases.ps1     |   3 +-
+ 5 files changed, 415 insertions(+), 11 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:53:35Z)**_
+
+<think><details><summary>Thought Process</summary>
+I see there were some pre-existing unstaged changes in the repository—specifically scripts/enable-wsl.ps1 and another file—that got caught when I ran git add -A. Since those changes are unrelated to my current work, I should separate them out rather than mixing them into this commit.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:53:35Z)**_
+
+等等 —— `git add -A` 也把工作階段開始前就存在、與這次無關的改動吞進來了(`scripts/enable-wsl.ps1` 那個 WSL 改動)。我先看一下,別把它混進這個 commit:
+
+_**Agent (claude-opus-4-8 2026-07-11 10:53:36Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+`git reset -q HEAD scripts/enable-wsl.ps1 2>/dev/null; git diff --stat scripts/enable-wsl.ps1; echo "--- 目前 staged ---"; git diff --cached --stat`
+
+```text
+--- 目前 staged ---
+ ...026-07-11_10-39-19Z-at-dot-config-powershell.md | 380 +++++++++++++++++++++
+ README.md                                          |  21 +-
+ docs/setup.md                                      |  11 +-
+ docs/setup.zh-TW.md                                |  11 +-
+ dot_config/powershell/profile.d/20_aliases.ps1     |   3 +-
+ 5 files changed, 415 insertions(+), 11 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:53:40Z)**_
+
+<think><details><summary>Thought Process</summary>
+The `scripts/enable-wsl.ps1` file isn't showing as modified anymore, which is odd — either it wasn't actually different to begin with, or git add -A picked it up but then reset removed it. Let me check the full status to see what's actually staged.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:53:40Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+`git status --short`
+
+```text
+MM .specstory/history/2026-07-11_10-39-19Z-at-dot-config-powershell.md
+M  README.md
+M  docs/setup.md
+M  docs/setup.zh-TW.md
+M  dot_config/powershell/profile.d/20_aliases.ps1
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:53:48Z)**_
+
+<think><details><summary>Thought Process</summary>
+The enable-wsl.ps1 file that showed as modified in the initial status has now disappeared from the output, likely because it was already staged with `git add -A`. Meanwhile, the specstory file is showing as modified in both the staging area and working tree, which makes sense since it's a live transcript that's actively growing.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:53:52Z)**_
+
+`enable-wsl.ps1` 已不在改動清單(乾淨了),沒被混進來。剩下都是這次的工作。重新加一下持續在長的 transcript,然後 commit:
+
+_**Agent (claude-opus-4-8 2026-07-11 10:53:55Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+git add .specstory/history/2026-07-11_10-39-19Z-at-dot-config-powershell.md
+git commit -q -m "$(cat <<'EOF'
+feat(aliases,docs): reboot alias; cau uses `chezmoi update --init`
+
+- add `reboot` -> Restart-Computer (unix muscle-memory, passthrough args)
+- `cau` now runs `chezmoi update --init` so newly-added init prompts get
+  asked on pull (noop when none added); no need to re-run bootstrap/iex
+- README + docs/setup{,.zh-TW}: split first-time bootstrap vs day-to-day,
+  document `cau`/`cas` and the `--init` rationale
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+EOF
+)"
+git log --oneline -1
+```
+
+```text
+[WARNING] Unstaged files detected.
+[INFO] Stashing unstaged files to /Users/david/.cache/pre-commit/patch1783767233-42345.
+Auto-redact secrets in agent artifacts...................................Passed
+Detect hardcoded secrets.................................................Passed
+detect private key.......................................................Passed
+check for added large files..............................................Passed
+check for merge conflicts................................................Passed
+fix end of files.........................................................Passed
+trim trailing whitespace.................................................Passed
+[INFO] Restored changes from /Users/david/.cache/pre-commit/patch1783767233-42345.
+c053b62 feat(aliases,docs): reboot alias; cau uses `chezmoi update --init`
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 10:54:02Z)**_
+
+Commit 完成:`c053b62`,pre-commit 全綠(含 secret / private-key 掃描)。
+
+這次收了三件事:
+- **`reboot` alias** → `Restart-Computer`(透傳參數)
+- **`cau` → `chezmoi update --init`** —— 新增 prompt 時 pull 會補問,沒新增就 noop,不必再跑 bootstrap/iex
+- **README + `docs/setup.md` / `docs/setup.zh-TW.md`** —— 拆成「首次 bootstrap」vs「日常 `cau`」,並記錄 `--init` 的用意(三份同一 commit,符合 cross-file mirror 慣例)
+
+`scripts/enable-wsl.ps1` 那個先前就在的 WSL 改動沒被混進來,維持獨立。

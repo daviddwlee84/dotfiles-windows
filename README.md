@@ -77,12 +77,25 @@ Authentication Agent** service (`Set-Service ssh-agent -StartupType Automatic`;
 
 ## Manual dotfiles ops
 
+**First-time install** (fresh machine — no chezmoi yet): run the
+[Quick start](#quick-start) one-liner. `bootstrap.ps1` installs scoop, git,
+pwsh, chezmoi and uv, then runs `chezmoi init --apply` (asking the init prompts
+once). You only do this once per machine.
+
+**Day-to-day** (chezmoi already installed): pull the latest and re-apply.
+
 ```powershell
-chezmoi diff          # preview changes
-chezmoi apply         # apply
-just upgrade-scoop     # upgrade CLI tools
-just upgrade-winget    # upgrade GUI apps
+chezmoi update --init   # git pull + apply; --init re-asks any newly-added prompts (noop if none)
+chezmoi diff            # preview pending changes without applying
+chezmoi apply           # apply local source edits only (no pull)
+just upgrade-scoop      # upgrade CLI tools
+just upgrade-winget     # upgrade GUI apps
 ```
+
+Inside a loaded PowerShell session there are shortcuts (see
+`profile.d/20_aliases.ps1`): **`cau`** = `chezmoi update --init` + reload
+`$PROFILE`, **`cas`** = `chezmoi apply` + reload. Prefer `cau` as the normal
+"sync my dotfiles" verb.
 
 <!-- project-knowledge-harness:readme-roadmap -->
 <!-- Snippet for project's README.md, placed near other meta sections like

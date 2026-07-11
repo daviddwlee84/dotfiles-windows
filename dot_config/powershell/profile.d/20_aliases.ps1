@@ -67,8 +67,9 @@ function reload { . $PROFILE }
 # jump to the chezmoi source dir
 function chezmoi-cd { Set-Location (chezmoi source-path) }
 # chezmoi apply / update, then reload (twins of the unix `cas` / `cau`)
+# cau uses --init so newly-added prompts get asked on pull (noop if none added).
 function cas { chezmoi apply @args; . $PROFILE }
-function cau { chezmoi update @args; . $PROFILE }
+function cau { chezmoi update --init @args; . $PROFILE }
 
 # --- run-for: time-box an external command (e.g. `run-for 5 ping example.com`) ---
 function run-for {
