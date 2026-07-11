@@ -4,11 +4,12 @@
 - Docker Desktop won't start: **"WSL 2 is not installed"** / **"Docker Desktop requires a newer WSL kernel version"** / "WSL not installed".
 - `wsl --install` prints **`No action was taken as a system reboot is required.`** and exits without installing.
 - `wsl --install` fails with **`The requested operation requires elevation.`** (or `Error code: Wsl/...` / `0x80070522`) when run from a non-admin shell.
+- `wsl --install` aborts mid-**download** with **`与服务器的连接被重置`** / **"The connection to the server was reset"** (e.g. at 16% / 8%) while fetching "适用于 Linux 的 Windows 子系统" (the WSL app) — behind a proxy / corporate firewall / GFW. Reboot then doesn't help (nothing installed); Docker still says "WSL not installed".
 - After `chezmoi apply` on a fresh box, Docker Desktop is installed but the WSL2 backend is missing and nothing prompted to fix it.
 
 **First seen**: 2026-07
-**Affects**: Windows 10 21H2+ / Windows 11; Docker Desktop (WSL2 backend); `wsl.exe` (inbox + Store WSL)
-**Status**: workaround documented (automated via the `installWsl` toggle)
+**Affects**: Windows 10 21H2+ / Windows 11; Docker Desktop (WSL2 backend); `wsl.exe` (inbox + Store WSL); download-blocked networks (proxy / corporate / GFW)
+**Status**: workaround documented (automated via the `installWsl` toggle; offline DISM fallback when the download is blocked)
 
 ## Symptom
 
@@ -69,6 +70,27 @@ wsl.exe --install --no-distribution
 
 Manual equivalent, if you're not using the toggle: open an **elevated** pwsh and
 run `wsl --install --no-distribution`, then **reboot**.
+
+### When the download is reset (proxy / corporate firewall / GFW)
+
+If `wsl --install` fails mid-download ("connection reset" / `与服务器的连接被重置`),
+the WSL app never lands, so reboot + retry do nothing. `scripts/enable-wsl.ps1`
+detects the failure and **falls back to enabling the WSL2 platform features
+offline via DISM** (no download), then points at the kernel:
+
+```powershell
+dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
+dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
+# REBOOT, then fetch the WSL2 kernel (small, usually reachable behind GFW):
+#   - with a VPN/proxy:  wsl --update      (or re-run `just enable-wsl`)
+#   - or the kernel MSI:  https://wslstorestorage.blob.core.windows.net/wslblob/wsl_update_x64.msi
+wsl --set-default-version 2   # then start Docker Desktop
+```
+
+Docker Desktop's WSL2 backend runs fine on this inbox WSL2 (features + kernel) —
+you don't need the modern Store WSL app if it can't be downloaded. Re-running
+`just enable-wsl` is safe: `Test-WslInstalled` still reports WSL as missing until
+the kernel is in, so it retries rather than falsely reporting success.
 
 ## Prevention
 

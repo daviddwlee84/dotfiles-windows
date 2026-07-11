@@ -10,10 +10,10 @@
 #     re-fire on its own).
 #
 # `wsl --install` needs admin AND a reboot. When not already elevated we
-# self-relaunch elevated (one UAC prompt, like scoop's) rather than failing —
-# and always end with a "restart required" notice, since the WSL2 kernel /
-# hypervisor features aren't live until the machine reboots. Never aborts the
-# apply (hard invariant #2).
+# self-relaunch elevated (one UAC prompt, like scoop's) rather than failing.
+# If the WSL app can't be downloaded (proxy / corporate firewall / GFW resets
+# the connection), we fall back to enabling the WSL2 platform features OFFLINE
+# via DISM and point at the kernel MSI. Never aborts the apply (invariant #2).
 param([switch]$Elevated)
 
 $ErrorActionPreference = 'Continue'
@@ -40,7 +40,21 @@ function Test-WslInstalled {
     return $false
 }
 
+# Offline fallback: enable the WSL2 platform Windows features via DISM (no
+# download). Returns $true if both end up enabled (exit 0, or 3010 = reboot
+# required). Used when `wsl --install` can't download the app (proxy/GFW reset).
+function Enable-WslFeatures {
+    $ok = $true
+    foreach ($feat in 'Microsoft-Windows-Subsystem-Linux', 'VirtualMachinePlatform') {
+        Info "dism /online /enable-feature $feat"
+        & dism.exe /online /enable-feature /featurename:$feat /all /norestart *> $null
+        if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) { $ok = $false }
+    }
+    return $ok
+}
+
 $reboot = 'WSL: a RESTART is required before Docker Desktop can use the WSL2 backend. Reboot, then start Docker Desktop.'
+$KernelMsi = 'https://wslstorestorage.blob.core.windows.net/wslblob/wsl_update_x64.msi'
 
 try {
     if (Test-WslInstalled) {
@@ -57,13 +71,30 @@ try {
             Info 'retrying without --no-distribution (older WSL build)'
             & wsl.exe --install
         }
-        if ($LASTEXITCODE -ne 0) {
-            Write-Warning ("wsl --install exited {0} — run 'just enable-wsl' to retry." -f $LASTEXITCODE)
+        if ($LASTEXITCODE -eq 0) {
+            Write-Warning $reboot
+            if ($Elevated) { $null = Read-Host 'Press Enter to close this window' }
+            return
         }
-        Write-Warning $reboot
-        # Only pause when we are the elevated child window we spawned below, so
-        # its output stays readable. When an apply is already elevated (no
-        # -Elevated), don't pause — Read-Host would block the NonInteractive run.
+
+        # `wsl --install` couldn't complete. The usual cause is the WSL app
+        # download being reset mid-transfer by a proxy / corporate firewall / GFW
+        # ("connection reset"). Retrying the same download won't help, so fall
+        # back to enabling the WSL2 platform features OFFLINE via DISM (no
+        # download); a reboot + a small kernel MSI (or `wsl --update` behind a
+        # proxy) then finishes it.
+        Info 'wsl --install did not complete (often a proxy/GFW download reset) — enabling WSL2 platform features offline via DISM'
+        if (Enable-WslFeatures) {
+            Write-Warning 'WSL app download failed (network / proxy / GFW connection reset). Enabled the WSL2 platform features offline via DISM instead.'
+            Write-Warning 'Next: REBOOT, then get the WSL2 kernel one of these ways —'
+            Write-Warning "  - with a VPN/proxy connected:  wsl --update   (or just re-run 'just enable-wsl')"
+            Write-Warning "  - or install the kernel MSI by hand:  $KernelMsi"
+            Write-Warning '  then run  wsl --set-default-version 2  and start Docker Desktop.'
+        } else {
+            Write-Warning "wsl --install failed AND the offline DISM feature-enable failed. Check network/policy, then run 'just enable-wsl' from an admin pwsh (ideally with a VPN/proxy connected)."
+        }
+        # Pause only in the elevated child window we spawned, so its guidance
+        # stays readable; an already-elevated apply is -NonInteractive.
         if ($Elevated) { $null = Read-Host 'Press Enter to close this window' }
         return
     }
@@ -83,7 +114,7 @@ try {
         Write-Warning "WSL install: elevation was declined or cancelled. Run 'just enable-wsl' and approve the UAC prompt (or run 'wsl --install' in an elevated pwsh). A reboot is required afterward."
         return
     }
-    Write-Warning $reboot
+    Write-Warning 'WSL setup ran in the elevated window — follow the reboot / next-step guidance it printed there.'
 } catch {
     Write-Warning "WSL setup failed (non-fatal): $_"
 }

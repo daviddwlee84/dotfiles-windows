@@ -68,7 +68,10 @@ platform, not a Linux distro (Docker creates its own `docker-desktop` distro).
 self-elevates with a single UAC prompt (like scoop), runs the install, then prints a
 restart notice — reboot, then Docker Desktop starts on the WSL2 backend. Re-run or
 retry (e.g. if the UAC prompt was declined) with `just enable-wsl`. Already-installed
-machines are a no-op (no UAC). WSL as a *Linux shell* stays out of scope — see
+machines are a no-op (no UAC). On a proxy / corporate / GFW network where the WSL app
+download is reset ("connection reset"), the script falls back to enabling the WSL2
+features **offline via DISM** and points at the kernel MSI + `wsl --update`. WSL as a
+*Linux shell* stays out of scope — see
 [rationale](rationale.md#powershell-7-default-cmdexe-optional-via-clink).
 
 **Unattended WSL Ubuntu + dotfiles** (`installWslUbuntu`, off by default) goes further:

@@ -44,6 +44,7 @@ function ifconfig { ipconfig @args }
 function open { Invoke-Item @args }          # open a file/dir in its default app
 function pbcopy { $input | Set-Clipboard }   # pipe into it: some-cmd | pbcopy
 function pbpaste { Get-Clipboard }
+function reboot { Restart-Computer @args }   # unix `reboot`; add -Force to skip prompts
 function touch {
     param([Parameter(Mandatory, ValueFromRemainingArguments)][string[]]$Path)
     foreach ($p in $Path) {

@@ -67,7 +67,9 @@ app-alias 前面），所以 `python`、`uv run`、`uv venv`
 需要系統管理員**且**需重開機，所以未提權的 `chezmoi apply` 會自動提權（跳一次 UAC，
 類似 scoop），執行安裝後印出重開機提示 —— 重開機後 Docker Desktop 即以 WSL2 後端啟動。
 若要重跑或重試（例如 UAC 被拒），執行 `just enable-wsl`；已安裝的機器則為 no-op（不跳
-UAC）。WSL 作為 *Linux shell* 仍不在此 repo 範圍 —— 見
+UAC）。若在 proxy／公司網路／GFW 下 WSL app 下載被 reset（「连接被重置」），腳本會退而
+以 **DISM 離線啟用** WSL2 功能，並指向 kernel MSI 與 `wsl --update`。WSL 作為 *Linux
+shell* 仍不在此 repo 範圍 —— 見
 [rationale](rationale.zh-TW.md#powershell-7-cmdexe-clink)。
 
 **無人值守的 WSL Ubuntu + dotfiles**（`installWslUbuntu`，預設關）更進一步：
