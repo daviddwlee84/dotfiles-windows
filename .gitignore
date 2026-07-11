@@ -16,6 +16,8 @@ docker/windows/storage/
 
 # agent/session artifacts (not part of the dotfiles)
 # .claude/
+# ephemeral EnterWorktree checkouts; never commit
+.claude/worktrees/
 # .specstory/
 
 # local, untracked user overrides that may get copied here by accident
