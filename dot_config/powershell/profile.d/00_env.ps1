@@ -20,6 +20,8 @@ if (-not $env:XDG_CACHE_HOME)  { $env:XDG_CACHE_HOME  = Join-Path $HOME '.cache'
 $env:STARSHIP_CONFIG = Join-Path $env:XDG_CONFIG_HOME 'starship.toml'
 # yazi looks in %APPDATA%\yazi\config by default; keep it XDG-consistent instead.
 $env:YAZI_CONFIG_HOME = Join-Path $env:XDG_CONFIG_HOME 'yazi'
+# herdr reads its config here instead of %APPDATA%\herdr\config.toml (XDG-tidy).
+$env:HERDR_CONFIG_PATH = Join-Path $env:XDG_CONFIG_HOME 'herdr/config.toml'
 
 # yazi needs the MSYS `file.exe` (bundled with Git) for MIME detection; without
 # it every entry errors "Cannot find `file` … Set it up per the Windows guide".
@@ -47,7 +49,9 @@ if (Get-Command nvim -ErrorAction SilentlyContinue) { $env:EDITOR = 'nvim' }
 # entry to backslashes (mixed slashes can fail Windows command resolution).
 $UserPaths = @(
     (Join-Path $HOME '.local/bin'),
-    (Join-Path $HOME 'scoop/shims')
+    (Join-Path $HOME 'scoop/shims'),
+    # herdr has no scoop shim; its bin junction lives here (opt-in installHerdr).
+    (Join-Path $env:LOCALAPPDATA 'Programs\Herdr\bin')
 ) | Where-Object { $_ -and (Test-Path $_) } |
     ForEach-Object { [System.IO.Path]::GetFullPath($_) } | Select-Object -Unique
 

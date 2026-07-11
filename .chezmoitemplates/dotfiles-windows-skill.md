@@ -53,7 +53,7 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 ## What's enabled on THIS machine
 - role: **{{ .role }}**
 - Coding agents: {{ .installCodingAgents }} · GUI apps: {{ .installWindowsApps }} · Utility apps: {{ .installUtilityApps }} · Gaming: {{ .installGamingApps }}
-- Extra runtimes: {{ .installExtraRuntimes }} · Media: {{ .installMediaTools }} · LLM: {{ .installLlmTools }} · Tunnel: {{ .installTunnelTools }} · IaC: {{ .installIacTools }} · OpenSSH: {{ .installSshServer }}
+- Extra runtimes: {{ .installExtraRuntimes }} · Media: {{ .installMediaTools }} · LLM: {{ .installLlmTools }} · Tunnel: {{ .installTunnelTools }} · IaC: {{ .installIacTools }} · OpenSSH: {{ .installSshServer }} · herdr: {{ .installHerdr }}
 - China mirrors: {{ .useChineseMirror }} · Backup mode: {{ .backupMode }} · Vim mode: {{ .enableVimMode }} · Managed machine: {{ .managedMachine }}
 
 ## just recipes
@@ -67,7 +67,9 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 - Windows-only repo — no `{{ "{{" }} if eq .chezmoi.os {{ "}}" }}` branching needed.
 - Editor settings use a `run_onchange` pwsh merger (not `modify_`) on Windows.
 - tmux / zellij are Unix-only and intentionally absent; **WezTerm** (installed) is
-  the native tmux-like multiplexer, or use Windows Terminal panes. Runtimes are
-  native via scoop (node/bun/go/rust/ruby) + uv for Python — no mise on Windows.
+  the stable native tmux-like multiplexer, or use Windows Terminal panes. **herdr**
+  is an opt-in (`installHerdr`) native-Windows multiplexer in preview beta —
+  installed via herdr.dev's `irm|iex` script, config at `~/.config/herdr/config.toml`.
+  Runtimes are native via scoop (node/bun/go/rust/ruby) + uv for Python — no mise on Windows.
 - This skill body is shared: `dot_agents/skills/dotfiles-windows/` and
   `dot_claude/skills/dotfiles-windows/` both render `.chezmoitemplates/dotfiles-windows-skill.md`.

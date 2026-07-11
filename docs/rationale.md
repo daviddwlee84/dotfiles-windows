@@ -61,26 +61,33 @@ want per-project versions, `scoop install mise` and use it directly — nothing
 here depends on it. The full debugging trail lives in
 `backlog/windows-arm64-managed-machine-rough-edges.md`.
 
-## Terminal multiplexer: WezTerm, not tmux/zellij
+## Terminal multiplexer: WezTerm (stable default) + herdr (native beta)
 
-`tmux` and `zellij` are **Unix-only** — there are no native Windows builds — so
-they're absent here (you can still run them inside WSL). For a native tmux-like
-experience on Windows the options are:
+`tmux` and `zellij` are **Unix-only** — historically there were no native Windows
+builds, so they're absent here (you can still run them inside WSL). That's now
+changing: **herdr** ships an experimental native-Windows beta. The native options:
 
 | Option | Splits / tabs | Detach + persist | Notes |
 |---|---|---|---|
-| **WezTerm** | yes (panes/tabs, Lua `wezterm.mux`) | yes (mux server + `wezterm connect`) | native Windows; closest to tmux |
+| **WezTerm** | yes (panes/tabs, Lua `wezterm.mux`) | yes (mux server + `wezterm connect`) | native Windows; stable default |
+| **herdr** | yes (mouse-first panes/splits) | yes (persistent sessions, detach/attach) | native Windows, **preview beta**; closest to tmux/zellij — opt-in via `installHerdr` |
 | Windows Terminal | yes (panes/tabs) | no | great terminal, no session persistence |
 | Alacritty | no | no | fast, minimal; pair with a multiplexer |
 | tmux / zellij | — | — | Unix-only; use under WSL |
 
-We install **WezTerm** (`wez.wezterm`) as the multiplexer answer: a native
-Windows terminal with a built-in multiplexer — split panes, tabs, and a
-persistent mux server you can detach from and reconnect to (`wezterm connect`),
-plus scriptable layouts via its Lua `wezterm.mux` API. It isn't a 1:1 tmux (the
-session/persistence model differs), but it's the closest native experience.
-Windows Terminal stays installed for its panes/tabs; Alacritty stays as the fast
-minimal option.
+**WezTerm** (`wez.wezterm`) is the stable default: a native Windows terminal with
+a built-in multiplexer — split panes, tabs, and a persistent mux server you can
+detach from and reconnect to (`wezterm connect`), plus scriptable layouts via its
+Lua `wezterm.mux` API. It isn't a 1:1 tmux (the session/persistence model
+differs), but it's the closest stable native experience.
+
+**herdr** (opt-in, `installHerdr`) is the newer, closest-to-tmux/zellij answer: a
+mouse-first native multiplexer (ConPTY) with panes, splits, persistent sessions,
+and detach/attach. It has no scoop/winget manifest — it installs via herdr.dev's
+`irm | iex` script (Windows is preview-only), and its config is managed at
+`~/.config/herdr/config.toml` (pwsh as the default shell). It's beta, so it stays
+off by default. Windows Terminal stays installed for its panes/tabs; Alacritty
+stays as the fast minimal option.
 
 ## starship, not oh-my-posh
 

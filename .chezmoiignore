@@ -44,3 +44,8 @@ site
 site/**
 .venv
 .venv/**
+
+# herdr config is only deployed when the opt-in installHerdr toggle is on.
+{{ if not .installHerdr }}
+.config/herdr/config.toml
+{{ end }}
