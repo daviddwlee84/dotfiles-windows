@@ -131,20 +131,33 @@ printf 'provisioned by dotfiles-windows (installWslUbuntu)\n' > /etc/dotfiles-wi
     }
 
     # Headless: run the frozen, non-interactive dotfiles bootstrap as the user.
+    # Retry the whole thing up to 3× — behind a proxy/GFW the chezmoi/repo
+    # download from GitHub is often reset mid-transfer (curl error 56).
     Info "Bootstrapping cross-platform dotfiles in $Distro (headless)"
     $boot = @"
-set -e
 command -v curl >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq curl; }
-sh -c "`$(curl -fsLS get.chezmoi.io)" -- -b "`$HOME/.local/bin" \
-  init --apply "https://github.com/daviddwlee84/dotfiles.git" --promptDefaults \
-  --promptString "What is your full name=$WslName" \
-  --promptString "What is your email address=$WslEmail" \
-  --promptChoice "Which profile=ubuntu_server" \
-  --promptBool "Are you in China (behind GFW) and need to use mirrors=$WslMirror"
+i=1
+while [ "`$i" -le 3 ]; do
+  script="`$(curl -fsSL --retry 5 --retry-connrefused --retry-all-errors https://get.chezmoi.io)"
+  if [ -n "`$script" ] && printf '%s' "`$script" | sh -s -- -b "`$HOME/.local/bin" \
+       init --apply "https://github.com/daviddwlee84/dotfiles.git" --promptDefaults \
+       --promptString "What is your full name=$WslName" \
+       --promptString "What is your email address=$WslEmail" \
+       --promptChoice "Which profile=ubuntu_server" \
+       --promptBool "Are you in China (behind GFW) and need to use mirrors=$WslMirror"; then
+    exit 0
+  fi
+  echo "chezmoi bootstrap attempt `$i failed (likely a proxy/GFW reset); retrying in 5s..." >&2
+  i=`$((i + 1)); sleep 5
+done
+exit 1
 "@ -replace "`r`n", "`n"
     $boot | & wsl.exe -d $Distro -u $user -- bash -s
     if ($LASTEXITCODE -ne 0) {
-        Write-Warning "dotfiles bootstrap in $Distro failed (exit $LASTEXITCODE). Retry: just enable-wsl-ubuntu"
+        Write-Warning "dotfiles bootstrap in $Distro failed (exit $LASTEXITCODE) — usually a network / proxy / GFW reset fetching chezmoi or the repo from GitHub (curl error 56)."
+        Write-Warning "It's idempotent: connect a VPN (WSL can use a Windows-side proxy) and retry —  just enable-wsl-ubuntu"
+        Write-Warning "Or open the distro and run it by hand:  wsl -d $Distro  then:"
+        Write-Warning '  sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply daviddwlee84'
         return
     }
     Info "WSL Ubuntu ready — open it with: wsl -d $Distro"

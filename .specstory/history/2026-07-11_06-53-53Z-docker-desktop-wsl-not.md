@@ -13316,3 +13316,449 @@ dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /nores
 → reboot → `wsl --update` (or the kernel MSI `https://wslstorestorage.blob.core.windows.net/wslblob/wsl_update_x64.msi`) → `wsl --set-default-version 2` → start Docker Desktop. After you pull the dotfiles, `just enable-wsl` does all of that automatically on the connection-reset.
 
 Nothing pushed — four commits ahead whenever you want `git push`.
+
+---
+
+_**User (2026-07-11 11:20:38Z)**_
+
+```
+❯ irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex
+==> Windows dotfiles bootstrap
+==> Installing git, PowerShell 7, chezmoi, uv
+==> chezmoi update (git pull + apply — picks up new commits)
+Already up to date.
+==> Done. Open a new pwsh session to load the managed profile.
+
+~ took 12s
+❯ chezmoi-cd
+
+chezmoi on  main via
+❯ ls
+ AGENTS.md   bootstrap.ps1   docs         dot_claude   editors      pitfalls                        pyproject.toml   skills-lock.json
+ AppData     CLAUDE.md      󰲂 Documents    dot_config   justfile     private_dot_specstory          󰂺 README.md        tests
+ backlog     docker          dot_agents   dot_ssh      mkdocs.yml   PSScriptAnalyzerSettings.psd1   scripts          TODO.md
+
+chezmoi on  main via  took 2s
+❯ just
+Available recipes:
+    apply                      # apply dotfiles
+    default                    # list recipes
+    diff                       # preview pending changes
+    docker-clean               # stop the test VM and delete its disk
+    docker-down                # stop the test VM (keeps the disk)
+    docker-logs                # tail the VM boot/install logs
+    docker-up                  # launch the test VM (web viewer http://localhost:8006, RDP localhost:3389 dev/dev)
+    docs-build                 # build the docs site (strict)
+    docs-serve                 # serve the docs site locally
+    edit FILE                  # edit the source of a managed file
+    enable-sshd                # enable the OpenSSH server (sshd) — run from an ELEVATED pwsh (opt-in; opens TCP 22)
+    enable-wsl                 # install WSL2 (Docker Desktop backend) — pops one UAC prompt; reboot required after
+    enable-wsl-ubuntu          # install a WSL2 Ubuntu distro + bootstrap cross-platform dotfiles (needs installWsl + reboot first)
+    install-fonts-machine-wide # install Hack Nerd Font machine-wide so Alacritty sees it (run from ELEVATED pwsh)
+    lint                       # lint PowerShell with PSScriptAnalyzer
+    specstory-build            # backlog/specstory-windows-native-cli.md. Run from the chezmoi source dir.
+    test                       # run Pester tests
+    update                     # pull latest from the repo and apply
+    upgrade                    # upgrade everything
+    upgrade-scoop              # upgrade CLI tools (scoop)
+    upgrade-winget             # upgrade GUI apps (winget)
+
+chezmoi on  main via  took 4s
+❯ just docker-up
+error: could not find `cygpath` executable to translate recipe `docker-up` shebang interpreter path:
+program not found
+
+chezmoi on  main via
+❯ just enable-wsl-ubuntu
+pwsh -NoProfile -File ./scripts/enable-wsl-ubuntu.ps1
+==> Registering Ubuntu-24.04 (no launch, no OOBE)
+正在下载: Ubuntu 24.04 LTS
+正在安装: Ubuntu 24.04 LTS
+已成功安装分发。可以通过 “wsl.exe -d Ubuntu-24.04” 启动它
+==> Creating user 'hanruzhou' (passwordless sudo, WSL auto-login)
+==> Bootstrapping cross-platform dotfiles in Ubuntu-24.04 (headless)
+curl: (56) Failure when receiving data from the peer
+WARNING: dotfiles bootstrap in Ubuntu-24.04 failed (exit 1). Retry: just enable-wsl-ubuntu
+
+chezmoi on  main via  took 2m35s
+❯ wsl -l
+内存资源不足，无法完成此操作。
+错误代码: Wsl/0x8007000e
+
+chezmoi on  main via  took 2s
+❯ wsl -l
+适用于 Linux 的 Windows 子系统分发:
+docker-desktop (默认值)
+docker-desktop-data
+Ubuntu-24.04
+
+chezmoi on  main via
+❯ wsl.exe -d Ubuntu-24.04
+Provisioning the new WSL instance Ubuntu-24.04
+This might take a while...
+To run a command as administrator (user "root"), use "sudo <command>".
+See "man sudo_root" for details.
+
+Welcome to Ubuntu 24.04.4 LTS (GNU/Linux 6.18.33.2-microsoft-standard-WSL2 aarch64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Sat Jul 11 19:17:21 CST 2026
+
+  System load:  0.71                Processes:             10
+  Usage of /:   0.1% of 1006.85GB   Users logged in:       0
+  Memory usage: 1%                  IPv4 address for eth0: 172.28.218.234
+  Swap usage:   0%
+
+
+This message is shown once a day. To disable it please create the
+/home/hanruzhou/.hushlogin file.
+hanruzhou@HanruLPT7:/mnt/c/Users/hanruzhou/.local/share/chezmoi$ chezmoi apply
+chezmoi: command not found
+```
+
+WSL successfully installed, but the Ubuntu's chezmoi setup failed
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-11 11:22:32Z)**_
+
+<think><details><summary>Thought Process</summary>
+Looking at the actual execution results now — WSL2 is properly installed with Docker Desktop's distros present, and the Ubuntu registration succeeded this time, suggesting the network connectivity issue may have resolved or the VPN helped with the rootfs download.
+
+The dotfiles bootstrap failed due to a network error (curl connection reset), so that'll need a retry. There was a transient memory issue when listing WSL distros, but the manual launch of Ubuntu-24.04 worked and triggered first-boot provisioning, landing the user in their Windows home directory with the correct default user configured via wslconf. The system is running on ARM64 architecture. The retry mechanism should work since the sentinel file exists, so `enable-wsl-ubuntu` will detect the distro as provisioned but dotfiles-missing and re-run bootstrap — though it'll hit the same network failure if conditions haven't improved. The real solution is making the chezmoi download resilient to GFW issues, either through a Chinese mirror, honoring the `useChineseMirror` flag for the install script itself, implementing retry-with-backoff, or installing chezmoi via apt or a mirror instead. There's also an ARM64 angle to consider here since the machine is running aarch64. Option B looks more promising—I could add curl retry flags to make the download more resilient, or leverage the parent repo's `useChineseMirror` setting to point to a China-friendly mirror for the chezmoi binary. Installing via apt won't work since Ubuntu doesn't package chezmoi by default, and snap in WSL is unreliable. The key is respecting that configuration flag if it's already set up in the parent repo. I could use a GitHub mirror like ghproxy or gitclone.com to speed up the clone when the user is behind the GFW, and similarly mirror the chezmoi installation. But this is expanding into a bigger "GFW-resilient bootstrap" problem. For now, the most practical improvement is adding retry logic to the curl call that downloads chezmoi—something like retry flags to handle transient connection failures. The real solution is to leverage a GitHub mirror when `useChineseMirror` is enabled — both for fetching the chezmoi install script (since `get.chezmoi.io` redirects to GitHub and gets blocked) and for cloning the repo itself, using something like a proxy service to bypass the GFW. 'd be in a much better position. So the real fix is to push the GFW-mirror logic upstream into the parent repo's bootstrap, not try to handle it all here in the Windows setup. For now, the Windows bootstrap should just add retry logic with clear error messaging that guides the user toward VPN or manual completion if the network fails. So the real issue is that the user's WSL Ubuntu environment can't reach GitHub due to the GFW, and they need chezmoi to install successfully. The most practical solution is to have them either re-run the bootstrap command from the Windows side (which detects the provisioned-but-incomplete state and retries), or manually execute the chezmoi installation inside WSL with a VPN or proxy configured so the network requests can go through.
+
+For improving the script itself, I should add retry logic with exponential backoff to handle transient connection failures, make the error messages clearer about network/GFW issues when bootstrap fails, and potentially integrate support for Chinese mirrors if the user has that flag enabled—though I need to verify whether chezmoi's install script actually has a mirror available in China.
+
+Actually, I'm reconsidering the mirror approach. Since there's no official China mirror for chezmoi and GitHub proxies are fragile and temporary, the better strategy is to focus on robust retry handling with clear guidance, mention the WSL Windows proxy workaround, and leave the mirror configuration to the parent repository rather than hardcoding it here.
+
+Now I'm thinking through the re-run scenario more carefully—when `just enable-wsl-ubuntu` runs again, the distro should already be registered, so I need to check what happens next in the provisioning flow. I should improve the failure message to explicitly mention it's a network issue (GFW/firewall) and suggest enabling a VPN or configuring WSL proxy settings. The `--web-download` flag isn't relevant here since that's for `wsl --install`. I'm also noting that the curl error 56 isn't architecture-related — it's purely a network connectivity problem, though there are separate ARM64 rough edges to address elsewhere. I'm also seeing that `just docker-up` failed with a cygpath error, which seems to be a justfile recipe using bash on Windows without git-bash available, but that's outside the scope of this task unless the user asks about it. There's also a transient WSL memory issue that resolved on retry, which isn't relevant here. For GFW users specifically, I'm reconsidering whether the headless bootstrap approach is realistic given that the parent repo bootstrap itself requires GitHub access — they might be better served by interactive or manual VPN bootstrap modes, though that's ultimately a user choice.
+
+My approach to fix this: I'll add retry logic to the curl commands in the PowerShell bootstrap script, specifically adding flags to handle transient network failures and connection refusals. I'll also improve the error messaging to explicitly mention network issues, GFW considerations, VPN workarounds, and WSL proxy configuration, along with the retry command. I might also leverage the Chinese mirror setting if it's already being tracked.
+
+I should also update the WSL Ubuntu pitfall documentation to include the specific "curl (56) get.chezmoi.io failed" error symptom and provide retry guidance there.
+
+For the bootstrap failure message itself, I'm reconsidering the wording to be more helpful—instead of just saying the bootstrap failed, I'll provide context about potential network issues and concrete next steps. Writing shell bootstrap script... Actually, the Windows chezmoi binary won't help since the architectures differ between Windows and Linux. But I'm realizing WSL can route internet traffic through Windows, so maybe there's a way to leverage that for the git clone step if it gets blocked — though that's getting complicated. Let me focus on the curl retry flags as the practical immediate fix. I'll stick with adding curl retries and clear documentation about VPN requirements for GFW users rather than hard-coding a mirror, since that's more maintainable and reliable. I should note in the pitfalls section that users behind the GFW should either use a VPN or set up the parent repo manually. I need to review the current bootstrap section in the PowerShell script to make my edits precisely, so let me pull up that file and check the exact lines I need to modify.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:22:32Z)**_
+
+Very informative real run — this tells us exactly where it stands:
+
+- **WSL2 + Ubuntu-24.04 installed fine** (docker-desktop distros present, Ubuntu registered, ARM64/aarch64).
+- **User `hanruzhou` created correctly** (wsl.conf auto-login worked — you landed as `hanruzhou@HanruLPT7`).
+- **The in-WSL dotfiles bootstrap failed at `curl: (56) Failure when receiving data from the peer`** — i.e. fetching chezmoi/the repo from GitHub got reset (same GFW/proxy issue, now inside WSL). So `chezmoi` never installed → `chezmoi: command not found`.
+
+Good news: the sentinel + retry logic already works (re-running would detect "provisioned but no dotfiles" and re-run just the bootstrap). What's missing is **curl resilience + clear GFW guidance**. Let me read the current bootstrap section and harden it.
+
+_**Agent (claude-opus-4-8 2026-07-11 11:22:32Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./scripts/enable-wsl-ubuntu.ps1`
+
+```text
+118	printf 'provisioned by dotfiles-windows (installWslUbuntu)\n' > /etc/dotfiles-windows-provisioned
+119	"@ -replace "`r`n", "`n"
+120	        $rootScript | & wsl.exe -d $Distro -u root -- bash -s
+121	        if ($LASTEXITCODE -ne 0) { Write-Warning "user setup in $Distro failed (exit $LASTEXITCODE)."; return }
+122	
+123	        & wsl.exe --terminate $Distro *> $null   # apply /etc/wsl.conf default user
+124	    }
+125	
+126	    if ($WslMode -ne 'headless') {
+127	        Info "$Distro ready. Bootstrap mode '$WslMode' — open it and install dotfiles yourself:"
+128	        Write-Host "    wsl -d $Distro" -ForegroundColor Yellow
+129	        Write-Host '    sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply daviddwlee84' -ForegroundColor Yellow
+130	        return
+131	    }
+132	
+133	    # Headless: run the frozen, non-interactive dotfiles bootstrap as the user.
+134	    Info "Bootstrapping cross-platform dotfiles in $Distro (headless)"
+135	    $boot = @"
+136	set -e
+137	command -v curl >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq curl; }
+138	sh -c "`$(curl -fsLS get.chezmoi.io)" -- -b "`$HOME/.local/bin" \
+139	  init --apply "https://github.com/daviddwlee84/dotfiles.git" --promptDefaults \
+140	  --promptString "What is your full name=$WslName" \
+141	  --promptString "What is your email address=$WslEmail" \
+142	  --promptChoice "Which profile=ubuntu_server" \
+143	  --promptBool "Are you in China (behind GFW) and need to use mirrors=$WslMirror"
+144	"@ -replace "`r`n", "`n"
+145	    $boot | & wsl.exe -d $Distro -u $user -- bash -s
+146	    if ($LASTEXITCODE -ne 0) {
+147	        Write-Warning "dotfiles bootstrap in $Distro failed (exit $LASTEXITCODE). Retry: just enable-wsl-ubuntu"
+148	        return
+149	    }
+150	    Info "WSL Ubuntu ready — open it with: wsl -d $Distro"
+151	} catch {
+152	    Write-Warning "WSL Ubuntu setup failed (non-fatal): $_"
+153	}
+154
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:24:05Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm making the bootstrap more resilient by adding retry logic to the curl commands—setting up retries for connection failures and timeouts. I also need to improve the error messaging to help users troubleshoot network issues, particularly around GFW blocking. Let me update both the boot script and the failure message accordingly. Adding retry logic to the bootstrap... I see the issue now — when curl fails and `$(...)` returns empty, `sh -c ""` with those trailing arguments just runs an empty script and exits successfully, which masks the actual failure. But in the user's case, curl returned a network error and the whole thing exited with code 1, so something else is catching that failure — maybe `set -e` is actually working on the outer shell level, or the curl error is propagating differently than I thought. So the install script itself ran successfully, fetched the binary, but hit that connection reset error during the download — that's why it exited with code 1. The retry mechanism should wrap the entire operation, but I need to guard against the false-success case where curl fails to fetch the script itself. I'll store the script in a variable first and verify it's not empty before passing it to the shell.
+
+Now I'm setting up the attempt function to run the full chezmoi bootstrap with all the configuration options, then wrapping it in a retry loop that tries up to three times before giving up. I'm realizing the interaction between `set -e` and command substitution with `||` handlers is tricky — when a variable assignment includes a command substitution that fails, `set -e` will exit before the `||` can catch it, unless the whole thing is part of a compound command. To keep this straightforward, I should probably drop `set -e` entirely and handle errors explicitly throughout the retry loop with clear exit codes.
+
+Now I'm setting up the actual installation flow: first checking if curl is available and installing it if needed, then looping up to three times to fetch the chezmoi bootstrap script and run it with various configuration prompts for the user's name, email, and profile preferences.
+
+The script handles failures gracefully — if the curl download returns empty or the installation fails, it retries after a 5-second delay rather than immediately bailing out. After three failed attempts, it exits with an error code. This approach works well for unreliable network conditions, especially behind the GFW where connections might reset unexpectedly.
+
+Now I need to handle the PowerShell here-string carefully. The bash variables like `$script`, `$i`, `$HOME`, and command substitutions need to be escaped with backticks so PowerShell treats them as literal text and passes them to bash unchanged. Meanwhile, the PowerShell variables like `$WslName`, `$WslEmail`, and `$WslMirror` should be interpolated directly into the string without escaping.
+
+I'm constructing the here-string that runs the chezmoi bootstrap script with retry logic, passing in the user's name, email, and whether they need mirror support for GFW connectivity. The string gets normalized to Unix line endings at the end.
+
+Now I need to update the error message to better reflect network and GFW-related failures. Writing error handling and bootstrap logic... Finishing the bootstrap script definition... Writing the bootstrap script... Writing shell script continuation... Checking the backtick escaping throughout the here-string to make sure the variables are properly interpolated when the script runs.
+
+The piping approach `printf '%s' "$script" | sh -s -- <args>` passes the downloaded chezmoi install script to the shell with arguments following `--`, which matches the documented installation method. The args themselves are `-b "$HOME/.local/bin"` followed by the chezmoi subcommand `init --apply`, so that should work correctly.
+
+Now I need to update the pitfall documentation with the curl-56 error symptom and add retry/VPN guidance, then note in the backlog that GFW limitations belong to the parent repo. Let me start with the script edit first.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:24:05Z)**_
+
+Let me harden the in-WSL bootstrap with a retry loop + curl retries, and give network-aware failure guidance:
+
+_**Agent (claude-opus-4-8 2026-07-11 11:24:09Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/scripts/enable-wsl-ubuntu.ps1 has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:24:21Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm updating the WSL Ubuntu pitfall documentation to include the curl-56 bootstrap network failure issue that occurs in WSL. I'll add a symptom description and include guidance on prevention or workarounds for this specific problem.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:24:21Z)**_
+
+Now update the WSL-Ubuntu pitfall doc with the in-WSL bootstrap network-failure symptom. Let me read its current symptom block.
+
+_**Agent (claude-opus-4-8 2026-07-11 11:24:21Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./pitfalls/wsl-ubuntu-oobe-and-wsl-l-encoding.md`
+
+```text
+1	# WSL Ubuntu: OOBE username/password prompt, `wsl -l` mojibake, wsl.conf default user ignored
+2	
+3	**Symptoms** (grep this section):
+4	- `wsl -l`/`wsl -l -q`/`wsl --status` print **garbled/mojibake** text (`U​b​u​n​t​u`, null bytes, `\x00`) or fail to `-match` in PowerShell.
+5	- First `wsl -d Ubuntu-24.04` launch drops into the interactive **"Enter new UNIX username:"** / **"New password:"** OOBE instead of provisioning unattended.
+6	- After scripting `/etc/wsl.conf` `[user] default=<name>`, `wsl` still logs in as **root** (the default-user change "did nothing").
+7	- Piped bash script fails with `$'\r': command not found` / `set -e` aborting on the first line.
+8	- `enable-wsl-ubuntu` prints **"Ubuntu-24.04 already exists and wasn't set up by this tool"** and does nothing — an `Ubuntu-24.04` you installed + OOBE'd yourself is deliberately left untouched.
+9	
+10	**First seen**: 2026-07
+11	**Affects**: `scripts/enable-wsl-ubuntu.ps1`, WSL2 on Windows 10/11, Ubuntu-24.04
+12	**Status**: workaround documented (baked into the script)
+13	
+14	## Symptom
+15	
+16	Automating a WSL Ubuntu install from PowerShell hits three separate traps:
+17	
+18	1. `wsl.exe` emits **UTF-16LE** by default, so `wsl -l -q | ...` in pwsh is
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:24:28Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/pitfalls/wsl-ubuntu-oobe-and-wsl-l-encoding.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:24:43Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/pitfalls/wsl-ubuntu-oobe-and-wsl-l-encoding.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:25:05Z)**_
+
+Now verify — lint, parse, and render/parse the embedded bootstrap:
+
+_**Agent (claude-opus-4-8 2026-07-11 11:25:11Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Lint, parse, render the hardened bootstrap and inspect the bash
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+echo "== lint =="
+pwsh -NoProfile -c "Invoke-ScriptAnalyzer -Path ./scripts/enable-wsl-ubuntu.ps1 -Settings ./PSScriptAnalyzerSettings.psd1" 2>&1 | tail -8; echo "EXIT: $?"
+echo "== standalone parse =="
+pwsh -NoProfile -c '$e=$null;[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path ./scripts/enable-wsl-ubuntu.ps1),[ref]$null,[ref]$e)|Out-Null; if($e){$e|%{Write-Host "  $_"}}else{Write-Host "PARSE OK"}'
+echo "== render (headless) + parse + show the bash bootstrap block =="
+TMPD=$(mktemp -d); mkdir -p "$TMPD/home"
+chezmoi init --source="$PWD" --config="$TMPD/c.toml" --persistent-state="$TMPD/s.db" --destination="$TMPD/home" --no-tty \
+  --promptChoice='Role: workstation (full desktop) or minimal (shell only)=minimal' \
+  --promptString='Your full name (git)=Han Ru' --promptString='Your git email=hr@e.com' \
+  --promptBool='Install coding agents (Claude Code, OpenCode, Codex, Copilot CLI, SpecStory)=false' \
+  --promptBool='Install GUI apps via winget (VSCode, Cursor, Notepad++, Terminal, Alacritty, PowerToys, Raycast)=false' \
+  --promptBool='Install WSL2 (Docker Desktop backend; needs admin + reboot)=false' \
+  --promptBool='Install a WSL2 Ubuntu distro and bootstrap cross-platform dotfiles inside it (needs admin; requires WSL2 platform)=true' \
+  --promptString='WSL Ubuntu username=hanruzhou' \
+  --promptChoice='WSL Ubuntu dotfiles bootstrap (headless|interactive|none)=headless' \
+  --promptBool='Install utility apps via winget (CPU-Z, GPU-Z, TreeSize, VLC, Everything, ShareX, HWiNFO)=false' \
+  --promptBool='Install gaming apps (Steam)=false' \
+  --promptBool='Install extra runtimes (rust, go, ruby) beyond node/bun/uv=false' \
+  --promptBool='Install media CLIs (ffmpeg, imagemagick)=false' \
+  --promptBool='Install local LLM tools (Ollama, LiteLLM)=false' \
+  --promptBool='Install tunnel tools (ngrok, cloudflared)=false' \
+  --promptBool='Install Infrastructure-as-Code tools (Azure CLI, Terraform, OpenTofu)=false' \
+  --promptBool='Install and enable the OpenSSH server / sshd (needs admin, opens inbound port 22)=false' \
+  --promptBool='Install herdr (native Windows terminal multiplexer, preview beta)=false' \
+  --promptBool='Install Clink + starship/zoxide/fzf for cmd.exe (DOS prompt)=false' \
+  --promptBool='Use China (GFW) mirrors for pip/npm/cargo/go/node=true' \
+  --promptBool='Managed or corporate machine (skip org-policy-blocked apps like Tailscale and Grammarly)=false' \
+  --promptChoice='Back up existing files before apply (smart|full|off)=off' \
+  --promptBool='Enable PSReadLine vi editing mode=true' >/dev/null 2>&1 && echo "init OK" || echo "INIT FAIL"
+chezmoi execute-template --config="$TMPD/c.toml" --source="$PWD" < .chezmoiscripts/run_onchange_after_46_wsl_ubuntu.ps1.tmpl > /tmp/ub.ps1
+pwsh -NoProfile -c '$e=$null;[System.Management.Automation.Language.Parser]::ParseInput((Get-Content -Raw /tmp/ub.ps1),[ref]$null,[ref]$e)|Out-Null; if($e){$e|%{Write-Host "  $_"}}else{Write-Host "EMBEDDED PARSE OK"}'
+echo "--- rendered bash bootstrap (verify \$i/\$script/\$HOME literal, name/email/mirror interpolated) ---"
+sed -n '/command -v curl/,/^exit 1/p' /tmp/ub.ps1
+rm -rf "$TMPD"
+```
+
+```text
+== lint ==
+EXIT: 0
+== standalone parse ==
+PARSE OK
+== render (headless) + parse + show the bash bootstrap block ==
+init OK
+EMBEDDED PARSE OK
+--- rendered bash bootstrap (verify $i/$script/$HOME literal, name/email/mirror interpolated) ---
+command -v curl >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq curl; }
+i=1
+while [ "`$i" -le 3 ]; do
+  script="`$(curl -fsSL --retry 5 --retry-connrefused --retry-all-errors https://get.chezmoi.io)"
+  if [ -n "`$script" ] && printf '%s' "`$script" | sh -s -- -b "`$HOME/.local/bin" \
+       init --apply "https://github.com/daviddwlee84/dotfiles.git" --promptDefaults \
+       --promptString "What is your full name=$WslName" \
+       --promptString "What is your email address=$WslEmail" \
+       --promptChoice "Which profile=ubuntu_server" \
+       --promptBool "Are you in China (behind GFW) and need to use mirrors=$WslMirror"; then
+    exit 0
+  fi
+  echo "chezmoi bootstrap attempt `$i failed (likely a proxy/GFW reset); retrying in 5s..." >&2
+  i=`$((i + 1)); sleep 5
+done
+exit 1
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:25:45Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm noticing the rendered PowerShell file still has literal backticks in it, which shouldn't be there—the sed output shows them as `` `$i `` and `` `$( `` when they should've been processed. This is the actual output from chezmoi's template rendering, so the issue is that PowerShell escape characters inside the template aren't being handled correctly.
+
+Actually, wait—I think I'm misunderstanding what's happening. The rendered .ps1 file contains the here-string exactly as written in the source script because `{{ include }}` pastes content verbatim without processing PowerShell syntax. So those backticks are correct PowerShell source code—when PowerShell executes the script at runtime, the here-string will interpret `` `$i `` as a literal `$i` that gets passed to bash. The variables like `$WslName` aren't interpolated in the rendered output because they're set at the top of the wrapper script, so this is all working as intended. I need to actually run a PowerShell test to verify the here-string interpolation is working correctly—setting the prelude variables and executing the here-string to confirm that `$WslName` gets replaced with "Han Ru" while bash variables like `$i` and `$HOME` remain literal.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 11:25:45Z)**_
+
+The rendered output correctly preserves the PowerShell backtick-escapes (`` `$i ``) in the *source* — those become literal bash `$i` only at PowerShell runtime, while `$WslName` etc. interpolate from the prelude. Let me confirm the **runtime** expansion produces correct bash (no stray backticks, values interpolated):
+
+_**Agent (claude-opus-4-8 2026-07-11 11:25:47Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Verify runtime here-string expands to correct, valid bash
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+pwsh -NoProfile -c '
+$WslName="Han Ru"; $WslEmail="hr@e.com"; $WslMirror="true"
+$boot = @"
+command -v curl >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq curl; }
+i=1
+while [ "`$i" -le 3 ]; do
+  script="`$(curl -fsSL --retry 5 --retry-connrefused --retry-all-errors https://get.chezmoi.io)"
+  if [ -n "`$script" ] && printf ''%s'' "`$script" | sh -s -- -b "`$HOME/.local/bin" \
+       init --apply "https://github.com/daviddwlee84/dotfiles.git" --promptDefaults \
+       --promptString "What is your full name=$WslName" \
+       --promptString "What is your email address=$WslEmail" \
+       --promptChoice "Which profile=ubuntu_server" \
+       --promptBool "Are you in China (behind GFW) and need to use mirrors=$WslMirror"; then
+    exit 0
+  fi
+  echo "chezmoi bootstrap attempt `$i failed (likely a proxy/GFW reset); retrying in 5s..." >&2
+  i=`$((i + 1)); sleep 5
+done
+exit 1
+"@ -replace "`r`n", "`n"
+Write-Output "----- runtime bash -----"
+Write-Output $boot
+Write-Output "----- checks -----"
+if ($boot -match [regex]::Escape("[ `"`$i`" -le 3 ]")) { "literal bash `$i: OK" } else { "literal bash `$i: FAIL" }
+if ($boot -match "full name=Han Ru") { "name interpolated: OK" } else { "name interpolated: FAIL" }
+if ($boot -match "mirrors=true") { "mirror interpolated: OK" } else { "mirror interpolated: FAIL" }
+if ($boot -match "``") { "STRAY BACKTICK PRESENT: FAIL" } else { "no stray backticks: OK" }
+' 2>&1
+echo "== syntax-check the resulting bash with bash -n =="
+pwsh -NoProfile -c '
+$WslName="Han Ru"; $WslEmail="hr@e.com"; $WslMirror="true"
+$boot = @"
+i=1
+while [ "`$i" -le 3 ]; do
+  script="`$(echo x)"
+  if [ -n "`$script" ] && printf ''%s'' "`$script" | sh -s -- -b "`$HOME/.local/bin" init --apply x --promptString "n=$WslName"; then exit 0; fi
+  i=`$((i + 1)); sleep 5
+done
+exit 1
+"@ -replace "`r`n","`n"
+Set-Content -Path /tmp/boot_check.sh -Value $boot -NoNewline
+'
+bash -n /tmp/boot_check.sh && echo "bash -n: OK (valid syntax)" || echo "bash -n: FAIL"
+```
+
+```text
+----- runtime bash -----
+command -v curl >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq curl; }
+i=1
+while [ "$i" -le 3 ]; do
+  script="$(curl -fsSL --retry 5 --retry-connrefused --retry-all-errors https://get.chezmoi.io)"
+  if [ -n "$script" ] && printf %s "$script" | sh -s -- -b "$HOME/.local/bin" \
+       init --apply "https://github.com/daviddwlee84/dotfiles.git" --promptDefaults \
+       --promptString "What is your full name=Han Ru" \
+       --promptString "What is your email address=hr@e.com" \
+       --promptChoice "Which profile=ubuntu_server" \
+       --promptBool "Are you in China (behind GFW) and need to use mirrors=true"; then
+    exit 0
+  fi
+  echo "chezmoi bootstrap attempt $i failed (likely a proxy/GFW reset); retrying in 5s..." >&2
+  i=$((i + 1)); sleep 5
+done
+exit 1
+----- checks -----
+literal bash $i: OK
+name interpolated: OK
+mirror interpolated: OK
+no stray backticks: OK
+== syntax-check the resulting bash with bash -n ==
+bash -n: OK (valid syntax)
+```
+</details></tool-use>

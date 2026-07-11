@@ -6,6 +6,7 @@
 - After scripting `/etc/wsl.conf` `[user] default=<name>`, `wsl` still logs in as **root** (the default-user change "did nothing").
 - Piped bash script fails with `$'\r': command not found` / `set -e` aborting on the first line.
 - `enable-wsl-ubuntu` prints **"Ubuntu-24.04 already exists and wasn't set up by this tool"** and does nothing — an `Ubuntu-24.04` you installed + OOBE'd yourself is deliberately left untouched.
+- The distro registers + the user is created, but the in-WSL dotfiles bootstrap fails with **`curl: (56) Failure when receiving data from the peer`** and later **`chezmoi: command not found`** inside the distro — the chezmoi/repo download from GitHub was reset (proxy / corporate / GFW).
 
 **First seen**: 2026-07
 **Affects**: `scripts/enable-wsl-ubuntu.ps1`, WSL2 on Windows 10/11, Ubuntu-24.04
@@ -74,6 +75,16 @@ wsl.exe --terminate Ubuntu-24.04                      # (3) re-read wsl.conf
   and re-run. To keep yours: install the dotfiles manually with the chezmoi
   one-liner. A separate pre-existing `Ubuntu` (not `-24.04`) is left alone — the
   tool adds its own `Ubuntu-24.04` and logs a note.
+- **In-WSL bootstrap needs GitHub.** The dotfiles bootstrap downloads chezmoi +
+  the repo from GitHub, which a proxy / GFW resets (`curl: (56)`). The script
+  retries 3× with `curl --retry`, and the step is **idempotent** (the sentinel
+  marks the distro ours, but `~/.local/share/chezmoi` missing → it re-runs just
+  the bootstrap). If it still fails: connect a **VPN** on Windows (WSL routes
+  through the host, so a Windows-side proxy works too) and re-run
+  `just enable-wsl-ubuntu`, or open the distro and run
+  `sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply daviddwlee84` by hand.
+  GFW-mirror support for the Linux chezmoi/git clone belongs in the
+  cross-platform repo (`daviddwlee84/dotfiles`), not here.
 
 ## Related
 
