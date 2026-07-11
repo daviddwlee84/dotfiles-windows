@@ -2,12 +2,22 @@
 
 說明此設定為何這樣選擇。
 
-## PowerShell 7，而非 cmd/DOS
+## PowerShell 7 為主，cmd.exe 選用（透過 Clink）
 
 `cmd.exe`（DOS 血統的 shell）沒有像樣的腳本能力：沒有真正的函式、沒有結構化資料、
 引號處理很彆扭。**PowerShell 7（`pwsh`）** 是 Windows 上的現代預設 —— 物件管線、
 真正的模組、跨平台，而且此處每個工具都有一流的 `init` 整合（starship、zoxide、
 atuin、fzf、direnv）。Windows PowerShell 5.1 雖然內建但已凍結；我們安裝並鎖定 pwsh 7。
+此 repo 的一切 —— `$PROFILE` 片段、aliases、函式、copilot-proxy —— 都是為 pwsh 而寫。
+
+cmd.exe 不是拿來寫腳本，但也沒被無視：有些工具會叫起它，肌肉記憶也還在。**選用的
+`installClink` 開關**會透過 [Clink](https://chrisant996.github.io/clink/)（cmd 的
+PSReadLine 對應）給 DOS 提示字元一個 starship prompt，外加 `z` 跳目錄與
+Ctrl-R/Ctrl-T fzf。它沿用**同一份 `starship.toml`** 與已寫入 User registry 的 XDG
+環境變數 —— 也就是說*設定*是共用的，只有 shell 啟動的「腳本」不同（Clink Lua vs
+pwsh profile）。這是 **prompt 與導覽的對等，而非功能對等**：atuin / direnv / tv 以及
+每個 pwsh 函式/模組仍然只在 pwsh。pwsh 仍是預設與主要目標；cmd 只是有限度的次要目標。
+見 [Shell → cmd.exe via Clink](shell.zh-TW.md#cmdexe-via-clink)。
 
 （WSL 很好，但它是 Linux 環境 —— 由跨平台 dotfiles 處理，不在此 repo。這個 repo
 的重點是一個好用的*原生* Windows shell。）

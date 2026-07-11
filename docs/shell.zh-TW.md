@@ -130,3 +130,34 @@ starship、atuin、zoxide、yazi 於是都讀 `~/.config`。那些**硬寫死 `%
 
 所以在這個 repo 裡,`AppData\Roaming` **不是**「Windows 版 XDG」—— 它只是那些不吃
 XDG 的原生 app 的落腳處;真正扮演 XDG 角色的,是我們明確設出來的 `~/.config` 路徑。
+
+## cmd.exe via Clink
+
+pwsh 是這裡的預設與主要 shell —— 但 `cmd.exe` 還是會出現（有些工具會叫起它，肌肉
+記憶也還在）。**選用的 `installClink` 開關**給 DOS 提示字元一個 starship prompt，
+外加 `z` 跳目錄與 Ctrl-R/Ctrl-T fzf。它沿用 pwsh 已有的東西：**同一份
+`~/.config/starship.toml`**，以及 `run_onchange_after_03_xdg_env.ps1` 已寫入 **User
+registry** 的 `XDG_*` 變數 —— 所以 cmd 不用自己的 profile 就能繼承。
+
+cmd 的行編輯器是 **[Clink](https://chrisant996.github.io/clink/)** —— 它的 PSReadLine
+對應。開啟 `installClink` 後，packages 腳本會安裝 Clink（scoop `main`）、註冊使用者
+層級的 cmd **AutoRun**（`clink autorun install`，免系統管理員），並填入 Clink profile
+目錄（`%LocalAppData%\clink`）：
+
+| 檔案 | 來源 | 提供 |
+|---|---|---|
+| `starship.lua` | 由 chezmoi 管理（我們的） | starship prompt（`starship init cmd`） |
+| `zoxide.lua` | apply 時從 `clink-zoxide` 抓取 | `z` / `zi` 跳目錄 |
+| `fzf.lua` | apply 時從 `clink-fzf` 抓取 | Ctrl-R 歷史 · Ctrl-T 檔案 · Alt-C 目錄 |
+
+`starship.lua` 是此 repo 唯一提交的部分（一行 loader，執行 `starship init cmd`）。
+那兩個社群橋接沒有 scoop/winget manifest —— 而且 zoxide 沒有原生 cmd 目標 —— 所以
+就像 herdr，於 apply 時從上游抓進 `%LocalAppData%\clink`（網路失敗不致命；starship
+離線仍可用）。
+
+!!! note "對等的是 prompt，不是功能"
+    cmd 拿到的是 **prompt 與導覽**，不是 pwsh 的整套功能。atuin、direnv、Television
+    沒有 cmd/Clink 路徑，而每個 PowerShell 函式/模組 —— `ll`/`gs`/`reload` aliases、
+    `y`（yazi）、`sysvol`、`copilot-proxy` 模組 —— 都只在 pwsh。要完整體驗請用 pwsh；
+    Clink 只是讓不得不用的 cmd session 舒服一點。用 `clink info` 檢視（會列出 profile
+    目錄與載入的腳本）。

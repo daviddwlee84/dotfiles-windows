@@ -2,14 +2,26 @@
 
 Why this setup makes the choices it does.
 
-## PowerShell 7, not cmd/DOS
+## PowerShell 7 default, cmd.exe optional (via Clink)
 
 `cmd.exe` (the DOS-lineage shell) has no real scripting story: no functions worth
 the name, no structured data, awkward quoting. **PowerShell 7 (`pwsh`)** is the
 modern default on Windows — an object pipeline, real modules, cross-platform, and
 first-class `init` integration for every tool here (starship, zoxide, atuin,
 fzf, direnv). Windows PowerShell 5.1 still ships in-box but is frozen; we install
-and target pwsh 7.
+and target pwsh 7. Everything in this repo — the `$PROFILE` fragments, aliases,
+functions, copilot-proxy — is written for pwsh.
+
+cmd.exe isn't scripted *against*, but it isn't ignored either: some tools spawn it
+and muscle memory persists. The **opt-in `installClink` toggle** gives the DOS
+prompt a starship prompt plus `z` dir-jumping and Ctrl-R/Ctrl-T fzf, via
+[Clink](https://chrisant996.github.io/clink/) (cmd's PSReadLine analog). It reuses
+the **same `starship.toml`** and the XDG env already persisted to the User
+registry — so the *config* is shared; only the shell-activation "script" differs
+(Clink Lua vs the pwsh profile). This is **prompt + navigation parity, not feature
+parity**: atuin / direnv / tv and every pwsh function/module stay pwsh-only. pwsh
+remains the default and primary target; cmd is a scoped secondary. See
+[Shell → cmd.exe via Clink](shell.md#cmdexe-via-clink).
 
 (WSL is great, but it's a Linux environment — handled by the cross-platform
 dotfiles, not this repo. This repo is about a good *native* Windows shell.)

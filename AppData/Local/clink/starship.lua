@@ -1,0 +1,11 @@
+-- starship prompt for cmd.exe, loaded by Clink from its profile dir
+-- (%LocalAppData%\clink). Reuses ~/.config/starship.toml -- the SAME config that
+-- drives pwsh and the macOS/Linux dotfiles -- plus the XDG env already persisted
+-- to the User registry by run_onchange_after_03_xdg_env.ps1, so the cmd prompt
+-- matches pwsh with zero extra config.
+--
+-- Deployed only when the opt-in `installClink` toggle is on (see .chezmoiignore).
+-- The zoxide.lua / fzf.lua Clink bridges are fetched from upstream at apply time
+-- by run_onchange_after_10_packages.ps1.tmpl (they have no package manifest).
+-- Ref: https://starship.rs/guide/ -> Command Prompt (needs Clink v1.2.30+).
+load(io.popen('starship init cmd'):read("*a"))()

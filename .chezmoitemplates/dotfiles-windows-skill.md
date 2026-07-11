@@ -53,7 +53,7 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 ## What's enabled on THIS machine
 - role: **{{ .role }}**
 - Coding agents: {{ .installCodingAgents }} · GUI apps: {{ .installWindowsApps }} · Utility apps: {{ .installUtilityApps }} · Gaming: {{ .installGamingApps }}
-- Extra runtimes: {{ .installExtraRuntimes }} · Media: {{ .installMediaTools }} · LLM: {{ .installLlmTools }} · Tunnel: {{ .installTunnelTools }} · IaC: {{ .installIacTools }} · OpenSSH: {{ .installSshServer }} · herdr: {{ .installHerdr }}
+- Extra runtimes: {{ .installExtraRuntimes }} · Media: {{ .installMediaTools }} · LLM: {{ .installLlmTools }} · Tunnel: {{ .installTunnelTools }} · IaC: {{ .installIacTools }} · OpenSSH: {{ .installSshServer }} · herdr: {{ .installHerdr }} · Clink(cmd): {{ .installClink }}
 - China mirrors: {{ .useChineseMirror }} · Backup mode: {{ .backupMode }} · Vim mode: {{ .enableVimMode }} · Managed machine: {{ .managedMachine }}
 
 ## just recipes
@@ -71,5 +71,9 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   is an opt-in (`installHerdr`) native-Windows multiplexer in preview beta —
   installed via herdr.dev's `irm|iex` script, config at `~/.config/herdr/config.toml`.
   Runtimes are native via scoop (node/bun/go/rust/ruby) + uv for Python — no mise on Windows.
+- **cmd.exe** is opt-in via `installClink`: Clink + starship/zoxide/fzf give the DOS
+  prompt parity for **prompt + navigation only** (no pwsh funcs/aliases/modules).
+  `starship.lua` is chezmoi-managed at `%LocalAppData%\clink`; the zoxide/fzf Clink
+  bridges are fetched from upstream at apply. pwsh stays the default shell.
 - This skill body is shared: `dot_agents/skills/dotfiles-windows/` and
   `dot_claude/skills/dotfiles-windows/` both render `.chezmoitemplates/dotfiles-windows-skill.md`.

@@ -49,3 +49,10 @@ site/**
 {{ if not .installHerdr }}
 .config/herdr/config.toml
 {{ end }}
+
+# Clink profile (starship.lua for cmd.exe) is only deployed when the opt-in
+# installClink toggle is on. The zoxide/fzf Clink bridges are fetched at apply
+# time by the packages script, not managed here.
+{{ if not .installClink }}
+AppData/Local/clink/**
+{{ end }}

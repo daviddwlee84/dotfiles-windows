@@ -15,6 +15,7 @@
 #   installTunnelTools   = {{ .installTunnelTools }}
 #   installIacTools      = {{ .installIacTools }}
 #   installHerdr         = {{ .installHerdr }}
+#   installClink         = {{ .installClink }}
 #   useChineseMirror     = {{ .useChineseMirror }}
 #   managedMachine       = {{ .managedMachine }}
 
@@ -354,6 +355,32 @@ if (Have az) {
 
 {{ if .installHerdr -}}
 Install-Herdr
+{{ end -}}
+
+{{ if .installClink -}}
+# Clink = Bash-style line editing for cmd.exe, so starship / zoxide / fzf work in
+# the DOS prompt too (scoop main bucket). pwsh stays the default shell; this is an
+# opt-in secondary target with prompt + navigation parity only. Our starship.lua
+# deploys via chezmoi (AppData/Local/clink/starship.lua). The zoxide / fzf Clink
+# bridges have no scoop/winget manifest (and zoxide has no native cmd target), so
+# -- like herdr -- we fetch them from upstream into the Clink profile dir at apply
+# time. Network/offline failures are collected, never fatal; starship still works.
+Scoop-Install @('clink')
+if (Have clink) {
+    clink autorun install *> $null                 # HKCU AutoRun; inject into every cmd.exe (no admin)
+    clink set fzf.default_bindings true *> $null    # Ctrl-R history / Ctrl-T files / Alt-C dir
+    $clinkDir = Join-Path $env:LOCALAPPDATA 'clink'
+    New-Item -ItemType Directory -Force -Path $clinkDir | Out-Null
+    $clinkPlugins = @{
+        'zoxide.lua' = 'https://raw.githubusercontent.com/shunsambongi/clink-zoxide/master/zoxide.lua'
+        'fzf.lua'    = 'https://raw.githubusercontent.com/chrisant996/clink-fzf/master/fzf.lua'
+    }
+    foreach ($name in $clinkPlugins.Keys) {
+        Info "clink plugin: $name"
+        try { Invoke-WebRequest -UseBasicParsing -Uri $clinkPlugins[$name] -OutFile (Join-Path $clinkDir $name) }
+        catch { Register-Failure "clink-plugin:$name" }
+    }
+} else { Register-Failure 'clink (autorun/plugins not configured)' }
 {{ end -}}
 
 if ($script:Failures.Count -gt 0) {

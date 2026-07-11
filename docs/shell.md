@@ -143,3 +143,37 @@ and `%APPDATA%\alacritty`.
 So in this repo `AppData\Roaming` is **not** "Windows XDG" — it's simply where
 the non-XDG native apps land. The real XDG role is played by the `~/.config`
 paths we set explicitly.
+
+## cmd.exe via Clink
+
+pwsh is the default and primary shell here — but `cmd.exe` still shows up (some
+tools spawn it, and muscle memory dies hard). The **opt-in `installClink` toggle**
+gives the DOS prompt a starship prompt plus `z` dir-jumping and Ctrl-R/Ctrl-T
+fzf. It reuses what pwsh already has: the **same `~/.config/starship.toml`**, and
+the `XDG_*` vars that `run_onchange_after_03_xdg_env.ps1` persists to the **User
+registry** — so cmd inherits them with no profile of its own.
+
+cmd's line editor is **[Clink](https://chrisant996.github.io/clink/)** — its
+PSReadLine analog. With `installClink` on, the packages script installs Clink
+(scoop `main`), registers a per-user cmd **AutoRun** (`clink autorun install`, no
+admin), and populates the Clink profile dir (`%LocalAppData%\clink`):
+
+| File | Source | Gives you |
+|---|---|---|
+| `starship.lua` | managed by chezmoi (ours) | starship prompt (`starship init cmd`) |
+| `zoxide.lua` | fetched from `clink-zoxide` at apply | `z` / `zi` directory jumping |
+| `fzf.lua` | fetched from `clink-fzf` at apply | Ctrl-R history · Ctrl-T files · Alt-C dirs |
+
+`starship.lua` is the only piece committed to this repo (a one-line loader that
+runs `starship init cmd`). The two community bridges have no scoop/winget
+manifest — and zoxide has no native cmd target — so, like herdr, they're fetched
+from upstream into `%LocalAppData%\clink` at apply time (network failures are
+non-fatal; starship still works offline).
+
+!!! note "Prompt parity, not feature parity"
+    cmd gets the **prompt + navigation**, not the pwsh feature set. atuin, direnv,
+    and Television have no cmd/Clink path, and every PowerShell function/module —
+    the `ll`/`gs`/`reload` aliases, `y` (yazi), `sysvol`, the `copilot-proxy`
+    module — is pwsh-only. For the full experience use pwsh; Clink just makes an
+    unavoidable cmd session pleasant. Inspect it with `clink info` (lists the
+    profile dir + loaded scripts).

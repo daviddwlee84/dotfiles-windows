@@ -809,3 +809,555 @@ fix(wezterm): resolve real pwsh.exe so the scoop shim stops popping a stray cons
 ```
 
 Left untouched (not part of "our change"): the SpecStory transcripts and `.claude/worktrees/`. If you want, I can commit the SpecStory session transcripts separately — the `agent-history-hygiene` skill exists exactly for staging those chat logs alongside the diff they produced. Otherwise you're all set: `chezmoi apply` on the Windows box and reopen WezTerm to verify the phantom window is gone.
+
+---
+
+_**User (2026-07-11 00:07:13Z)**_
+
+可能需要解決一下WezTerm對於Claude Code之類的agent的shift + enter的換行
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-11 00:07:48Z)**_
+
+<think><details><summary>Thought Process</summary>
+The user is dealing with a WezTerm configuration issue where Shift+Enter isn't being recognized as distinct from Enter in terminal applications like Claude Code. The problem is that most terminals send the same escape sequence for both key combinations, so I need to understand how to configure WezTerm to send the proper escape code for Shift+Enter so that TUIs can differentiate between a newline insertion and a submission command.
+
+There are a few workarounds available: Claude Code has a `/terminal-setup` command that auto-configures supported terminals, there's the backslash-then-Enter workaround that always works, and for WezTerm specifically you can manually bind Shift+Enter to send the correct escape sequence like `\x1b\r`. The most modern approach involves using the kitty keyboard protocol or CSI-u encoding for better terminal compatibility. Writing WezTerm config... Mapping Shift+Enter to send the escape sequence that Claude Code recognizes for newlines. I should double-check the exact bindings Claude Code supports rather than relying on memory, since accuracy matters here. Now I need to locate the Alacritty configuration file to see how it handles the Shift+Enter binding with CSI-u, then replicate that same escape sequence for WezTerm.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 00:07:48Z)**_
+
+This is a good one to solve consistently — and this repo has **already** solved Shift+Enter for Alacritty via CSI-u (that's what invariant #3 in CLAUDE.md refers to). Let me look at how Alacritty does it so I mirror the exact same sequence in WezTerm, rather than inventing a different one.
+
+_**Agent (claude-opus-4-8 2026-07-11 00:07:49Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find Alacritty Shift+Enter / CSI-u binding and any related config
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+echo "=== alacritty config files ==="; find . -ipath '*alacritty*' -type f | grep -v specstory
+echo "=== grep for shift+enter / CSI-u / key bindings across repo ==="; grep -rniE "shift.*enter|enter.*shift|\\[13|;2u|13;2|sendSequence|SendString|newline" --include='*.toml' --include='*.lua' --include='*.json' --include='*.md' . 2>/dev/null | grep -viE "specstory|\.zh-TW" | head -40
+```
+
+```text
+=== alacritty config files ===
+./AppData/Roaming/alacritty/alacritty.toml.tmpl
+=== grep for shift+enter / CSI-u / key bindings across repo ===
+AGENTS.md:62:3. **Preserve raw escapes when authoring config with control chars.** Alacritty CSI-u (`[…u`), VSCode `sendSequence`, tv `\t` — hand-typing tends to drop them. Generate via a throwaway Python script and re-parse (`tomllib` / `json`) to confirm the escape landed.
+editors/keybindings.json:19:    "key": "shift+enter",
+editors/keybindings.json:20:    "command": "workbench.action.terminal.sendSequence",
+editors/keybindings.json:22:      "text": "\u001b[13;2u"
+.agents/skills/agent-history-hygiene/SKILL.md:62:  script (e.g., adding a missing trailing newline).
+dot_config/starship.toml:12:# Newline between prompts
+dot_config/starship.toml:13:add_newline = true
+dot_config/nvim/lua/exact_plugins/nvim-cmp.lua:40:        -- newline even when the popup is open with a suggestion
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 00:07:55Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm checking the Alacritty configuration to verify the exact keybinding for Shift+Enter and comparing it against the CSI-u encoding (`\u001b[13;2u`) used in the editors' keybindings file, which confirms the repository is using the kitty/fixterms standard sequence for this key combination.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 00:07:55Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Read Alacritty keybinding block for Shift+Enter
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+echo "=== alacritty.toml.tmpl (key bindings section) ==="
+grep -n -A30 -iE "keyboard|bindings|13;2|Enter" AppData/Roaming/alacritty/alacritty.toml.tmpl | head -60
+```
+
+```text
+=== alacritty.toml.tmpl (key bindings section) ===
+2:# Shares styling + CSI-u keybindings with the macOS/Linux dotfiles; the
+3-# macOS-only bits (option_as_alt, window blur) are dropped and the shell is pwsh.
+4-#
+5-# Templated by chezmoi for one reason: working_directory. Alacritty does NOT
+6-# expand ~ / $HOME (that breaks launch), and on Windows a Start Menu / shim
+7-# launch otherwise lands the shell in C:\Windows\System32, so we bake in the
+8-# absolute home path. A literal (single-quoted) string keeps the backslashes.
+9-
+10-[general]
+11-working_directory = '{{ .chezmoi.homeDir }}'
+12-
+13-[terminal.shell]
+14-program = "pwsh"
+15-args = ["-NoLogo"]
+16-
+17-[font]
+18-normal = { family = "Hack Nerd Font Mono", style = "Regular" }
+19-bold = { family = "Hack Nerd Font Mono", style = "Bold" }
+20-italic = { family = "Hack Nerd Font Mono", style = "Italic" }
+21-bold_italic = { family = "Hack Nerd Font Mono", style = "Bold Italic" }
+22-size = 12.0
+23-
+24-[env]
+25-TERM = "xterm-256color"
+26-
+27-[window]
+28-padding.x = 10
+29-padding.y = 10
+30-opacity = 0.9
+31-
+32:# CSI-u keybindings (portable). The ESC (\u001b) prefix is load-bearing so tmux
+33-# and Neovim receive the sequence.
+34:[[keyboard.bindings]]
+35-key = "Return"
+36-mods = "Shift"
+37:chars = "\u001b[13;2u"
+38-
+39:[[keyboard.bindings]]
+40-key = "Slash"
+41-mods = "Control"
+42-chars = "\u001f"
+43-
+44:[[keyboard.bindings]]
+45-key = "Return"
+46-mods = "Control"
+47-chars = "\u001b[13;5u"
+48-
+49:[[keyboard.bindings]]
+50-key = "Key1"
+51-mods = "Control"
+52-chars = "\u001b[49;5u"
+53-
+54:[[keyboard.bindings]]
+55-key = "Key2"
+56-mods = "Control"
+57-chars = "\u001b[50;5u"
+58-
+59:[[keyboard.bindings]]
+60-key = "Key3"
+61-mods = "Control"
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 00:08:28Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm seeing the CSI-u escape sequence patterns the repo uses for various key combinations—Shift+Enter maps to `ESC [ 13 ; 2 u`, Ctrl+/ produces `ESC 0x1f`, and Ctrl+Enter uses `ESC [ 13 ; 5 u`—and the VSCode keybindings confirm Shift+Enter follows the same canonical sequence.
+
+For WezTerm, I can send these raw sequences using `SendString` with the literal escape codes. The key insight is that WezTerm supports the kitty keyboard protocol natively, but Claude Code doesn't necessarily enable it, so I need to take the explicit binding approach like Alacritty does—bind Shift+Enter to send the literal `\x1b[13;2u` string directly, which works regardless of whether the app requested kitty mode, as long as the app recognizes that sequence.
+
+Now I'm weighing whether to implement just the Shift+Enter binding the user asked for, or mirror the full set of keybindings (Ctrl+Enter, Ctrl+/, number keys) for consistency with the Alacritty config and the repo's philosophy of sharing CSI-u keybindings across terminals. The minimal fix addresses the immediate need, but parity across terminals would be more complete.
+
+I should also check WezTerm's default behavior—it negotiates the kitty keyboard protocol automatically, which might already handle Shift+Enter correctly if Claude Code requests it, but since Claude Code doesn't request it by default, WezTerm falls back to standard behavior that doesn't distinguish Shift+Enter.
+
+For the binding itself, I'll send the exact byte sequence `\x1b[13;2u` that Claude Code expects, matching what's already configured in Alacritty and VSCode. This is a small, low-risk change that mirrors an established pattern in the repo, so I can implement it directly—though I'll validate the Lua syntax since I can't actually run it on Windows.
+
+Now I'm deciding whether to mirror just the Shift+Enter and Ctrl+Enter bindings for consistency, or add the full CSI-u binding set from Alacritty. The user specifically asked for Shift+Enter for agents, so I should focus on that and maybe Ctrl+Enter for parity, but I need to check what WezTerm's defaults are for things like Ctrl+1/2/3 to avoid conflicts. I should mirror the full CSI-u binding set from Alacritty into WezTerm for consistency, rather than just implementing Shift+Enter alone. This aligns with the repository's philosophy of keeping the two terminals in sync. Let me check what the complete binding list looks like.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 00:08:28Z)**_
+
+The repo's canonical sequence for Shift+Enter is `\u001b[13;2u` (CSI-u / fixterms encoding) — used in **both** Alacritty and the VSCode/editor keybindings. Claude Code recognizes exactly that sequence. Let me see the full CSI-u set in Alacritty so I can decide whether to mirror just Shift+Enter or the whole set for parity.
+
+_**Agent (claude-opus-4-8 2026-07-11 00:08:28Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Dump full Alacritty CSI-u keybinding set
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+awk 'NR>=32' AppData/Roaming/alacritty/alacritty.toml.tmpl | grep -nE "key =|mods =|chars =" 
+```
+
+```text
+4:key = "Return"
+5:mods = "Shift"
+6:chars = "\u001b[13;2u"
+9:key = "Slash"
+10:mods = "Control"
+11:chars = "\u001f"
+14:key = "Return"
+15:mods = "Control"
+16:chars = "\u001b[13;5u"
+19:key = "Key1"
+20:mods = "Control"
+21:chars = "\u001b[49;5u"
+24:key = "Key2"
+25:mods = "Control"
+26:chars = "\u001b[50;5u"
+29:key = "Key3"
+30:mods = "Control"
+31:chars = "\u001b[51;5u"
+34:key = "Key4"
+35:mods = "Control"
+36:chars = "\u001b[52;5u"
+39:key = "Key5"
+40:mods = "Control"
+41:chars = "\u001b[53;5u"
+44:key = "Key6"
+45:mods = "Control"
+46:chars = "\u001b[54;5u"
+49:key = "Key7"
+50:mods = "Control"
+51:chars = "\u001b[55;5u"
+54:key = "Key8"
+55:mods = "Control"
+56:chars = "\u001b[56;5u"
+59:key = "Key9"
+60:mods = "Control"
+61:chars = "\u001b[57;5u"
+64:key = "Key0"
+65:mods = "Control"
+66:chars = "\u001b[48;5u"
+69:key = "T"
+70:mods = "Control|Shift"
+74:key = "N"
+75:mods = "Control|Shift"
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 00:08:34Z)**_
+
+<think><details><summary>Thought Process</summary>
+Looking at the last couple of key bindings with Control and Shift modifiers to understand what they're doing, then I'll check the end of the file to see the full picture.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 00:08:34Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Read tail of Alacritty config (T/N bindings)
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+tail -n +99 AppData/Roaming/alacritty/alacritty.toml.tmpl
+```
+
+```text
+[[keyboard.bindings]]
+key = "T"
+mods = "Control|Shift"
+action = "SpawnNewInstance"
+
+[[keyboard.bindings]]
+key = "N"
+mods = "Control|Shift"
+action = "SpawnNewInstance"
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 00:09:31Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm mapping out the Alacritty key bindings that use CSI-u sequences for terminal applications like Claude Code, tmux, and neovim—Shift+Return sends a special escape sequence for newline handling, Ctrl+Slash produces the standard control character, and Ctrl+Return has its own escape sequence.
+
+For WezTerm, I need to decide whether to mirror just the Shift+Enter binding that the user specifically asked about or replicate the full CSI-u set. WezTerm already has sensible defaults for Ctrl+Shift+T and Ctrl+Shift+N (new tab and new window), so those don't need overriding. The real question is how many of the CSI-u sequences matter for WezTerm's use case, especially since it functions more as a tmux-like multiplexer than a direct Alacritty replacement. I'll go with the full CSI-u set to match the repo's intent for cross-terminal consistency, including Shift+Enter, Ctrl+Enter, Ctrl+/, and Ctrl+0 through Ctrl+9.
+
+Now I'm checking whether these bindings conflict with WezTerm's defaults — Ctrl+number isn't bound by default (tab switching uses Ctrl+Shift+number instead), so those are safe to add. For Ctrl+/, I need to verify what WezTerm sends by default and make sure the binding aligns properly.
+
+I'm torn on whether to add the full CSI-u set without asking first. The repo seems action-oriented, but I want to respect focused commits. The strongest argument for going ahead is that the Alacritty config explicitly advertises sharing CSI-u keybindings with the dotfiles, so WezTerm lacking them is a real inconsistency — and since they're the same escape sequences, the risk is low. I'll go with the full CSI-u keybinding set for consistency with the repo's design — it directly solves the Shift+Enter issue, maintains parity across modifiers, and I can explain the approach so the user can adjust if needed. Now I'm looking at WezTerm's Lua configuration format for key bindings.
+
+Defining the key bindings... eft arrow and other directional keys. I need to verify WezTerm's exact key naming convention and action syntax rather than guessing — I should check the official documentation or test against a local WezTerm binary to ensure accuracy. The SendString action works with both the modern syntax and older forms, and I need to verify the exact key name for Enter and confirm the escape sequence handling works as expected with WezTerm's configuration. I need to check the WezTerm documentation to confirm the exact key name for Enter and verify the syntax for key modifiers and SendString.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 00:09:31Z)**_
+
+The repo's full CSI-u set is clear now. For parity with Alacritty (whose header explicitly says it "Shares CSI-u keybindings"), I'll mirror the same sequences into WezTerm. Before writing it, let me confirm WezTerm's exact config syntax (the key name for Enter, mods format, `SendString`) so I don't ship a silently-broken config you can't easily debug on Windows.
+
+_**Agent (claude-opus-4-8 2026-07-11 00:09:47Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="WebFetch"><details>
+<summary>Tool use: **WebFetch**</summary>
+ `https://wezterm.org/config/keys.html`
+
+```text
+Exact key name
+- The Enter/Return key is "Enter" (use key = "Enter").
+
+Quoted source: "Enter"
+
+Mods format
+- Modifiers use labels like SUPER/CMD/WIN, CTRL, SHIFT, ALT/OPT/META, LEADER, etc.
+- You combine them with the pipe character, e.g. "CMD|CTRL".
+
+Quoted source: "You can combine modifiers using the `|` symbol (eg: `"CMD|CTRL"`)."
+
+SendKey example syntax (from doc)
+- The doc shows SendKey used like:
+  "action = wezterm.action.SendKey { key = 'a', mods = 'CTRL' }"
+
+Quoted source: "action = wezterm.action.SendKey { key = 'a', mods = 'CTRL' }"
+
+SendString / concrete example
+- To send a raw escape string from a key binding, use the SendString action and supply the string. For example, to bind SHIFT+Enter to send an escape sequence:
+
+config.keys = {
+  {
+    key = "Enter",
+    mods = "SHIFT",
+    action = wezterm.action.SendString("\x1b[31m") -- example: send ESC[31m
+  },
+}
+
+Notes
+- Use key = "Enter" and mods = "SHIFT" (or combined like "CTRL|SHIFT") as shown above.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 00:10:48Z)**_
+
+<think><details><summary>Thought Process</summary>
+Now I'm setting up the WezTerm key bindings to match the Alacritty CSI-u protocol, mapping modifier combinations like Shift+Enter and Ctrl+Enter to their corresponding escape sequences. I'm settling on full parity with the CSI-u keybindings to stay consistent with the repo's intent of portable terminal configurations, even though the user only asked about Shift+Enter. I'll document this clearly and offer to scale back if they prefer just the Enter-related bindings.
+
+Now I'm writing the Lua configuration for WezTerm's keys table. I could loop through the Ctrl+number bindings to keep it DRY, but I'm weighing that against matching the Alacritty file's explicit style for greppability and clarity. Lua's loop syntax is idiomatic, but the explicit list mirrors the repo's existing format more directly.
+
+I'm working through the CSI-u codes for each digit—Ctrl+1 through Ctrl+0 map to their ASCII values with the `;5u` suffix—and I can generate these strings dynamically using Lua's string library functions like `string.byte` and `string.format` to build the escape sequences in the loop.
+
+Now I'm weighing whether to hardcode all ten digit bindings or use a loop for brevity, since mixing explicit entries with generated ones makes the config less clean. The special cases like Shift+Enter and Ctrl+/ are semantically important enough to keep explicit, but Ctrl+0-9 are pretty niche—I should probably reconsider if they're worth including at all.
+
+Actually, stepping back: the user specifically asked for Shift+Enter to work with Claude Code and similar agents. That's the core requirement. The other bindings in the Alacritty config are likely inherited from the parent repo and serve different purposes—maybe tmux window switching or other TUI tools. So the focused solution is just Shift+Enter, and I should avoid bloating the config with bindings that don't directly address the ask. I'm settling on implementing the full CSI-u set to match Alacritty exactly — Shift+Enter, Ctrl+Enter, Ctrl+/, and Ctrl+0-9 — since the repo's explicit goal is cross-terminal parity and this gives a complete, consistent answer without surprises later.
+
+Writing the Lua config... Mapping Ctrl+Enter and Ctrl+/ to their CSI-u equivalents, then looping through digits 0-9 to bind each with Ctrl modifier to send the corresponding escape sequence. Now I'm checking whether the escape character in the format string will work correctly...
+
+the byte value gets substituted properly, so Ctrl+1 sends the right sequence. I should verify this syntax is valid with luac, and then confirm whether WezTerm's config.keys adds to or replaces the default keybindings.
+
+WezTerm merges custom key assignments with defaults, so my additions won't wipe out copy/paste/tab bindings. Since Ctrl+Enter and Ctrl+digit aren't bound by default, there's no conflict — these are purely additive. Now I'm wondering if WezTerm already sends the kitty protocol sequence for Shift+Enter when that mode is enabled.
+
+Actually, WezTerm has `enable_kitty_keyboard` but it defaults to false, so by default it sends bare CR for Shift+Enter. My explicit binding handles this regardless, which is the same targeted approach Alacritty uses. I'll add the key configuration to wezterm.lua after the default_prog block, grouping it as a dedicated keys section before the return statement.
+
+Looking at the current file structure, I can see it ends with the audible_bell setting followed by the return statement. I'll insert the keys configuration right before that return, starting with defining the wezterm.action reference.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 00:10:48Z)**_
+
+Confirmed the syntax (`key = "Enter"`, `mods` piped with `|`, `wezterm.action.SendString`). WezTerm's `config.keys` merges with defaults, so this is purely additive — copy/paste/tab bindings stay intact.
+
+I'll mirror Alacritty's CSI-u set for full cross-terminal parity (the Alacritty header explicitly says these are shared). The load-bearing one is `Shift+Enter → ESC[13;2u`, which Claude Code reads as "insert newline"; the rest come along so no app behaves differently between the two terminals.
+
+_**Agent (claude-opus-4-8 2026-07-11 00:10:53Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/dot_config/wezterm/wezterm.lua has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 00:11:01Z)**_
+
+Now let me verify it parses and that the generated escape sequences are byte-exact (matching Alacritty's `\u001b[13;2u` etc.):
+
+_**Agent (claude-opus-4-8 2026-07-11 00:11:03Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Execute wezterm.lua with a stubbed API and dump each binding's bytes
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+# 1) syntax check (stub wezterm so it runs, not just parses)
+if command -v lua >/dev/null 2>&1; then
+  lua -e '
+    wezterm = { config_builder=function() return {} end, action={ SendString=function(s) return {send=s} end }, home_dir="C:\\Users\\t", font=function() end }
+    local ok, cfg = pcall(dofile, "dot_config/wezterm/wezterm.lua")
+    assert(ok, "dofile failed: "..tostring(cfg))
+    -- print each key binding as key/mods/bytes(hex)
+    for _, k in ipairs(cfg.keys) do
+      local s = k.action.send:gsub(".", function(c) return string.format("\\x%02x", string.byte(c)) end)
+      print(string.format("%-6s %-5s -> %s", k.mods, k.key, s))
+    end
+  '
+else
+  luac -p dot_config/wezterm/wezterm.lua && echo "luac: parse OK (no lua runtime to dump bytes)"
+fi
+```
+
+```text
+Exit code 1
+lua: (command line):4: dofile failed: dot_config/wezterm/wezterm.lua:10: module 'wezterm' not found:
+	no field package.preload['wezterm']
+	no file '/usr/local/share/lua/5.5/wezterm.lua'
+	no file '/usr/local/share/lua/5.5/wezterm/init.lua'
+	no file '/usr/local/lib/lua/5.5/wezterm.lua'
+	no file '/usr/local/lib/lua/5.5/wezterm/init.lua'
+	no file './wezterm.lua'
+	no file './wezterm/init.lua'
+	no file '/usr/local/lib/lua/5.5/wezterm.so'
+	no file '/usr/local/lib/lua/5.5/loadall.so'
+	no file './wezterm.so'
+stack traceback:
+	[C]: in global 'assert'
+	(command line):4: in main chunk
+	[C]: in ?
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 00:11:10Z)**_
+
+<think><details><summary>Thought Process</summary>
+I see the issue—the `require` statement is looking for the actual module, but I've only set it as a global. I need to use `package.preload` to inject the stub module so Lua's require system finds it properly.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 00:11:10Z)**_
+
+The stub needs to satisfy `require 'wezterm'`. Let me preload it properly:
+
+_**Agent (claude-opus-4-8 2026-07-11 00:11:10Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Run wezterm.lua with preloaded wezterm stub and dump binding bytes
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+lua -e '
+  package.preload["wezterm"] = function()
+    return {
+      config_builder = function() return {} end,
+      action = { SendString = function(s) return { send = s } end },
+      home_dir = "C:\\Users\\t",
+      font = function() return {} end,
+    }
+  end
+  local cfg = dofile("dot_config/wezterm/wezterm.lua")
+  print("parsed OK; "..#cfg.keys.." key bindings")
+  for _, k in ipairs(cfg.keys) do
+    local s = k.action.send:gsub(".", function(c) return string.format("\\x%02x", string.byte(c)) end)
+    print(string.format("  %-5s %-5s -> %s", k.mods, k.key, s))
+  end
+'
+```
+
+```text
+parsed OK; 13 key bindings
+  SHIFT Enter -> \x1b\x5b\x31\x33\x3b\x32\x75
+  CTRL  Enter -> \x1b\x5b\x31\x33\x3b\x35\x75
+  CTRL  /     -> \x1f
+  CTRL  0     -> \x1b\x5b\x34\x38\x3b\x35\x75
+  CTRL  1     -> \x1b\x5b\x34\x39\x3b\x35\x75
+  CTRL  2     -> \x1b\x5b\x35\x30\x3b\x35\x75
+  CTRL  3     -> \x1b\x5b\x35\x31\x3b\x35\x75
+  CTRL  4     -> \x1b\x5b\x35\x32\x3b\x35\x75
+  CTRL  5     -> \x1b\x5b\x35\x33\x3b\x35\x75
+  CTRL  6     -> \x1b\x5b\x35\x34\x3b\x35\x75
+  CTRL  7     -> \x1b\x5b\x35\x35\x3b\x35\x75
+  CTRL  8     -> \x1b\x5b\x35\x36\x3b\x35\x75
+  CTRL  9     -> \x1b\x5b\x35\x37\x3b\x35\x75
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 00:11:40Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm verifying that the key sequences I'm generating match Alacritty's expected escape codes—checking Shift+Enter, Ctrl+Enter, Ctrl+/, and Ctrl+1 against their hex representations to ensure compatibility. I'm clarifying how Claude Code interprets the CSI-u sequences—specifically, when the terminal sends `\x1b[13;2u` for Shift+Enter, Claude Code's input parser decodes it and recognizes it as a newline command, which is already built into how the CLI handles keyboard input without needing additional setup. The byte-exact comparison against the working Alacritty/VSCode setup is solid validation since I can't test directly on Windows. There's no documentation that needs updating for this keybinding since it's not part of the cross-file mirror rules. I'm ready to commit.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 00:11:40Z)**_
+
+All 13 bindings parse and are **byte-exact** matches to Alacritty's CSI-u set:
+
+| Key | Bytes | Alacritty equivalent |
+|---|---|---|
+| `Shift+Enter` | `\x1b[13;2u` | `\u001b[13;2u` ✓ |
+| `Ctrl+Enter` | `\x1b[13;5u` | `\u001b[13;5u` ✓ |
+| `Ctrl+/` | `\x1f` | `\u001f` ✓ |
+| `Ctrl+0…9` | `\x1b[48;5u` … `\x1b[57;5u` | ✓ (digit's ASCII code) |
+
+## What this does
+
+- **`Shift+Enter` → `ESC[13;2u`** is the fix you asked for. Claude Code (and Codex, etc.) decode that CSI-u sequence as "insert newline"; previously WezTerm sent a bare `CR` for `Shift+Enter` — byte-identical to plain `Enter` — so the agent submitted instead of adding a line. This is the exact contract the repo already relies on for VSCode (`editors/keybindings.json`) and Alacritty, so no Claude Code-side config or `/terminal-setup` is needed.
+- The rest come along for **cross-terminal parity** — the Alacritty header says these CSI-u bindings are shared, so now WezTerm matches. WezTerm's native `Ctrl+Shift+T/N` (tabs/windows) are kept rather than Alacritty's `SpawnNewInstance`.
+
+## Validation
+
+No Windows/WezTerm here, and CI (`windows.yml`) only gates the `.ps1.tmpl` files — not `wezterm.lua`. So I validated by executing the config under a Lua runtime with a stubbed `wezterm` API and diffing the emitted bytes against Alacritty's known-good sequences (above). On the real box: `chezmoi apply`, open a **new** WezTerm window, and `Shift+Enter` in Claude Code should insert a newline.
+
+Want me to commit this? Suggested message:
+```
+feat(wezterm): CSI-u keybindings (Shift+Enter newline for TUI agents)
+```
+
+---
+
+_**User (2026-07-11 00:11:52Z)**_
+
+sure
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-11 00:12:02Z)**_
+
+<think><details><summary>Thought Process</summary>
+The user approved it, so I'll stage the wezterm.lua file and commit it directly to main with the message we discussed.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 00:12:05Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Stage and commit the WezTerm CSI-u keybindings
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+git add dot_config/wezterm/wezterm.lua && git commit -m "$(cat <<'EOF'
+feat(wezterm): CSI-u keybindings (Shift+Enter newline for TUI agents)
+
+WezTerm sent a bare CR for Shift+Enter, byte-identical to Enter, so TUI agents
+(Claude Code, Codex, …) couldn't tell them apart and submitted instead of
+inserting a newline. Add config.keys mirroring the Alacritty CSI-u set
+(AppData/Roaming/alacritty/alacritty.toml.tmpl), which is shared with the
+macOS/Linux dotfiles: Shift+Enter -> ESC[13;2u (the load-bearing one), plus
+Ctrl+Enter, Ctrl+/, and Ctrl+0..9 for full cross-terminal parity. Same sequence
+the repo already uses for VSCode (editors/keybindings.json), so agents honor it
+with no /terminal-setup. WezTerm's native Ctrl+Shift+T/N (tabs/window) are kept.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+EOF
+)"
+```
+
+```text
+[WARNING] Unstaged files detected.
+[INFO] Stashing unstaged files to /Users/david/.cache/pre-commit/patch1783728723-57231.
+Auto-redact secrets in agent artifacts...............(no files to check)Skipped
+Detect hardcoded secrets.................................................Passed
+detect private key.......................................................Passed
+check for added large files..............................................Passed
+check for merge conflicts................................................Passed
+fix end of files.........................................................Passed
+trim trailing whitespace.................................................Passed
+[INFO] Restored changes from /Users/david/.cache/pre-commit/patch1783728723-57231.
+[main 207f782] feat(wezterm): CSI-u keybindings (Shift+Enter newline for TUI agents)
+ 1 file changed, 22 insertions(+)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 00:12:10Z)**_
+
+<think><details><summary>Thought Process</summary>
+The commit went through successfully and pre-commit checks are all good.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 00:12:10Z)**_
+
+Committed as `207f782` — pre-commit hooks all passed.
+
+```
+feat(wezterm): CSI-u keybindings (Shift+Enter newline for TUI agents)
+ 1 file changed, 22 insertions(+)
+```
+
+Both WezTerm fixes are now on `main`:
+- `189913c` — real `pwsh.exe` (no more stray console window)
+- `207f782` — CSI-u keybindings (Shift+Enter newline)
+
+On the Windows box: `chezmoi apply`, open a fresh WezTerm window, and both should be live. The SpecStory transcripts from this session are still uncommitted if you want to capture the chat history separately later.
+
+---
+
+_**User (2026-07-11 05:04:28Z)**_
+
+did we develop on main branch?
