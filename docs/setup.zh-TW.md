@@ -71,6 +71,7 @@ powershell -ExecutionPolicy Bypass -File "%TEMP%\bootstrap.ps1"
 | Role | `workstation` | `workstation` = 完整桌面；`minimal` = 只有 shell |
 | Coding agents | 開（workstation） | Claude Code、OpenCode、Codex、Copilot CLI、SpecStory |
 | Windows GUI apps | 開（workstation） | VSCode、Cursor、Notepad++、Terminal、Alacritty、PowerToys、Raycast、Docker Desktop、Discord |
+| WSL2 backend | 開（workstation） | Docker Desktop 後端所需的 WSL2；自動提權（一次 UAC），需重開機 |
 | Utility apps | 開（workstation） | CPU-Z、GPU-Z、TreeSize、VLC、Everything、ShareX、HWiNFO |
 | Gaming apps | 關 | Steam |
 | Extra runtimes | 開（workstation） | 透過 mise 安裝 rust、go、ruby（node/bun/uv 為基本內建） |

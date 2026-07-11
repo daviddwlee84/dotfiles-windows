@@ -91,6 +91,7 @@ Pitfalls owned by this folder. Keep alphabetical.
 |---|---|---|
 | [`clickfix-defender-flags-cmd-irm-iex`](clickfix-defender-flags-cmd-irm-iex.md) | `Trojan:Win32/ClickFix.R!ml`, cmd `powershell -c "irm\|iex"` blocked, VirusTotal clean but Defender blocks | workaround documented |
 | [`onedrive-kfm-profile-not-loaded`](onedrive-kfm-profile-not-loaded.md) | `is not recognized as a name of a cmdlet`, `OneDrive - <tenant>\Documents\PowerShell`, bare prompt / no starship | fixed |
+| [`wsl-install-no-action-reboot-required`](wsl-install-no-action-reboot-required.md) | `No action was taken as a system reboot is required.`, `The requested operation requires elevation.`, Docker Desktop "WSL 2 is not installed" | workaround documented |
 
 ## Cross-referenced pitfalls (still in their original homes)
 

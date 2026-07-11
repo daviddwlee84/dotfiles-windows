@@ -45,6 +45,10 @@ specstory-build:
 enable-sshd:
     pwsh -NoProfile -File ./scripts/enable-sshd.ps1
 
+# install WSL2 (Docker Desktop backend) — pops one UAC prompt; reboot required after
+enable-wsl:
+    pwsh -NoProfile -File ./scripts/enable-wsl.ps1
+
 # install Hack Nerd Font machine-wide so Alacritty sees it (run from ELEVATED pwsh)
 install-fonts-machine-wide:
     pwsh -NoProfile -File ./scripts/install-fonts-machine-wide.ps1

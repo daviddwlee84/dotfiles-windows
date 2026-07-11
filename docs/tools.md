@@ -51,7 +51,7 @@ are added when **Extra runtimes** is enabled. A default **Python** is uv-managed
 | PowerToys | `Microsoft.PowerToys` |
 | Raycast | `9PFXXSHC64H3` (msstore) |
 | Antigravity | `Google.Antigravity` |
-| Docker Desktop | `Docker.DockerDesktop` |
+| Docker Desktop | `Docker.DockerDesktop` (WSL2 backend via the `installWsl` toggle — see below) |
 | Discord | `Discord.Discord` |
 | Claude Desktop | `Anthropic.Claude` |
 | ChatGPT | `9PLM9XGG6VKS` (msstore) |
@@ -60,6 +60,16 @@ are added when **Extra runtimes** is enabled. A default **Python** is uv-managed
 | Zen Browser | `Zen-Team.Zen-Browser` |
 | Grammarly | `Grammarly.Grammarly` |
 | Steam (gaming) | `Valve.Steam` |
+
+**Docker Desktop's WSL2 backend** (`installWsl` toggle, on for workstation) is set up
+by `scripts/enable-wsl.ps1` via `wsl --install --no-distribution` — only the WSL2
+platform, not a Linux distro (Docker creates its own `docker-desktop` distro).
+`wsl --install` needs admin **and** a reboot, so a non-elevated `chezmoi apply`
+self-elevates with a single UAC prompt (like scoop), runs the install, then prints a
+restart notice — reboot, then Docker Desktop starts on the WSL2 backend. Re-run or
+retry (e.g. if the UAC prompt was declined) with `just enable-wsl`. Already-installed
+machines are a no-op (no UAC). WSL as a *Linux shell* stays out of scope — see
+[rationale](rationale.md#powershell-7-default-cmdexe-optional-via-clink).
 
 ## Utility apps (winget)
 

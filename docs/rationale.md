@@ -24,7 +24,10 @@ remains the default and primary target; cmd is a scoped secondary. See
 [Shell → cmd.exe via Clink](shell.md#cmdexe-via-clink).
 
 (WSL is great, but it's a Linux environment — handled by the cross-platform
-dotfiles, not this repo. This repo is about a good *native* Windows shell.)
+dotfiles, not this repo. This repo is about a good *native* Windows shell. The
+one exception is Docker Desktop's backend: the `installWsl` toggle enables the
+WSL2 *platform* via `wsl --install --no-distribution` — plumbing for Docker's
+containers, not a Linux shell — self-elevating with one UAC prompt and a reboot.)
 
 ## scoop for CLIs + winget for apps, not Chocolatey
 

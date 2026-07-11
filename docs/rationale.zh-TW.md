@@ -20,7 +20,9 @@ pwsh profile）。這是 **prompt 與導覽的對等，而非功能對等**：at
 見 [Shell → cmd.exe via Clink](shell.zh-TW.md#cmdexe-via-clink)。
 
 （WSL 很好，但它是 Linux 環境 —— 由跨平台 dotfiles 處理，不在此 repo。這個 repo
-的重點是一個好用的*原生* Windows shell。）
+的重點是一個好用的*原生* Windows shell。唯一例外是 Docker Desktop 的後端：
+`installWsl` 開關透過 `wsl --install --no-distribution` 啟用 WSL2 *平台* —— 這是給
+Docker 容器用的底層，不是 Linux shell —— 並會自動提權（一次 UAC）且需重開機。）
 
 ## scoop 管 CLI + winget 管應用程式，而非 Chocolatey
 

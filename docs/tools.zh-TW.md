@@ -51,7 +51,7 @@ app-alias 前面），所以 `python`、`uv run`、`uv venv`
 | PowerToys | `Microsoft.PowerToys` |
 | Raycast | `9PFXXSHC64H3`（msstore） |
 | Antigravity | `Google.Antigravity` |
-| Docker Desktop | `Docker.DockerDesktop` |
+| Docker Desktop | `Docker.DockerDesktop`（WSL2 後端由 `installWsl` 開關提供 —— 見下方） |
 | Discord | `Discord.Discord` |
 | Claude Desktop | `Anthropic.Claude` |
 | ChatGPT | `9PLM9XGG6VKS`（msstore） |
@@ -60,6 +60,15 @@ app-alias 前面），所以 `python`、`uv run`、`uv venv`
 | Zen Browser | `Zen-Team.Zen-Browser` |
 | Grammarly | `Grammarly.Grammarly` |
 | Steam（gaming） | `Valve.Steam` |
+
+**Docker Desktop 的 WSL2 後端**（`installWsl` 開關，workstation 預設開）由
+`scripts/enable-wsl.ps1` 透過 `wsl --install --no-distribution` 安裝 —— 只裝 WSL2
+平台、不裝 Linux 發行版（Docker 會自建 `docker-desktop` distro）。`wsl --install`
+需要系統管理員**且**需重開機，所以未提權的 `chezmoi apply` 會自動提權（跳一次 UAC，
+類似 scoop），執行安裝後印出重開機提示 —— 重開機後 Docker Desktop 即以 WSL2 後端啟動。
+若要重跑或重試（例如 UAC 被拒），執行 `just enable-wsl`；已安裝的機器則為 no-op（不跳
+UAC）。WSL 作為 *Linux shell* 仍不在此 repo 範圍 —— 見
+[rationale](rationale.zh-TW.md#powershell-7-cmdexe-clink)。
 
 ## 工具程式（winget）
 
