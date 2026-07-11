@@ -10757,3 +10757,940 @@ echo "=== (matches above are just the words 'token'/'secret' in prose, not value
 === (matches above are just the words 'token'/'secret' in prose, not values — review) ===
 ```
 </details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:05:36Z)**_
+
+<think><details><summary>Thought Process</summary>
+The search results look clean—just references to those keywords in documentation and comments, nothing with actual secret values. I'm ready to stage the files and commit the changes.
+
+Now I'm composing the commit message following the repo's conventional-commit format. This is a multi-part update centered on the Windows Terminal Shift+Enter binding for newlines plus the winget migration, so I'll use `feat(claude-code):` as the commit type and detail the key changes. Verifying the commit message has no raw escape characters—just literal text representations—then staging everything with a temp file to preserve the full formatting and co-author attribution.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:05:36Z)**_
+
+All matches are benign prose (commit-message references to redaction hooks, doc words, my own reasoning) — no actual secret values, no PEM blocks or live tokens. Safe to commit. Staging the feature work + this session's plan and transcript (excluding the unrelated docker specstory file):
+
+_**Agent (claude-opus-4-8 2026-07-11 07:05:46Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Stage feature files + this session's artifacts
+
+```bash
+git add \
+  .chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl \
+  .chezmoiscripts/run_onchange_after_30_windows_terminal.ps1 \
+  TODO.md \
+  docs/claude-code-agents.md docs/claude-code-agents.zh-TW.md \
+  docs/tools.md docs/tools.zh-TW.md \
+  pitfalls/shift-enter-submits-instead-of-newline-claude-code.md \
+  .claude/plans/powershell-claude-code-shift-happy-catmull.md \
+  .specstory/history/2026-07-11_06-35-25Z-powershell-claude-code-shift.md
+echo "=== staged ===" && git diff --cached --name-only && echo "=== NOT staged (left for its own commit) ===" && git status --porcelain | grep '^??'
+```
+
+```text
+=== staged ===
+.chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl
+.chezmoiscripts/run_onchange_after_30_windows_terminal.ps1
+.claude/plans/powershell-claude-code-shift-happy-catmull.md
+.specstory/history/2026-07-11_06-35-25Z-powershell-claude-code-shift.md
+TODO.md
+docs/claude-code-agents.md
+docs/claude-code-agents.zh-TW.md
+docs/tools.md
+docs/tools.zh-TW.md
+pitfalls/shift-enter-submits-instead-of-newline-claude-code.md
+=== NOT staged (left for its own commit) ===
+?? .claude/plans/docker-desktop-wsl-snappy-lemon.md
+?? .specstory/history/2026-07-11_06-53-53Z-docker-desktop-wsl-not.md
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:05:59Z)**_
+
+<think><details><summary>Thought Process</summary>
+I've staged the right files and left out the untracked plan file and docker spec file as expected. Now I'm going to commit this, checking first if there's a pre-commit hook that might trigger a redact operation. I'll write the commit message using a heredoc.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:05:59Z)**_
+
+Correct set staged (the docker-session plan and transcript are left out). Committing:
+
+_**Agent (claude-opus-4-8 2026-07-11 07:05:59Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit feature on main
+
+```bash
+git commit -F - <<'EOF'
+feat(claude-code): Shift+Enter newline in Windows Terminal + winget install
+
+- WT merger: append shift+enter -> ESC[13;2u and ctrl+enter -> ESC[13;5u
+  sendInput actions (parity with the WezTerm/Alacritty CSI-u configs).
+  Non-destructive; dedupes on existing keys via $entry['keys'] to avoid the
+  ConvertFrom-Json -AsHashtable .Keys gotcha; ESC built with [char]27.
+- Installer: move Claude Code from npm (@anthropic-ai/claude-code) to winget
+  (Anthropic.ClaudeCode) under the same installCodingAgents gate.
+- Docs: tools.md + zh-TW winget row; claude-code-agents.md + zh-TW new
+  "Prompt editing: newline & external editor" section (Ctrl+J / backslash
+  fallback, Ctrl+G -> $EDITOR/nvim already wired in 00_env.ps1).
+- pitfalls: shift-enter-submits-instead-of-newline-claude-code.md.
+- TODO: P3 full WT CSI-u parity (Ctrl+/, Ctrl+digits).
+
+Verified off-Windows: template render (winget in / npm out, rendered pwsh
+parses), WT merge dry-run (dedupe +  escape + idempotent),
+PSScriptAnalyzer clean repo-wide, mkdocs build --strict green.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+EOF
+```
+
+```text
+<tool_use_error>InputValidationError: [
+  {
+    "code": "custom",
+    "path": [
+      "command"
+    ],
+    "message": "command contains control characters that would be hidden in the approval dialog"
+  }
+]</tool_use_error>
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:06:12Z)**_
+
+<think><details><summary>Thought Process</summary>
+I see there's a control character issue in the commit message — I used `\u001b` which got converted to an ESC character instead of appearing as the literal escape sequence, and there's an extra space in "dedupe +  escape" that I need to account for.
+
+I should rewrite the commit message to avoid the unicode escape notation entirely and use plain language instead. Let me revise it to "WT merge dry-run (dedupe + unicode-escape + idempotent)" without any backslash-u sequences, then redo the commit.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:06:12Z)**_
+
+The commit message picked up a stray control char again (my `\u001b` got converted). Let me reword it to avoid that sequence entirely:
+
+_**Agent (claude-opus-4-8 2026-07-11 07:06:22Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit feature on main (reworded)
+
+```bash
+git commit -F - <<'EOF'
+feat(claude-code): Shift+Enter newline in Windows Terminal + winget install
+
+- WT merger: append shift+enter -> ESC[13;2u and ctrl+enter -> ESC[13;5u
+  sendInput actions (parity with the WezTerm/Alacritty CSI-u configs).
+  Non-destructive; dedupes on existing keys via $entry['keys'] to avoid the
+  ConvertFrom-Json -AsHashtable .Keys gotcha; ESC built with [char]27.
+- Installer: move Claude Code from npm (@anthropic-ai/claude-code) to winget
+  (Anthropic.ClaudeCode) under the same installCodingAgents gate.
+- Docs: tools.md + zh-TW winget row; claude-code-agents.md + zh-TW new
+  "Prompt editing: newline & external editor" section (Ctrl+J / backslash
+  fallback, Ctrl+G -> $EDITOR/nvim already wired in 00_env.ps1).
+- pitfalls: shift-enter-submits-instead-of-newline-claude-code.md.
+- TODO: P3 full WT CSI-u parity (Ctrl+/, Ctrl+digits).
+
+Verified off-Windows: template render (winget in / npm out, rendered pwsh
+parses), WT merge dry-run (dedupe + JSON unicode-escape + idempotent),
+PSScriptAnalyzer clean repo-wide, mkdocs build --strict green.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+EOF
+```
+
+```text
+[WARNING] Unstaged files detected.
+[INFO] Stashing unstaged files to /Users/david/.cache/pre-commit/patch1783753573-34014.
+Auto-redact secrets in agent artifacts...................................Passed
+Detect hardcoded secrets.................................................Passed
+detect private key.......................................................Passed
+check for added large files..............................................Passed
+check for merge conflicts................................................Passed
+fix end of files.........................................................Passed
+trim trailing whitespace.................................................Passed
+[INFO] Restored changes from /Users/david/.cache/pre-commit/patch1783753573-34014.
+[main 5782239] feat(claude-code): Shift+Enter newline in Windows Terminal + winget install
+ 10 files changed, 11117 insertions(+), 12 deletions(-)
+ create mode 100644 .claude/plans/powershell-claude-code-shift-happy-catmull.md
+ create mode 100644 .specstory/history/2026-07-11_06-35-25Z-powershell-claude-code-shift.md
+ create mode 100644 pitfalls/shift-enter-submits-instead-of-newline-claude-code.md
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:06:34Z)**_
+
+<think><details><summary>Thought Process</summary>
+The commit went through successfully with all pre-commit hooks passing, including the secret detection checks. The main branch now has commit 5782239 with 10 files changed and over 11,000 insertions, mostly from the specstory transcript. I should verify the working tree is clean to confirm everything is in order.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:06:34Z)**_
+
+Committed to `main` as `5782239`. The repo's pre-commit hooks ran and passed — including the secret-redaction, hardcoded-secret, and private-key detectors, confirming nothing sensitive leaked in the transcript.
+
+_**Agent (claude-opus-4-8 2026-07-11 07:06:35Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Confirm commit and clean tree
+
+`git log --oneline -1 && echo "=== working tree (only unrelated docker session left) ===" && git status --short`
+
+```text
+5782239 feat(claude-code): Shift+Enter newline in Windows Terminal + winget install
+=== working tree (only unrelated docker session left) ===
+ M .specstory/history/2026-07-11_06-35-25Z-powershell-claude-code-shift.md
+?? .claude/plans/docker-desktop-wsl-snappy-lemon.md
+?? .specstory/history/2026-07-11_06-53-53Z-docker-desktop-wsl-not.md
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:06:43Z)**_
+
+<think><details><summary>Thought Process</summary>
+The commit went through successfully. The modified specstory file is expected since it's a live transcript that continues recording as we work. The two docker-session files remain untracked as intended for their separate commit. Everything checks out.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:06:46Z)**_
+
+Done. Committed to `main` as **`5782239`** — feature + docs + pitfall + this session's plan/transcript, all in one commit. Pre-commit hooks passed (secret/private-key detection clean).
+
+The remaining working-tree entries are expected and intentionally not part of this commit:
+- The `powershell-claude-code-shift` transcript shows as modified because it's the live record of *this* conversation and keeps growing.
+- The two `docker-desktop-wsl` artifacts belong to an unrelated session — left for their own commit.
+
+**What landed:**
+- Windows Terminal now emits `Shift+Enter → ESC[13;2u` (and `Ctrl+Enter`), so newline-in-`claude` works there like it already does in WezTerm/Alacritty.
+- Claude Code installs via `winget Anthropic.ClaudeCode` instead of npm.
+- Bilingual docs, a symptom-titled pitfall, and a P3 TODO for full CSI-u parity.
+
+**Still needs the Windows box** (can't be done off-Windows): `chezmoi apply`, then restart Windows Terminal and confirm Shift+Enter inserts a newline, `Ctrl+G` opens nvim, and `winget list --id Anthropic.ClaudeCode` / `claude --version` succeed. The `windows-latest` CI is the authoritative gate if you push.
+
+---
+
+_**User (2026-07-11 07:09:33Z)**_
+
+Now let's do full WT CSI-u parity (Ctrl+/, Ctrl+digits, ...)
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-11 07:10:48Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm looking at the P3 TODO for implementing full Windows Terminal CSI-u parity, which means adding support for Ctrl+/, Ctrl+digits, and other key combinations to match what WezTerm and Alacritty already have configured. I need to reference the WezTerm config to see how those keybindings are structured and then replicate that functionality in Windows Terminal. Now I'm checking whether Windows Terminal actually supports binding Ctrl+/ and Ctrl+0 through Ctrl+9, and whether any of these conflict with existing default keybindings. Writing keybinding config... Building the digit loop... Adding keyboard mappings... So in PowerShell string interpolation, bare `$var[...]` syntax doesn't actually perform indexing — it just expands the variable and treats the brackets as literal text. You'd need `$($var[...])` for actual index access. That means my existing code with `"$esc[13;2u"` correctly produces the escape sequence as intended, which the dry-run output confirmed.
+
+Now with `"$esc[$(48 + $d);5u"`, the parser expands `$esc` to the escape character, then treats `[` as literal, then evaluates the subexpression `$(48 + $d)` to get the number, and finally appends `;5u` — so the result is the escape sequence followed by the computed number and suffix. The key question is whether PowerShell might misinterpret `$esc[` as the start of an indexing operation, but that only happens inside a `$(...)` subexpression, not in a plain string context.
+
+To avoid any ambiguity, I'll use the `-f` format operator instead: `'{0}[{1};5u' -f $esc, (48 + $d)`. This way `{0}` gets replaced with the escape character and `{1}` with the computed number, producing the correct escape sequence without any parsing uncertainty. I should verify that the string interpolation with the subexpression works correctly, since I know the literal `"$esc[13;2u"` format is tested. The user wants full parity with WezTerm and Alacritty, including all Ctrl+0 through Ctrl+9 sequences, so I'll include the complete set. I'm also checking whether there are other key combinations beyond Shift+Enter that I should account for. Ctrl+/, Ctrl+0..9. I need to add those two to complete the parity set. Let me pull up the actual WezTerm and Alacritty config files to verify the exact key sequences and byte encodings before I implement them — this needs to be precise for correctness. Verify the implementation by parsing with ScriptAnalyzer and running a merge dry-run to test all the new key bindings with correct escapes, then build the docs. I don't think I need plan mode here—this is a straightforward continuation of the existing work following an established pattern, so I'll just implement it with a light task list. Let me start by checking the exact wezterm and alacritty configs to confirm the key sequences, though I'm second-guessing the Ctrl+/ mapping.
+
+Looking at wezterm, Ctrl+/ maps to sending 0x1f (the US character), which is the standard terminal behavior—many terminals already send this natively. WT might already do this by default, but adding it explicitly for parity and clarity is harmless and matches the config. The real question is whether `ctrl+/` is even a valid keybinding string in WT.
+
+WT does support `ctrl+/` as a valid key binding, and it also handles `ctrl+0` and similar digit combinations. Let me check the actual config files to see the exact sequences and then implement them.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:10:48Z)**_
+
+Good — this is the P3 TODO item, a mechanical extension of the merger I just wrote following the WezTerm/Alacritty pattern. Let me confirm the exact sequences in those two configs first so I match them precisely.
+
+_**Agent (claude-opus-4-8 2026-07-11 07:10:49Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Read exact CSI-u sequences from wezterm + alacritty
+
+```bash
+echo "=== wezterm.lua keys ===" && grep -n "SendString\|mods\|string.byte\|config.keys\|ipairs" dot_config/wezterm/wezterm.lua
+echo ""
+echo "=== alacritty bindings (Ctrl bindings) ===" && grep -n -A3 "Slash\|Return\|Key[0-9]\|chars" "AppData/Roaming/alacritty/alacritty.toml.tmpl" | head -80
+```
+
+```text
+=== wezterm.lua keys ===
+26:  for _, path in ipairs(candidates) do
+56:config.keys = {
+57:  { key = 'Enter', mods = 'SHIFT', action = act.SendString('\x1b[13;2u') }, -- newline in agents
+58:  { key = 'Enter', mods = 'CTRL',  action = act.SendString('\x1b[13;5u') },
+59:  { key = '/',     mods = 'CTRL',  action = act.SendString('\x1f')       },
+62:for _, d in ipairs({ '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' }) do
+63:  table.insert(config.keys, {
+65:    mods = 'CTRL',
+66:    action = act.SendString(string.format('\x1b[%d;5u', string.byte(d))),
+
+=== alacritty bindings (Ctrl bindings) ===
+35:key = "Return"
+36-mods = "Shift"
+37:chars = "\u001b[13;2u"
+38-
+39-[[keyboard.bindings]]
+40:key = "Slash"
+41-mods = "Control"
+42:chars = "\u001f"
+43-
+44-[[keyboard.bindings]]
+45:key = "Return"
+46-mods = "Control"
+47:chars = "\u001b[13;5u"
+48-
+49-[[keyboard.bindings]]
+50:key = "Key1"
+51-mods = "Control"
+52:chars = "\u001b[49;5u"
+53-
+54-[[keyboard.bindings]]
+55:key = "Key2"
+56-mods = "Control"
+57:chars = "\u001b[50;5u"
+58-
+59-[[keyboard.bindings]]
+60:key = "Key3"
+61-mods = "Control"
+62:chars = "\u001b[51;5u"
+63-
+64-[[keyboard.bindings]]
+65:key = "Key4"
+66-mods = "Control"
+67:chars = "\u001b[52;5u"
+68-
+69-[[keyboard.bindings]]
+70:key = "Key5"
+71-mods = "Control"
+72:chars = "\u001b[53;5u"
+73-
+74-[[keyboard.bindings]]
+75:key = "Key6"
+76-mods = "Control"
+77:chars = "\u001b[54;5u"
+78-
+79-[[keyboard.bindings]]
+80:key = "Key7"
+81-mods = "Control"
+82:chars = "\u001b[55;5u"
+83-
+84-[[keyboard.bindings]]
+85:key = "Key8"
+86-mods = "Control"
+87:chars = "\u001b[56;5u"
+88-
+89-[[keyboard.bindings]]
+90:key = "Key9"
+91-mods = "Control"
+92:chars = "\u001b[57;5u"
+93-
+94-[[keyboard.bindings]]
+95:key = "Key0"
+96-mods = "Control"
+97:chars = "\u001b[48;5u"
+98-
+99-[[keyboard.bindings]]
+100-key = "T"
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:12:26Z)**_
+
+<think><details><summary>Thought Process</summary>
+I've confirmed the exact key sequences for several modifier combinations: Shift+Enter and Ctrl+Enter produce their respective escape codes, Ctrl+Slash gives me the US character, and Ctrl+1 through Ctrl+2 map to escape sequences with their ASCII values.
+
+Extending this pattern, Ctrl+9 and Ctrl+0 follow the same formula where the digit's ASCII value gets inserted into the escape sequence. Now I need to verify that Windows Terminal actually supports these keybindings—checking whether `ctrl+/` and `ctrl+0` through `ctrl+9` are valid key strings and whether there are any default conflicts that would interfere with my custom bindings.
+
+I'm realizing that Windows Terminal does have a default binding for Ctrl+0 that resets the font size, which could conflict with what I'm trying to do here.  If I override it for CSI-u parity, users would lose that zoom reset functionality — which is the intended tradeoff, but it's worth documenting as a known limitation. Both WezTerm and Alacritty override their default zoom-reset binding on Ctrl+0 to support CSI-u, so I'll do the same for parity and add a comment noting this tradeoff.
+
+For WezTerm's forward slash key binding, I can use `ctrl+/` directly since WezTerm accepts single-character keys—if there's a parsing issue, it'll just warn and skip it without breaking anything.
+
+Updating the implementation now...
+
+Adding keybinding definitions... Adding keyboard bindings... Right, so when I write `"$esc[$(48 + $d);5u"`, the parser sees `$esc` as a variable, then the `[` character — but since there's a `$` subexpression immediately after, it doesn't try to treat this as an index operation on `$esc`. Instead it expands `$esc` to the escape character, then concatenates the literal `[`, then evaluates the subexpression `$(48 + $d)` to get the number, then adds the literal `;5u`. So the result is ESC[49;5u when `$d` is 1. `, the parser needs to decide whether `[` is part of indexing syntax or a literal character. Since we're in a double-quoted string and `$esc` isn't followed by `$(...)`, the `[` is treated as literal text, not an index operator. So `"$esc[$(48 + $d);5u"` correctly expands to ESC + "[" + the evaluated subexpression + ";5u", giving us ESC[49;5u.
+
+To avoid any ambiguity, I'm switching to the `-f` format operator instead, which makes the intent crystal clear and eliminates parsing edge cases entirely.
+
+Building the loop with format strings... Wrapping the char in a string conversion to ensure ConvertTo-Json serializes it correctly, then I'll extend the dry-run test to verify all 13 key bindings produce the right escape sequences.
+
+After that, I need to update the merger logic, run the full test suite and ScriptAnalyzer, mark the TODO as done, and consider whether the documentation needs updating for the Ctrl+digit bindings or if they're outside the scope of the newline-focused section. I need to move the TODO item to the Done section following the repo's date and priority format, which looks like `- ✅ [YYYY-MM-DD] [P?/Effort] Title — summary`. Since this was a P3 item, I'll format it accordingly with today's date.
+
+Now I'm implementing the changes: first I'll expand the WT merger to handle the additional key combinations for full parity, then run a dry-run test to verify it works, update the ScriptAnalyzer to parse these new actions, and finally promote the TODO item to Done. I'm skipping documentation changes since TODO.md isn't part of the mkdocs navigation and I won't be modifying the actual docs. I'm going to create a few quick tasks to track the sub-steps, then start with the merger edit. I need to update the `$wantActions` block and revise the preceding comment to reflect the full parity now that the change is complete. The ESC character is critical here since ConvertTo-Json properly escapes it for Windows Terminal's sendInput action, whereas manually typing it often gets lost. I'm defining the escape character and then setting up the key bindings for Shift+Enter and Ctrl+Enter, each mapping to their respective Unicode input sequences. Writing key bindings... Adding Ctrl+0..9 keybindings...
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:12:26Z)**_
+
+Confirmed exact sequences. The parity set to add: `Ctrl+/` → `\u001f` (0x1f) and `Ctrl+0..9` → `ESC[<48+digit>;5u` (e.g. Ctrl+1 → `ESC[49;5u`, Ctrl+0 → `ESC[48;5u`). Let me expand the merger:
+
+_**Agent (claude-opus-4-8 2026-07-11 07:12:28Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskCreate"><details>
+<summary>Tool use: **TaskCreate**</summary>
+Add ctrl+/ (0x1f) and ctrl+0..9 (ESC[48+d;5u) to the WT merger $wantActions, matching wezterm/alacritty.
+
+```text
+Task #8 created successfully: WT merger: full CSI-u parity
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:12:28Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskCreate"><details>
+<summary>Tool use: **TaskCreate**</summary>
+Dry-run all 13 bindings + escapes + idempotency, ScriptAnalyzer, parse; move TODO item to Done; commit.
+
+```text
+Task #9 created successfully: Verify, promote TODO, commit
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:12:33Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskUpdate"><details>
+<summary>Tool use: **TaskUpdate**</summary>
+
+```text
+Updated task #8 status
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:12:45Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+<tool_use_error>String to replace not found in file.
+String: # CSI-u key bindings so TUI agents (Claude Code, Codex, …) can tell Shift+Enter
+# apart from Enter: Shift+Enter -> ESC[13;2u is read as "insert newline" instead
+# of "submit". Without it WT sends a bare CR for Shift+Enter, byte-identical to
+# Enter. Parity with the WezTerm (dot_config/wezterm/wezterm.lua) and Alacritty
+# (AppData/Roaming/alacritty/alacritty.toml.tmpl) configs, which share these.
+# Non-destructive: append only bindings whose `keys` aren't already present, so a
+# hand-added user binding always wins. The ESC ([char]27) is load-bearing —
+# ConvertTo-Json serializes that ESC to its JSON escape form, which is what WT's sendInput
+# wants; hand-typing the escape tends to drop it (see AGENTS.md invariant #3, verified by re-parsing in the tests).
+$esc = [char]27
+$wantActions = @(
+    @{ keys = 'shift+enter'; command = @{ action = 'sendInput'; input = "$esc[13;2u" } }
+    @{ keys = 'ctrl+enter';  command = @{ action = 'sendInput'; input = "$esc[13;5u" } }
+)
+(note: Edit also tried swapping \uXXXX escapes and their characters; neither form matched, so the mismatch is likely elsewhere in old_string. Re-read the file and copy the exact surrounding text.)</tool_use_error>
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:12:54Z)**_
+
+<think><details><summary>Thought Process</summary>
+The string replacement isn't working because the special characters like ellipsis or em-dash might be encoded differently than expected, or there's a whitespace mismatch. I need to check the actual file content directly to get the exact characters and spacing right.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:12:54Z)**_
+
+Let me re-read the exact current block to copy it precisely:
+
+_**Agent (claude-opus-4-8 2026-07-11 07:12:54Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./.chezmoiscripts/run_onchange_after_30_windows_terminal.ps1`
+
+```text
+52	# CSI-u key bindings so TUI agents (Claude Code, Codex, …) can tell Shift+Enter
+53	# apart from Enter: Shift+Enter -> ESC[13;2u is read as "insert newline" instead
+54	# of "submit". Without it WT sends a bare CR for Shift+Enter, byte-identical to
+55	# Enter. Parity with the WezTerm (dot_config/wezterm/wezterm.lua) and Alacritty
+56	# (AppData/Roaming/alacritty/alacritty.toml.tmpl) configs, which share these.
+57	# Non-destructive: append only bindings whose `keys` aren't already present, so a
+58	# hand-added user binding always wins. The ESC ([char]27) is load-bearing —
+59	# ConvertTo-Json serializes that ESC to its JSON escape form, which is what WT's sendInput
+60	# wants; hand-typing the escape tends to drop it (see AGENTS.md invariant #3).
+61	$esc = [char]27
+62	$wantActions = @(
+63	    @{ keys = 'shift+enter'; command = @{ action = 'sendInput'; input = "$esc[13;2u" } }
+64	    @{ keys = 'ctrl+enter';  command = @{ action = 'sendInput'; input = "$esc[13;5u" } }
+65	)
+66	$actions = @()
+67	if ($s.ContainsKey('actions')) { $actions = @($s['actions']) }
+68	# NB: read the 'keys' FIELD as $_['keys']; $_.keys returns the hashtable's own
+69	# .Keys collection (the -AsHashtable gotcha), not the JSON value 'shift+enter'.
+70	$existingKeys = @($actions | ForEach-Object { $_['keys'] })
+71	foreach ($b in $wantActions) {
+72	    if ($b['keys'] -notin $existingKeys) { $actions += $b }
+73	}
+74	$s['actions'] = $actions
+75
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:13:14Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm noticing a discrepancy in line 60 — it's the shorter comment version without the part about verification in tests, which means a pre-commit hook or earlier edit must have trimmed it down.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:13:14Z)**_
+
+Now I have the exact text. Redoing the edit:
+
+_**Agent (claude-opus-4-8 2026-07-11 07:13:17Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/.chezmoiscripts/run_onchange_after_30_windows_terminal.ps1 has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:13:25Z)**_
+
+<think><details><summary>Thought Process</summary>
+I need to check the file for control characters and verify it parses correctly before running the extended dry-run test.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:13:25Z)**_
+
+Now verify — no control chars, parse OK, and run an extended dry-run asserting all 13 bindings land with correct escapes. Let me write the extended test (building all expected sequences from char codes, never typing a literal escape):
+
+_**Agent (claude-opus-4-8 2026-07-11 07:13:26Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check control chars + parse WT merger
+
+```bash
+echo "=== control chars? ===" && grep -nP '[\x00-\x08\x0b-\x1f]' .chezmoiscripts/run_onchange_after_30_windows_terminal.ps1 && echo "HAS CONTROL CHARS" || echo "clean"
+echo "=== parse ===" && ~/.local/bin/pwsh -NoProfile -c '$e=$null; $null=[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path ".chezmoiscripts/run_onchange_after_30_windows_terminal.ps1"),[ref]$null,[ref]$e); if($e){$e|%{Write-Host "PARSE ERROR: $($_.Message)"};exit 1}; "PARSE OK"'
+```
+
+```text
+=== control chars? ===
+clean
+=== parse ===
+PARSE OK
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:13:49Z)**_
+
+<think><details><summary>Thought Process</summary>
+Now I'm setting up an extended dry-run test that builds a state object from a sample with an existing action, runs the merge block to combine the action bindings, and verifies that all 13 new keybindings are present with correct inputs—including shift+enter, ctrl+enter, ctrl+/, and ctrl+0 through ctrl+9—then constructs the expected escape sequences for each binding based on their character codes.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:13:49Z)**_
+
+Clean, parses. Now the extended dry-run — asserting all 13 bindings land with the exact escapes (built from char codes), plus dedupe + idempotency:
+
+_**Agent (claude-opus-4-8 2026-07-11 07:13:50Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```ps1
+#Requires -Version 7
+# Throwaway test for the WT merger's full-parity actions block. Not part of the repo.
+
+$sample = @'
+{
+  "defaultProfile": "{guid-1}",
+  "profiles": { "defaults": {}, "list": [ { "name": "PowerShell", "guid": "{guid-1}", "commandline": "pwsh.exe" } ] },
+  "actions": [ { "keys": "ctrl+shift+t", "command": "newTab" } ]
+}
+'@
+$s = $sample | ConvertFrom-Json -AsHashtable
+
+# --- exact merge block from run_onchange_after_30_windows_terminal.ps1 ---
+$esc = [char]27
+$wantActions = @(
+    @{ keys = 'shift+enter'; command = @{ action = 'sendInput'; input = "$esc[13;2u" } }
+    @{ keys = 'ctrl+enter';  command = @{ action = 'sendInput'; input = "$esc[13;5u" } }
+    @{ keys = 'ctrl+/';      command = @{ action = 'sendInput'; input = "$([char]31)" } }
+)
+foreach ($d in 0..9) {
+    $wantActions += @{ keys = "ctrl+$d"; command = @{ action = 'sendInput'; input = ('{0}[{1};5u' -f $esc, (48 + $d)) } }
+}
+$actions = @()
+if ($s.ContainsKey('actions')) { $actions = @($s['actions']) }
+$existingKeys = @($actions | ForEach-Object { $_['keys'] })
+foreach ($b in $wantActions) {
+    if ($b['keys'] -notin $existingKeys) { $actions += $b }
+}
+$s['actions'] = $actions
+# --- end block ---
+
+$json = $s | ConvertTo-Json -Depth 20
+$back = $json | ConvertFrom-Json -AsHashtable
+$byKey = @{}
+foreach ($a in $back['actions']) { if ($a['keys']) { $byKey[$a['keys']] = $a } }
+
+# Expected inputs, built from char codes (no literal escapes in this file).
+$expected = @{
+    'shift+enter' = "$([char]27)[13;2u"
+    'ctrl+enter'  = "$([char]27)[13;5u"
+    'ctrl+/'      = "$([char]31)"
+}
+foreach ($d in 0..9) { $expected["ctrl+$d"] = "$([char]27)[$(48 + $d);5u" }
+
+$ok = $true
+# Pre-existing action preserved.
+if (-not $byKey.ContainsKey('ctrl+shift+t')) { Write-Host 'FAIL: pre-existing ctrl+shift+t lost'; $ok = $false }
+
+# Every expected binding present exactly once with the right input.
+foreach ($k in $expected.Keys) {
+    $matches = @($back['actions'] | Where-Object { $_['keys'] -eq $k })
+    if ($matches.Count -ne 1) { Write-Host "FAIL: $k count=$($matches.Count)"; $ok = $false; continue }
+    $got = $matches[0]['command']['input']
+    if ($got -ne $expected[$k]) {
+        Write-Host "FAIL: $k input mismatch (got codes: $(([int[]][char[]]$got) -join ','))"
+        $ok = $false
+    }
+}
+
+# Total binding count = 13 new + 1 pre-existing.
+$total = @($back['actions']).Count
+if ($total -ne 14) { Write-Host "FAIL: expected 14 actions, got $total"; $ok = $false }
+
+# Idempotency: re-run the block; no duplicates.
+$actions2 = @($back['actions'])
+$existingKeys2 = @($actions2 | ForEach-Object { $_['keys'] })
+foreach ($b in $wantActions) { if ($b['keys'] -notin $existingKeys2) { $actions2 += $b } }
+if (@($actions2).Count -ne 14) { Write-Host "FAIL: not idempotent, count=$(@($actions2).Count)"; $ok = $false }
+
+if ($ok) {
+    Write-Host "ALL ASSERTIONS PASS ($($expected.Count) CSI-u bindings + 1 preserved)"
+    ($json -split "`n") | Where-Object { $_ -match 'input' } | ForEach-Object { Write-Host "  $($_.Trim())" }
+}
+
+```
+
+```text
+File created successfully at: /tmp/wt_parity_test.ps1 (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:13:57Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Run extended full-parity dry-run test
+
+`~/.local/bin/pwsh -NoProfile -File /tmp/wt_parity_test.ps1; rm -f /tmp/wt_parity_test.ps1`
+
+```text
+ALL ASSERTIONS PASS (13 CSI-u bindings + 1 preserved)
+  "input": "\u001b[13;2u",
+  "action": "sendInput"
+  "input": "\u001b[13;5u",
+  "action": "sendInput"
+  "input": "\u001f",
+  "action": "sendInput"
+  "input": "\u001b[48;5u",
+  "action": "sendInput"
+  "input": "\u001b[49;5u",
+  "action": "sendInput"
+  "input": "\u001b[50;5u",
+  "action": "sendInput"
+  "input": "\u001b[51;5u",
+  "action": "sendInput"
+  "input": "\u001b[52;5u",
+  "action": "sendInput"
+  "input": "\u001b[53;5u",
+  "action": "sendInput"
+  "input": "\u001b[54;5u",
+  "action": "sendInput"
+  "input": "\u001b[55;5u",
+  "action": "sendInput"
+  "input": "\u001b[56;5u",
+  "action": "sendInput"
+  "input": "\u001b[57;5u",
+  "action": "sendInput"
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:14:11Z)**_
+
+<think><details><summary>Thought Process</summary>
+All 13 key bindings are serializing correctly and matching the WezTerm/Alacritty sequences, with the pre-existing action preserved and the operation being idempotent. Task 8 is complete, and I'm moving on to work on the ScriptAnalyzer next.
+
+Now I need to run ScriptAnalyzer on the Windows Terminal merger, then promote the TODO item to Done by updating the TODO.md file with the completed work—moving the CSI-u parity task from the P3 section to Done with today's date and a summary of what was added.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:14:11Z)**_
+
+All 13 CSI-u bindings serialize exactly right (`\u001b[13;2u`, `\u001f`, `\u001b[48;5u`…`\u001b[57;5u`), matching WezTerm/Alacritty; pre-existing action preserved; idempotent. Task 8 done. Now lint + promote the TODO to Done:
+
+_**Agent (claude-opus-4-8 2026-07-11 07:14:11Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskUpdate"><details>
+<summary>Tool use: **TaskUpdate**</summary>
+
+```text
+Updated task #8 status
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:14:13Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskUpdate"><details>
+<summary>Tool use: **TaskUpdate**</summary>
+
+```text
+Updated task #9 status
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:14:16Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+ScriptAnalyzer on updated WT merger
+
+`~/.local/bin/pwsh -NoProfile -c "\$r = Invoke-ScriptAnalyzer -Path .chezmoiscripts/run_onchange_after_30_windows_terminal.ps1 -Settings ./PSScriptAnalyzerSettings.psd1; \$e = \$r | Where-Object Severity -eq 'Error'; if (\$e) { \$e | Format-Table -AutoSize; 'LINT: ERRORS' } else { 'LINT: no Errors' }"`
+
+```text
+LINT: no Errors
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:14:16Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./TODO.md`
+
+```text
+32	## P3
+33	
+34	Someday / nice-to-have.
+35	
+36	- [ ] **[S] Example deferred item** — low signal-to-effort, but easy.
+37	- [ ] **[S] Windows ssh-agent profile fragment** — parallel to the parent repo's `94_ssh_agent.zsh`. A `dot_config/powershell/profile.d/` fragment that ensures the OpenSSH Authentication Agent service is running (`Set-Service ssh-agent -StartupType Automatic`; `Start-Service`) and optionally detects Bitwarden desktop's `//./pipe/openssh-ssh-agent`. Config skeleton (`dot_ssh/`) already shipped; this only automates the agent side.
+38	- [ ] **[S] Windows Terminal full CSI-u parity (Ctrl+/, Ctrl+digits)** — the WT merger (`run_onchange_after_30_windows_terminal.ps1`) currently injects only `Shift+Enter → ESC[13;2u` and `Ctrl+Enter → ESC[13;5u`. WezTerm/Alacritty also send `Ctrl+/ → \x1f` and `Ctrl+0..9 → ESC[<ascii>;5u`; add the same `sendInput` actions for full parity, checking they don't clash with WT's own default keybindings.
+39	
+40	## P?
+41	
+42	Needs a spike before committing to a real priority. Tag as `[?/Effort]`.
+43	
+44	- [ ] **[?/L] Example evaluation item** — what spike would answer the question? → [research](backlog/example-evaluation.md)
+45	- [ ] **[?/S] Align Windows backup with Unix: run_before + unified dir** — Windows backup is run_once_before_ (first-apply only) with a fixed allowlist; Unix is run_before_ (every apply) using chezmoi status smart-selection. Also unify backup dir naming (~/.dotfiles-backup vs ~/.dotfiles_backup). → [research](backlog/align-windows-backup-with-unix-run-before-unified-dir.md)
+46	- [ ] **[?/M] SpecStory Windows-native CLI (track PR #191)** — no npm/native-Windows release; Windows CLI support sits in unmerged getspecstory PR #191 (mergeable=false). Experimental build wired: `just specstory-build`. Revisit when the PR merges/releases → switch to the official install. → [research](backlog/specstory-windows-native-cli.md)
+47	- [ ] **[?/L] Windows-on-ARM64 + managed-machine rough edges** — nvim-treesitter arch mismatch (arm64 zig vs amd64-emulated nvim), mason download blocks, per-user font registration, Defender PUA blocks. Decide on an all-arm64 vs all-amd64 Neovim toolchain. → [research](backlog/windows-arm64-managed-machine-rough-edges.md)
+48	
+49	## Done
+50	
+51	Recently shipped. When implementing an active item, in the same commit run:
+52	
+53	```
+54	scripts/promote-todo.sh --title "<substring>" --summary "<one-line shipped summary>"
+55	```
+56	
+57	This moves the entry here using the dated `Done` syntax and re-validates.
+58	
+59	- ✅ [2026-04-23] [P1/M] Example shipped item — one-line summary of what landed and where.
+60	
+61	<!-- Prune older entries into CHANGELOG.md once prior-year items appear here
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:14:49Z)**_
+
+<think><details><summary>Thought Process</summary>
+I need to clean up the TODO list by removing the P3 item on line 38 and adding a dated entry to the Done section right after the header, listing it as the most recent completed item. Removing the long P3 parity line from the TODO section and adding a new Done entry with the full CSI-u implementation details, including the specific keybindings and the PowerShell script changes. I need to match the exact text of line 38, including the special characters like the em-dash and escape sequences, then replace it with an empty string to remove that parity line from the file. I need to match the entire parity line as a contiguous substring to safely replace it, since partial matches won't work with the Edit function. The line contains special Unicode characters like `—` and `→` that could cause encoding issues, so I'll need to be careful copying it exactly. The safest approach is to capture the full line from its start through the end and replace the whole thing.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:14:49Z)**_
+
+Lint clean. Now promote the TODO item to Done (the `promote-todo.sh` helper isn't in this checkout, so I edit directly). First remove the P3 line:
+
+_**Agent (claude-opus-4-8 2026-07-11 07:14:51Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/TODO.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:14:58Z)**_
+
+Now add the dated entry to the Done section:
+
+_**Agent (claude-opus-4-8 2026-07-11 07:14:59Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/TODO.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:15:19Z)**_
+
+<think><details><summary>Thought Process</summary>
+I've promoted the TODO and need to verify the format is correct—checking that the sections are ordered properly (P1, P2, P3, P?, Done) and that the Done entry format is intact. I should also consider whether to update the documentation to note that WT now has full parity rather than just Shift+Enter support.
+
+Looking at the docs, the table still accurately reflects that WT is "wired by run_onchange_after_30", and since Ctrl+digit and Ctrl+/ aren't newline-related, they don't belong in that section anyway. The pitfall doc's prevention note about keeping WezTerm, Alacritty, and Windows Terminal in parity is now literally achieved, so no changes needed there either.
+
+For the commit, I'm staging the WT merger and TODO updates, and I'm deciding whether to re-stage the specstory transcript since it's grown with this session's continuation—the previous commit already included it, so re-committing the updated version is reasonable for consistency with the history-hygiene convention, though it's optional and adds some noise. e full transcript committed at the end, I can do that then. Actually, I think including the transcript keeps things aligned with the repo convention of committing chat alongside diffs, and since the pre-commit hook handles redacting secrets, it's safe to include. I'll stage the WT merger, TODO.md, and the updated transcript together, then verify the TODO format before committing.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:15:19Z)**_
+
+Let me verify the TODO edits are well-formed, then stage and commit:
+
+_**Agent (claude-opus-4-8 2026-07-11 07:15:20Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Sanity-check TODO format and diff
+
+`echo "=== P3 + P? + Done sections ===" && sed -n '32,62p' TODO.md | grep -nE '^## |^- ' ; echo ""; echo "=== git diff stat ===" && git diff --stat .chezmoiscripts/run_onchange_after_30_windows_terminal.ps1 TODO.md`
+
+```text
+=== P3 + P? + Done sections ===
+1:## P3
+5:- [ ] **[S] Example deferred item** — low signal-to-effort, but easy.
+6:- [ ] **[S] Windows ssh-agent profile fragment** — parallel to the parent repo's `94_ssh_agent.zsh`. A `dot_config/powershell/profile.d/` fragment that ensures the OpenSSH Authentication Agent service is running (`Set-Service ssh-agent -StartupType Automatic`; `Start-Service`) and optionally detects Bitwarden desktop's `//./pipe/openssh-ssh-agent`. Config skeleton (`dot_ssh/`) already shipped; this only automates the agent side.
+8:## P?
+12:- [ ] **[?/L] Example evaluation item** — what spike would answer the question? → [research](backlog/example-evaluation.md)
+13:- [ ] **[?/S] Align Windows backup with Unix: run_before + unified dir** — Windows backup is run_once_before_ (first-apply only) with a fixed allowlist; Unix is run_before_ (every apply) using chezmoi status smart-selection. Also unify backup dir naming (~/.dotfiles-backup vs ~/.dotfiles_backup). → [research](backlog/align-windows-backup-with-unix-run-before-unified-dir.md)
+14:- [ ] **[?/M] SpecStory Windows-native CLI (track PR #191)** — no npm/native-Windows release; Windows CLI support sits in unmerged getspecstory PR #191 (mergeable=false). Experimental build wired: `just specstory-build`. Revisit when the PR merges/releases → switch to the official install. → [research](backlog/specstory-windows-native-cli.md)
+15:- [ ] **[?/L] Windows-on-ARM64 + managed-machine rough edges** — nvim-treesitter arch mismatch (arm64 zig vs amd64-emulated nvim), mason download blocks, per-user font registration, Defender PUA blocks. Decide on an all-arm64 vs all-amd64 Neovim toolchain. → [research](backlog/windows-arm64-managed-machine-rough-edges.md)
+17:## Done
+27:- ✅ [2026-04-23] [P1/M] Example shipped item — one-line summary of what landed and where.
+28:- ✅ [2026-07-11] [P3/S] Windows Terminal full CSI-u parity (Ctrl+/, Ctrl+digits) — added `ctrl+/` (0x1f) and `ctrl+0..9` (ESC[48+d;5u) sendInput actions to `run_onchange_after_30_windows_terminal.ps1`, matching wezterm/alacritty; `ctrl+0` overrides WT's default resetFontSize.
+
+=== git diff stat ===
+ .../run_onchange_after_30_windows_terminal.ps1     | 29 +++++++++++++++-------
+ TODO.md                                            |  2 +-
+ 2 files changed, 21 insertions(+), 10 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:15:42Z)**_
+
+<think><details><summary>Thought Process</summary>
+The TODO format is correct with the P3 item removed and the completed entry properly dated. Now I'm staging the WT merger, TODO.md updates, and the transcript changes, then committing with a message that uses literal text for the escape sequences rather than actual control characters. (US)
+- Ctrl+0..9 → ESC[<48+digit>;5u sequences
+
+Ctrl+0 overrides the default resetFontSize behavior since the parent configs handle it. The digit loop uses a flag to avoid string-index ambiguity on the ESC prefix, keeping deduplication and idempotency intact. I've verified this off-Windows with a dry-run that confirms all 13 bindings serialize correctly and idempotently, with PSScriptAnalyzer passing clean.
+
+Now I'm staging the changes—the WT merger, TODO.md updates, and the transcript file. The transcript has grown since the last commit, so I'll include it to maintain a complete history and follow the convention, even though it'll create a larger diff.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:15:42Z)**_
+
+TODO is well-formed (P3 item removed, dated Done entry added, section order intact). Staging the merger + TODO + the updated session transcript (per the repo's history-hygiene convention), excluding the unrelated docker artifacts:
+
+_**Agent (claude-opus-4-8 2026-07-11 07:15:43Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Stage parity change + TODO + transcript
+
+```bash
+git add \
+  .chezmoiscripts/run_onchange_after_30_windows_terminal.ps1 \
+  TODO.md \
+  .specstory/history/2026-07-11_06-35-25Z-powershell-claude-code-shift.md
+echo "=== staged ===" && git diff --cached --name-only
+echo "=== still untracked (left out) ===" && git status --porcelain | grep '^??'
+```
+
+```text
+=== staged ===
+.chezmoiscripts/run_onchange_after_30_windows_terminal.ps1
+.specstory/history/2026-07-11_06-35-25Z-powershell-claude-code-shift.md
+TODO.md
+=== still untracked (left out) ===
+?? .claude/plans/docker-desktop-wsl-snappy-lemon.md
+?? .specstory/history/2026-07-11_06-53-53Z-docker-desktop-wsl-not.md
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:15:51Z)**_
+
+Committing:
+
+_**Agent (claude-opus-4-8 2026-07-11 07:15:54Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit full CSI-u parity on main
+
+```bash
+git commit -F - <<'EOF'
+feat(windows-terminal): full CSI-u parity (Ctrl+/, Ctrl+0..9)
+
+Extend the WT merger sendInput actions to the full WezTerm/Alacritty CSI-u set,
+beyond Shift+Enter / Ctrl+Enter:
+- Ctrl+/    -> 0x1f (US)
+- Ctrl+0..9 -> ESC[<48+digit>;5u  (Ctrl+1 -> ESC[49;5u ... Ctrl+0 -> ESC[48;5u)
+
+Ctrl+0 overrides WT's default resetFontSize, as the parent configs already do.
+Dedupe + idempotency unchanged; the digit loop uses -f to avoid string-index
+ambiguity on the ESC prefix. Promotes the P3 TODO item to Done.
+
+Verified off-Windows: dry-run asserts all 13 bindings land once with the exact
+per-key JSON escapes (pre-existing action preserved, idempotent);
+PSScriptAnalyzer clean; WT merger parses.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+EOF
+```
+
+```text
+[WARNING] Unstaged files detected.
+[INFO] Stashing unstaged files to /Users/david/.cache/pre-commit/patch1783754152-40047.
+Auto-redact secrets in agent artifacts...................................Passed
+Detect hardcoded secrets.................................................Passed
+detect private key.......................................................Passed
+check for added large files..............................................Passed
+check for merge conflicts................................................Passed
+fix end of files.........................................................Passed
+trim trailing whitespace.................................................Passed
+[INFO] Restored changes from /Users/david/.cache/pre-commit/patch1783754152-40047.
+[main dbfca33] feat(windows-terminal): full CSI-u parity (Ctrl+/, Ctrl+0..9)
+ 3 files changed, 828 insertions(+), 10 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:16:01Z)**_
+
+<think><details><summary>Thought Process</summary>
+The commit went through successfully and the pre-commit checks are passing. Task 9 is complete, so I'll mark it off and wrap up with a summary of what's been accomplished.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:16:01Z)**_
+
+Committed as **`dbfca33`** — pre-commit hooks (secret/private-key detection) passed again. Task complete.
+
+_**Agent (claude-opus-4-8 2026-07-11 07:16:01Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskUpdate"><details>
+<summary>Tool use: **TaskUpdate**</summary>
+
+```text
+Updated task #9 status
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-11 07:16:13Z)**_
+
+## Full WT CSI-u parity — done
+
+Windows Terminal now sends the complete WezTerm/Alacritty CSI-u set. The merger (`run_onchange_after_30_windows_terminal.ps1`) injects **13 `sendInput` actions**:
+
+| Chord | Sequence |
+|---|---|
+| Shift+Enter | `ESC[13;2u` (newline in agents) |
+| Ctrl+Enter | `ESC[13;5u` |
+| **Ctrl+/** | `0x1f` (US) |
+| **Ctrl+0…9** | `ESC[<48+digit>;5u` (Ctrl+1→`ESC[49;5u` … Ctrl+0→`ESC[48;5u`) |
+
+Implementation notes:
+- The digit loop uses `-f` formatting rather than `"$esc[…]"` interpolation to sidestep any string-index ambiguity on the ESC prefix.
+- **Ctrl+0 overrides WT's default `resetFontSize`** — an intentional tradeoff for parity, exactly as the WezTerm/Alacritty configs already do (noted in the code comment and commit).
+- Dedupe/idempotency and the `$entry['keys']` `-AsHashtable` handling are unchanged.
+
+**Verified off-Windows:** the dry-run asserts all 13 bindings land exactly once with the correct per-key escape (`\u001b[13;2u`, `\u001f`, `\u001b[48;5u`…`\u001b[57;5u`), a pre-existing user action is preserved, and re-running is idempotent (14 total). PSScriptAnalyzer clean; the script parses.
+
+The P3 TODO was promoted to `## Done` with the dated syntax. Both commits are on `main` (`5782239`, `dbfca33`) — the authoritative `chezmoi apply` + live keypress check still needs the Windows box (and a terminal restart so WT reloads `settings.json`).

@@ -35,7 +35,6 @@ Someday / nice-to-have.
 
 - [ ] **[S] Example deferred item** — low signal-to-effort, but easy.
 - [ ] **[S] Windows ssh-agent profile fragment** — parallel to the parent repo's `94_ssh_agent.zsh`. A `dot_config/powershell/profile.d/` fragment that ensures the OpenSSH Authentication Agent service is running (`Set-Service ssh-agent -StartupType Automatic`; `Start-Service`) and optionally detects Bitwarden desktop's `//./pipe/openssh-ssh-agent`. Config skeleton (`dot_ssh/`) already shipped; this only automates the agent side.
-- [ ] **[S] Windows Terminal full CSI-u parity (Ctrl+/, Ctrl+digits)** — the WT merger (`run_onchange_after_30_windows_terminal.ps1`) currently injects only `Shift+Enter → ESC[13;2u` and `Ctrl+Enter → ESC[13;5u`. WezTerm/Alacritty also send `Ctrl+/ → \x1f` and `Ctrl+0..9 → ESC[<ascii>;5u`; add the same `sendInput` actions for full parity, checking they don't clash with WT's own default keybindings.
 
 ## P?
 
@@ -57,6 +56,7 @@ scripts/promote-todo.sh --title "<substring>" --summary "<one-line shipped summa
 This moves the entry here using the dated `Done` syntax and re-validates.
 
 - ✅ [2026-04-23] [P1/M] Example shipped item — one-line summary of what landed and where.
+- ✅ [2026-07-11] [P3/S] Windows Terminal full CSI-u parity (Ctrl+/, Ctrl+digits) — added `ctrl+/` (0x1f) and `ctrl+0..9` (ESC[48+d;5u) sendInput actions to `run_onchange_after_30_windows_terminal.ps1`, matching wezterm/alacritty; `ctrl+0` overrides WT's default resetFontSize.
 
 <!-- Prune older entries into CHANGELOG.md once prior-year items appear here
      or this section grows past ~20 entries. -->

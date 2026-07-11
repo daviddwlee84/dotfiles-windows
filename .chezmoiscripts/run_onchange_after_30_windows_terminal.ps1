@@ -49,20 +49,31 @@ if ($s.profiles.ContainsKey('list')) {
     if ($pwshProfile -and $pwshProfile.guid) { $s['defaultProfile'] = $pwshProfile.guid }
 }
 
-# CSI-u key bindings so TUI agents (Claude Code, Codex, …) can tell Shift+Enter
-# apart from Enter: Shift+Enter -> ESC[13;2u is read as "insert newline" instead
-# of "submit". Without it WT sends a bare CR for Shift+Enter, byte-identical to
-# Enter. Parity with the WezTerm (dot_config/wezterm/wezterm.lua) and Alacritty
-# (AppData/Roaming/alacritty/alacritty.toml.tmpl) configs, which share these.
-# Non-destructive: append only bindings whose `keys` aren't already present, so a
-# hand-added user binding always wins. The ESC ([char]27) is load-bearing —
-# ConvertTo-Json serializes that ESC to its JSON escape form, which is what WT's sendInput
-# wants; hand-typing the escape tends to drop it (see AGENTS.md invariant #3).
+# CSI-u key bindings so TUI agents (Claude Code, Codex, …) receive the same
+# modified-key encodings WT otherwise can't distinguish from their unmodified
+# forms. Full parity with the WezTerm (dot_config/wezterm/wezterm.lua) and
+# Alacritty (AppData/Roaming/alacritty/alacritty.toml.tmpl) configs:
+#   Shift+Enter -> ESC[13;2u   insert newline instead of submit (load-bearing)
+#   Ctrl+Enter  -> ESC[13;5u
+#   Ctrl+/      -> 0x1f (US)
+#   Ctrl+0..9   -> ESC[<digit-ASCII>;5u   (Ctrl+1 -> ESC[49;5u … Ctrl+0 -> ESC[48;5u)
+# Ctrl+0 overrides WT's default resetFontSize, exactly as the WezTerm/Alacritty
+# configs already claim it. Non-destructive: append only bindings whose `keys`
+# aren't already present, so a hand-added user binding always wins. The ESC
+# ([char]27) / US ([char]31) are load-bearing — ConvertTo-Json serializes them to
+# their JSON escape form (what sendInput wants); hand-typing tends to drop the
+# escape (AGENTS.md invariant #3, re-parse-verified in the tests).
 $esc = [char]27
 $wantActions = @(
     @{ keys = 'shift+enter'; command = @{ action = 'sendInput'; input = "$esc[13;2u" } }
     @{ keys = 'ctrl+enter';  command = @{ action = 'sendInput'; input = "$esc[13;5u" } }
+    @{ keys = 'ctrl+/';      command = @{ action = 'sendInput'; input = "$([char]31)" } }
 )
+# Ctrl+0..9 -> ESC[<ASCII>;5u, ASCII = 48 + digit (matches string.byte in the
+# WezTerm loop). Built with -f to sidestep string-index ambiguity on "$esc[".
+foreach ($d in 0..9) {
+    $wantActions += @{ keys = "ctrl+$d"; command = @{ action = 'sendInput'; input = ('{0}[{1};5u' -f $esc, (48 + $d)) } }
+}
 $actions = @()
 if ($s.ContainsKey('actions')) { $actions = @($s['actions']) }
 # NB: read the 'keys' FIELD as $_['keys']; $_.keys returns the hashtable's own
