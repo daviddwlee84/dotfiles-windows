@@ -13,7 +13,8 @@ $targets = @(
     (Join-Path $HOME '.config/starship.toml'),
     (Join-Path $env:APPDATA 'alacritty/alacritty.toml'),
     (Join-Path $env:APPDATA 'Code/User/settings.json'),
-    (Join-Path $env:APPDATA 'Cursor/User/settings.json')
+    (Join-Path $env:APPDATA 'Cursor/User/settings.json'),
+    (Join-Path $HOME '.claude/settings.json')
 )
 $existing = $targets | Where-Object { Test-Path $_ }
 if ($existing) {
@@ -21,7 +22,13 @@ if ($existing) {
     $dir = Join-Path $HOME ".dotfiles-backup/$stamp"
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     foreach ($t in $existing) {
-        Copy-Item -Recurse -Force -LiteralPath $t -Destination (Join-Path $dir (Split-Path $t -Leaf))
+        # Mirror the target's path under the backup dir (drop the drive
+        # qualifier) so same-named leaves don't collide -- Code/Cursor/.claude
+        # all end in settings.json and a flat Split-Path -Leaf would clobber.
+        $rel = ($t -replace '^[A-Za-z]:[\\/]', '') -replace '^[\\/]+', ''
+        $dest = Join-Path $dir $rel
+        New-Item -ItemType Directory -Force -Path (Split-Path $dest -Parent) | Out-Null
+        Copy-Item -Recurse -Force -LiteralPath $t -Destination $dest
     }
     Write-Host "backed up $($existing.Count) item(s) -> $dir"
 }

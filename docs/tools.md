@@ -144,6 +144,15 @@ Enabled by **Install coding agents**:
   (`@github/copilot`) — installed globally via **npm** (provided by the scoop `node`).
 - **OpenCode Desktop** — GUI companion to the `opencode-ai` CLI, via scoop
   (`extras/opencode-desktop`).
+- **claude-hud** — a statusline HUD that renders below the Claude Code prompt.
+  Enabled in `~/.claude/settings.json` by a `run_onchange` merger
+  (`.chezmoiscripts/run_onchange_after_25_claude_settings.ps1.tmpl`) that
+  additively deep-merges an overlay, preserving your live settings. The plugin
+  self-installs from its marketplace on first launch and runs on the scoop
+  `bun`/`node` runtime; the merger also enables the `pyright-lsp` plugin and sets
+  `permissions.defaultMode: auto` + `skipDangerousModePermissionPrompt`. **Restart
+  Claude Code** after `chezmoi apply` to see the HUD. See
+  [running multiple agents](claude-code-agents.md).
 
 The official **ChatGPT** desktop app installs via the Microsoft Store (see GUI
 apps); **Codex** is the `@openai/codex` npm CLI above, not a Store app. SpecStory

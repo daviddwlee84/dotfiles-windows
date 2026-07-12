@@ -35,6 +35,8 @@ packages
 packages/**
 editors
 editors/**
+claude
+claude/**
 scripts
 scripts/**
 tests

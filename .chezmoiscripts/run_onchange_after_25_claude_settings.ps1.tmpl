@@ -1,0 +1,57 @@
+#Requires -Version 7
+# run_onchange_after_25_claude_settings.ps1 — merge a managed overlay into
+# ~/.claude/settings.json so claude-hud (statusline HUD), the pyright-lsp
+# plugin, and a couple of safe defaults deploy on Windows. Companion to the
+# parent (macOS/Linux) repo's dot_claude/modify_settings.json; that repo uses a
+# `modify_` + jq merge, which is unreliable on Windows (invariant #5), so we use
+# the same run_onchange pwsh-merger idiom as the editor overlays instead.
+#
+# Why a merge (not a managed dot_claude/settings.json)? Claude Code rewrites
+# this file at runtime (plugins it installs, permissions the user grants). A
+# static managed file would clobber all of that on every apply. We instead
+# recursively deep-merge only our keys in, preserving every live key.
+#
+# Gated on installCodingAgents — no Claude Code, nothing to configure. Re-runs
+# when the embedded overlay (claude/settings-overlay.json) changes.
+{{ if .installCodingAgents -}}
+$ErrorActionPreference = 'Continue'   # best-effort; never abort the apply
+
+# Embedded at render time from the (chezmoi-ignored) claude/ source, so this
+# script is self-contained and re-fires when the overlay changes.
+$overlayJson = @'
+{{ include "claude/settings-overlay.json" }}
+'@
+
+$overlay = $overlayJson | ConvertFrom-Json -AsHashtable
+
+# Recursive deep-merge: overlay leaves win; live-only keys are preserved. Unlike
+# the editor overlay's shallow top-level assign, this keeps the user's nested
+# state (e.g. permissions.allow/deny arrays, other enabledPlugins) intact.
+function Merge-Hashtable([hashtable]$base, [hashtable]$overlay) {
+    foreach ($k in $overlay.Keys) {
+        if ($base.ContainsKey($k) -and ($base[$k] -is [hashtable]) -and ($overlay[$k] -is [hashtable])) {
+            Merge-Hashtable $base[$k] $overlay[$k]
+        } else {
+            $base[$k] = $overlay[$k]
+        }
+    }
+}
+
+# Respect CLAUDE_CONFIG_DIR (matches the statusLine command + claude-hud setup).
+$claudeDir = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOME '.claude' }
+$settingsPath = Join-Path $claudeDir 'settings.json'
+
+$settings = @{}
+if (Test-Path $settingsPath) {
+    $raw = Get-Content -Raw $settingsPath
+    if ($raw.Trim()) {
+        try { $settings = $raw | ConvertFrom-Json -AsHashtable }
+        catch { Write-Warning "could not parse $settingsPath; not overwriting"; return }
+    }
+}
+
+Merge-Hashtable $settings $overlay
+New-Item -ItemType Directory -Force -Path $claudeDir | Out-Null
+$settings | ConvertTo-Json -Depth 12 | Set-Content -Path $settingsPath -Encoding utf8
+Write-Host "claude overlay -> $settingsPath"
+{{ end -}}

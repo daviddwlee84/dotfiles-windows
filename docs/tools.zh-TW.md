@@ -137,6 +137,13 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
   （`@github/copilot`）—— 透過 **npm** 全域安裝（由 scoop 的 `node` 提供）。
 - **OpenCode Desktop** —— `opencode-ai` CLI 的 GUI 版，由 scoop 安裝
   （`extras/opencode-desktop`）。
+- **claude-hud** —— 顯示在 Claude Code 輸入框下方的狀態列 HUD。由 `run_onchange`
+  合併腳本（`.chezmoiscripts/run_onchange_after_25_claude_settings.ps1.tmpl`）以
+  疊加方式深度合併進 `~/.claude/settings.json`，保留你原有的設定。外掛會在首次啟動
+  時自其 marketplace 自動安裝，並以 scoop 的 `bun`/`node` runtime 執行；合併腳本
+  同時啟用 `pyright-lsp` 外掛，並設定 `permissions.defaultMode: auto` 與
+  `skipDangerousModePermissionPrompt`。執行 `chezmoi apply` 後請**重啟 Claude
+  Code** 才會看到 HUD。參見[同時執行多個代理](claude-code-agents.zh-TW.md)。
 
 官方 **ChatGPT** 桌面程式透過 Microsoft Store 安裝（見 GUI 應用程式）；**Codex**
 是上面的 `@openai/codex` npm CLI，不是 Store app。SpecStory 沒有原生 Windows CLI

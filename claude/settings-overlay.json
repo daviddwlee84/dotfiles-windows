@@ -1,0 +1,22 @@
+{
+  "enabledPlugins": {
+    "claude-hud@claude-hud": true,
+    "pyright-lsp@claude-plugins-official": true
+  },
+  "extraKnownMarketplaces": {
+    "claude-hud": {
+      "source": {
+        "source": "github",
+        "repo": "jarrodwatts/claude-hud"
+      }
+    }
+  },
+  "skipDangerousModePermissionPrompt": true,
+  "permissions": {
+    "defaultMode": "auto"
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "pwsh -NoProfile -Command \"& { $d = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOME '.claude' }; $p = (Get-ChildItem (Join-Path $d 'plugins\\cache\\claude-hud\\claude-hud') -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^\\d+(\\.\\d+)+$' } | Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1).FullName; if (-not $p) { return }; $rt = Get-Command bun -ErrorAction SilentlyContinue; if ($rt) { & $rt.Source '--env-file' 'NUL' (Join-Path $p 'src\\index.ts'); return }; $rt = Get-Command node -ErrorAction SilentlyContinue; if ($rt) { & $rt.Source (Join-Path $p 'dist\\index.js') } }\""
+  }
+}
