@@ -1,0 +1,29 @@
+# Apprise configuration examples (reference only — this file is NOT loaded).
+# Copy the entries you want into custom.yaml (created once, never overwritten)
+# and fill in your own tokens. Full service list + syntax:
+#   https://appriseit.com/getting-started/configuration/
+#
+# Every URL can carry one or more `tag:` values so hooks/tools can target a
+# subset. This repo's Claude notify hook fires `apprise --tag desktop`, matched
+# by the windows:// entry in apprise.yaml.
+version: 1
+urls:
+  # --- Chat / push -------------------------------------------------------
+  - discord://webhook_id/webhook_token:
+      tag: chat
+  - slack://TokenA/TokenB/TokenC/Channel:
+      tag: chat
+  - tgram://bottoken/ChatID:
+      tag: chat
+  - pover://user@token:          # Pushover
+      tag: push
+
+  # --- Email -------------------------------------------------------------
+  - mailto://user:pass@gmail.com:
+      tag: email
+
+  # --- Self-hosted / generic --------------------------------------------
+  - ntfy://ntfy.sh/your_topic:
+      tag: push
+  - json://localhost/webhook:    # POST JSON to an arbitrary endpoint
+      tag: webhook

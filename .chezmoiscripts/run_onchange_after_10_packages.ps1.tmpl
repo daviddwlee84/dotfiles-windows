@@ -267,6 +267,17 @@ Npm-InstallGlobal @(
 
 # OpenCode Desktop (GUI companion to the opencode-ai CLI) via scoop extras.
 Scoop-Install @('extras/opencode-desktop')
+
+# apprise -> Windows toast notifications for the Claude Code notify hook
+# (~/.claude/hooks/notify.ps1, wired via claude/settings-overlay.json). Its
+# windows:// backend imports win32api/win32con/win32gui, so pull pywin32 into
+# the tool venv (--with). uv tool bin (~/.local/bin) is already on PATH via
+# profile.d/00_env.ps1. Mirrors the LiteLLM uv-tool precedent below.
+if (Have uv) {
+    Info 'uv tool install apprise (+pywin32 for windows://)'
+    uv tool install --with pywin32 apprise
+    if ($LASTEXITCODE -ne 0) { Register-Failure 'uv:apprise' }
+}
 {{ end -}}
 
 {{ if .installWindowsApps -}}

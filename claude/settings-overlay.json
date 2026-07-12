@@ -18,5 +18,28 @@
   "statusLine": {
     "type": "command",
     "command": "cols=${COLUMNS:-}; case \"$cols\" in \"\"|*[!0-9]*) cols=$(stty size </dev/tty 2>/dev/null | awk '{print $2}');; esac; case \"$cols\" in \"\"|*[!0-9]*) cols=120;; esac; export COLUMNS=$(( cols > 4 ? cols - 4 : 1 )); plugin_dir=$(ls -1d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/*/claude-hud/*/ 2>/dev/null | sort -V | tail -1); exec \"$(command -v node)\" \"${plugin_dir}dist/index.js\""
+  },
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "exec pwsh -NoProfile -File \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/notify.ps1\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "exec pwsh -NoProfile -File \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/notify.ps1\""
+          }
+        ]
+      }
+    ]
   }
 }

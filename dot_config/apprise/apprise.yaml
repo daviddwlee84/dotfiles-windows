@@ -1,0 +1,16 @@
+version: 1
+# Apprise config — managed by chezmoi (dot_config/apprise/apprise.yaml).
+#
+# Desktop toast notifications on Windows via the native windows:// backend
+# (apprise imports win32api/win32con/win32gui — pywin32, installed alongside
+# apprise by the packages script). The Claude Code notify hook
+# (~/.claude/hooks/notify.ps1) targets this entry by the `desktop` tag.
+#
+# Add your own remote services (Discord/Slack/Telegram/...) in custom.yaml —
+# it is created once and NEVER overwritten by chezmoi, so credentials in the
+# URLs stay out of the dotfiles repo. See example.yaml for the syntax.
+include:
+  - custom.yaml
+urls:
+  - windows://:
+      tag: desktop
