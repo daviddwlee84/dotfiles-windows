@@ -16,6 +16,7 @@
 #   installIacTools      = {{ .installIacTools }}
 #   installHerdr         = {{ .installHerdr }}
 #   installClink         = {{ .installClink }}
+#   installTry           = {{ .installTry }}
 #   useChineseMirror     = {{ .useChineseMirror }}
 #   managedMachine       = {{ .managedMachine }}
 
@@ -386,6 +387,23 @@ if (Have clink) {
     # not persisted (the *> $null swallows the "unknown setting" error).
     clink set fzf.default_bindings true *> $null    # Ctrl-R history / Ctrl-T files / Alt-C dir
 } else { Register-Failure 'clink (autorun/plugins not configured)' }
+{{ end -}}
+
+{{ if .installTry -}}
+# try (tobi/try) — Ruby ephemeral-workspace CLI (gem try-cli). Ruby may already
+# be present via installExtraRuntimes; install it regardless so installTry is
+# self-contained (Scoop-Install no-ops if ruby is already there). The pwsh
+# integration lives in profile.d/32_try.ps1 (command: `tri`).
+Scoop-Install @('ruby')
+if (Have gem) {
+    Info 'gem install try-cli'
+{{- if .useChineseMirror }}
+    gem install --clear-sources --source https://gems.ruby-china.com try-cli 2>&1 | Out-Host
+{{- else }}
+    gem install try-cli 2>&1 | Out-Host
+{{- end }}
+    if ($LASTEXITCODE -ne 0) { Register-Failure 'gem:try-cli' }
+} else { Register-Failure 'gem:try-cli (ruby/gem unavailable)' }
 {{ end -}}
 
 if ($script:Failures.Count -gt 0) {

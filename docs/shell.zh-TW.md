@@ -19,6 +19,7 @@
 | `21_git.ps1` | oh-my-zsh `git` plugin alias 移植到 pwsh（`gst`、`gco`、`gl`=pull、`gcam`、`glol`…） |
 | `28_tldr.ps1` | `tldrf` —— tldr 加上 `zh_TW → zh → en` 語言 fallback |
 | `30_apps.ps1` | app 控制（`applaunch`/`appquit`/…）、音量、剪貼簿 |
+| `32_try.ps1` | `tri` —— try (tobi/try) 暫時性日期命名 workspace（選用；沒 ruby 時 inert） |
 | `35_yazi.ps1` | `y` —— 開 yazi,離開時 cd 到你停下的目錄 |
 | `40_copilot.ps1` | 匯入 `copilot-proxy` PowerShell 模組 |
 | `90_psreadline.ps1` | PSReadLine（vi 模式、歷史） |
@@ -182,6 +183,27 @@ cmd 的行編輯器是 **[Clink](https://chrisant996.github.io/clink/)** —— 
 （Get-Content）、`gcb`（Get-Clipboard）、`gcs`（Get-PSCallStack）、`gl`
 （Get-Location）、`gp`（Get-ItemProperty）、`gpv`（Get-ItemPropertyValue）。需要那些
 cmdlet 時請用完整名稱。
+
+## try
+
+安裝了選用的 **try**（`installTry` → `gem install try-cli`）後，`profile.d/32_try.ps1`
+會加入一個暫時性 workspace 指令（沒有 ruby / try-cli 時自動 inert）。
+
+指令是 **`tri`**，不是 `try`：`try` 是 PowerShell 保留字（`try`/`catch`），所以裸打
+`try foo` 會 parse error、無法當指令名。（`& try foo` 透過呼叫運算子可用，也定義了一個
+薄薄的 `try` wrapper 給它。）
+
+| 指令 | 做什麼 |
+|---|---|
+| `tri <name>` | 模糊選取或建立 `~/src/tries/YYYY-MM-DD-<name>`，然後 `cd` 進去 |
+| `tri <git-url>` | clone 進一個以日期命名的試驗目錄並 `cd` 進去 |
+| `tri` | 開啟既有試驗的選擇器（Enter 進入、Ctrl-D 刪除…） |
+| `tri . <name>` | 從當前目錄建立試驗（git repo 會變成 detached worktree） |
+
+`$env:TRY_PATH`（預設 `~/src/tries`）決定試驗放在哪。我們無法沿用 try 自己的 shell
+整合 —— try-cli 吐出的是 pwsh 無法 `eval` 的 POSIX shell，而且 `try` 是保留字 ——
+所以 `32_try.ps1` 自己跑 `ruby try.rb exec`，把輸出翻譯成原生 pwsh 在當前 session
+執行（讓 `cd` 真的移動這個 shell）。
 
 ## herdr workspace 輔助指令（`hvibe` / `hcode` / …）
 

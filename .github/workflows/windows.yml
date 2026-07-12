@@ -64,6 +64,7 @@ jobs:
             '--promptBool','Install and enable the OpenSSH server / sshd (needs admin, opens inbound port 22)=false',
             '--promptBool','Install herdr (native Windows terminal multiplexer, preview beta)=false',
             '--promptBool','Install Clink + starship/zoxide/fzf for cmd.exe (DOS prompt)=false',
+            '--promptBool','Install try (Ruby ephemeral-workspace CLI, needs Ruby)=false',
             '--promptBool','Use China (GFW) mirrors for pip/npm/cargo/go/node=false',
             '--promptBool','Managed or corporate machine (skip org-policy-blocked apps like Tailscale and Grammarly)=false',
             '--promptChoice','Back up existing files before apply (smart|full|off)=off',

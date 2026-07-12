@@ -91,6 +91,7 @@ PowerShell anyway, so a machine with *no* PowerShell couldn't use the repo.
 | OpenSSH server | off | install + enable sshd (needs admin; opens inbound TCP 22) |
 | herdr multiplexer | off | native Windows terminal multiplexer (preview beta) |
 | Clink (cmd.exe) | off | starship + zoxide + fzf in `cmd.exe` via Clink (opt-in secondary shell) |
+| try (ephemeral workspaces) | off | Ruby CLI (`gem try-cli`): dated trial dirs + fuzzy selector; pwsh command is `tri` |
 | China mirrors | off | pip / npm / cargo / go / node via GFW mirrors |
 | Managed machine | off | skip apps org policy usually blocks (Tailscale, Grammarly) |
 | Backup mode | `smart` | snapshot existing files before the first apply (`smart`/`full`/`off`) |

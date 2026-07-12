@@ -165,6 +165,7 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
 | OpenSSH server | Microsoft OpenSSH Server（sshd）：Windows capability + 自動啟動服務 + inbound TCP 22 防火牆規則，並以 pwsh 為預設 shell。需系統管理員 —— 用提升權限的 `chezmoi apply`，或在提升權限的 pwsh 執行 `just enable-sshd`。 |
 | herdr multiplexer | herdr，原生 Windows 終端多工器（**preview beta**）。沒有 scoop/winget manifest —— 透過 herdr.dev 的 `irm \| iex` 腳本安裝；設定受管於 `~/.config/herdr/config.toml`（以 pwsh 為預設 shell）。見 [rationale](rationale.zh-TW.md#wezterm-herdr-beta)。 |
 | Clink (cmd.exe) | [Clink](https://chrisant996.github.io/clink/)（scoop `main`）—— cmd.exe 的 Bash 風格行編輯，讓 **starship** + **zoxide** + **fzf** 也能用在 DOS 提示字元。沿用共用的 `starship.toml`；註冊使用者層級 cmd AutoRun、部署我們的 `starship.lua`，並把社群的 `clink-zoxide` / `clink-fzf` 橋接抓進 `%LocalAppData%\clink`。pwsh 仍是預設 —— 這是選用的次要 shell，只有 prompt + 導覽對等。見 [rationale](rationale.zh-TW.md#powershell-7-cmdexe-clink) 與 [Shell](shell.zh-TW.md#cmdexe-via-clink)。 |
+| try（暫時性 workspace） | [`try`](https://github.com/tobi/try)，透過 `gem install try-cli` 安裝（若無 ruby 會一併裝）。建立以日期命名的 `~/src/tries/YYYY-MM-DD-name` 試驗目錄 + 模糊選擇器；`tri <git-url>` 會 clone 進其中一個。pwsh 指令是 **`tri`**（`try` 是保留字 —— 裸打 `try` 無法 parse；`& try` 可用）。見 [Shell](shell.zh-TW.md#try)。 |
 
 **China mirrors** 會把 pip / npm / cargo / go / node 的套件抓取導向 GFW 鏡像
 （清華 / npmmirror / goproxy.cn / rsproxy），安裝時與互動式 shell

@@ -20,6 +20,7 @@ logic lives in the fragments; the loader stays boring.
 | `21_git.ps1` | oh-my-zsh `git`-plugin aliases ported to pwsh (`gst`, `gco`, `gl`=pull, `gcam`, `glol`, …) |
 | `28_tldr.ps1` | `tldrf` — tldr with a `zh_TW → zh → en` language fallback |
 | `30_apps.ps1` | app control (`applaunch`/`appquit`/…), audio, clipboard |
+| `32_try.ps1` | `tri` — try (tobi/try) ephemeral dated workspaces (opt-in; inert without ruby) |
 | `35_yazi.ps1` | `y` — launch yazi, cd to where you quit |
 | `40_copilot.ps1` | import the `copilot-proxy` PowerShell module |
 | `90_psreadline.ps1` | PSReadLine (vi mode, history) |
@@ -198,6 +199,28 @@ Because a built-in alias outranks a same-named function, the fragment first drop
 the shadowing aliases for `gc` (Get-Content), `gcb` (Get-Clipboard), `gcs`
 (Get-PSCallStack), `gl` (Get-Location), `gp` (Get-ItemProperty) and `gpv`
 (Get-ItemPropertyValue). Reach those cmdlets by their full name if you need them.
+
+## try
+
+When the opt-in **try** tool is installed (`installTry` → `gem install try-cli`),
+`profile.d/32_try.ps1` adds an ephemeral-workspace command (inert if ruby / try-cli
+isn't present).
+
+The command is **`tri`**, not `try`: `try` is a PowerShell keyword (`try`/`catch`),
+so bareword `try foo` is a parse error and can't be a command name. (`& try foo`
+works via the call operator, and a thin `try` wrapper is defined for it.)
+
+| Command | What it does |
+|---|---|
+| `tri <name>` | fuzzy-select or create `~/src/tries/YYYY-MM-DD-<name>`, then `cd` into it |
+| `tri <git-url>` | clone into a dated trial dir and `cd` in |
+| `tri` | open the selector over existing trials (Enter opens, Ctrl-D deletes, …) |
+| `tri . <name>` | make a trial from the current dir (a git repo becomes a detached worktree) |
+
+`$env:TRY_PATH` (default `~/src/tries`) controls where trials live. We can't reuse
+try's own shell integration — try-cli emits POSIX shell that pwsh can't `eval`, and
+`try` is a keyword — so `32_try.ps1` runs `ruby try.rb exec` itself and translates
+its output into native pwsh in the live session (so the `cd` moves this shell).
 
 ## herdr workspace helpers (`hvibe` / `hcode` / …)
 

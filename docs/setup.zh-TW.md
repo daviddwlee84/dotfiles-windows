@@ -85,6 +85,7 @@ powershell -ExecutionPolicy Bypass -File "%TEMP%\bootstrap.ps1"
 | OpenSSH server | 關 | 安裝並啟用 sshd（需系統管理員；開放 inbound TCP 22） |
 | herdr multiplexer | 關 | 原生 Windows 終端多工器（preview beta） |
 | Clink (cmd.exe) | 關 | 透過 Clink 在 `cmd.exe` 提供 starship + zoxide + fzf（選用的次要 shell） |
+| try（暫時性 workspace） | 關 | Ruby CLI（`gem try-cli`）：以日期命名的試驗目錄 + 模糊選擇器；pwsh 指令為 `tri` |
 | China mirrors | 關 | pip / npm / cargo / go / node 走 GFW 鏡像 |
 | Managed machine | 關 | 略過 org 政策常擋的 app（Tailscale、Grammarly） |
 | Backup mode | `smart` | 首次 apply 前備份既有檔案（`smart`/`full`/`off`） |
