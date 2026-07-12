@@ -15,7 +15,8 @@
 | `00_env.ps1` | XDG base 目錄、`$env:EDITOR`、PATH |
 | `05_mirrors.ps1` | 中國套件鏡像（啟用時） |
 | `10_tools.ps1` | `init` 掛鉤:starship、zoxide、mise、atuin、fzf、direnv、tv |
-| `20_aliases.ps1` | alias 與 helper（`reload`、`cas`/`cau`、git 快捷） |
+| `20_aliases.ps1` | alias 與 helper（`reload`、`cas`/`cau`、現代 CLI 替身） |
+| `21_git.ps1` | oh-my-zsh `git` plugin alias 移植到 pwsh（`gst`、`gco`、`gl`=pull、`gcam`、`glol`…） |
 | `28_tldr.ps1` | `tldrf` —— tldr 加上 `zh_TW → zh → en` 語言 fallback |
 | `30_apps.ps1` | app 控制（`applaunch`/`appquit`/…）、音量、剪貼簿 |
 | `35_yazi.ps1` | `y` —— 開 yazi,離開時 cd 到你停下的目錄 |
@@ -161,6 +162,26 @@ cmd 的行編輯器是 **[Clink](https://chrisant996.github.io/clink/)** —— 
     `y`（yazi）、`sysvol`、`copilot-proxy` 模組 —— 都只在 pwsh。要完整體驗請用 pwsh；
     Clink 只是讓不得不用的 cmd session 舒服一點。用 `clink info` 檢視（會列出 profile
     目錄與載入的腳本）。
+
+## Git 別名
+
+`profile.d/21_git.ps1` 把整個 [oh-my-zsh `git` plugin](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/git)
+移植成原生 pwsh 函式，所以 macOS/Linux dotfiles 免費拿到的那 ~200 個別名
+（`gst`、`gco`、`gcam`、`gp`、`gl`、`glol`、`grbom`、`gwip`…）在這裡意義相同。
+用 `tv aliases` 模糊瀏覽當前這一整組；preview 會顯示每個定義。
+
+跟上游 omz 有三處刻意的 Windows 專屬差異：
+
+| 差異 | 為什麼 |
+|---|---|
+| `gcm` / `gm` **不**定義 | 保留為 PowerShell 內建的 `Get-Command` / `Get-Member`。改用 `gswm`（切到 main）與 `gma`/`gmc`/`gms`/`gmff` merge 家族。 |
+| `gl` = `git pull` | 對齊上游 omz（取代此 repo 先前的 `gl` = `git log`）。要看圖形 log 用 `glo` / `glog` / `glol` / `glola`。`gs` 額外保留為 `git status` 別名；`gst` 才是正宗那個。 |
+| `gbD` / `gcB` / `gbgD` 併入 `gbd` / `gcb` / `gbgd` | pwsh 指令名**不分大小寫**，所以 force 變體無法獨立存在 —— 只定義安全的小寫形式（打錯成 `gbD` 也絕不會 force-delete）。要 force 請用明確 flag：`gbd --force <b>`、`gco -B <b>`。 |
+
+因為內建 alias 優先權高於同名 function，此片段會先移除會遮蔽的 alias：`gc`
+（Get-Content）、`gcb`（Get-Clipboard）、`gcs`（Get-PSCallStack）、`gl`
+（Get-Location）、`gp`（Get-ItemProperty）、`gpv`（Get-ItemPropertyValue）。需要那些
+cmdlet 時請用完整名稱。
 
 ## herdr workspace 輔助指令（`hvibe` / `hcode` / …）
 

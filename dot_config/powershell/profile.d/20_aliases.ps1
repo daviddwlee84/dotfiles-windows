@@ -53,13 +53,7 @@ function touch {
     }
 }
 
-# --- git shortcuts ---
-function gs { git status @args }
-function gd { git diff @args }
-function ga { git add @args }
-function gc { git commit @args }
-function gp { git push @args }
-function gl { git log --oneline --graph --decorate @args }
+# --- git shortcuts live in 21_git.ps1 (full oh-my-zsh git-plugin port) ---
 
 # --- shell / dotfiles management ---
 # reload the current session's profile
