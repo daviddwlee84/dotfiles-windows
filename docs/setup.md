@@ -76,6 +76,7 @@ PowerShell anyway, so a machine with *no* PowerShell couldn't use the repo.
 |---|---|---|
 | Role | `workstation` | `workstation` = full desktop; `minimal` = shell only |
 | Coding agents | on (workstation) | Claude Code, OpenCode, Codex, Copilot CLI, SpecStory |
+| SpecStory build | off | build the experimental SpecStory CLI for Windows from the unmerged PR #191 (needs git + go) |
 | Windows GUI apps | on (workstation) | VSCode, Cursor, Notepad++, Terminal, Alacritty, PowerToys, Raycast, Docker Desktop, Discord |
 | WSL2 backend | on (workstation) | WSL2 for Docker Desktop's backend; self-elevates (one UAC prompt), reboot required |
 | WSL2 Ubuntu | off | install a WSL2 Ubuntu distro + bootstrap cross-platform dotfiles (needs `installWsl`) |

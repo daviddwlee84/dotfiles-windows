@@ -42,6 +42,11 @@ claude-copilot            # 以 Copilot 為後端的 Claude Code session
 - **`copilot-here`** 只寫入被 gitignore 的 `.claude/settings.local.json`，絕不動到
   已提交的 `.claude/settings.json`，並加一筆 `.git/info/exclude`，讓釘選永遠不會被
   commit 進去。
+- **`claude-copilot` / `claude-copilot-once`** 會以 `--dangerously-skip-permissions`
+  執行 Claude Code —— proxy 這條是可信、免確認的流程，不會停下來問權限（純 `claude`
+  不受影響；全域預設仍為 `auto`）。當 SpecStory CLI 在 `PATH` 上時，也會用
+  `specstory run` 包住 session 以自動存檔逐字稿；Windows 上該 CLI 沒有官方 release，
+  需透過 **SpecStory build** 初始化提問選用啟用。
 - **節流 shim**（`copilot-throttle-shim.js`，以 Bun 執行）限制同時在途的請求數，
   並在 403/429 爆量時透明重試 —— 與 macOS/Linux 用的是同一份 JS，未經修改。
 - 狀態放在 `~/.local/state/copilot-proxy/`；token 放在

@@ -43,18 +43,26 @@ blocking.
 ## What this repo does now
 
 - **Omitted** `@specstory/cli` from the npm install list (it 404s).
-- Added an **opt-in experimental build** of PR #191:
-  `just specstory-build` → `scripts/build-specstory.ps1` (git clone → fetch
-  `pull/191/head` → `go build` → `~/.local/bin/specstory.exe`). Needs `git` +
-  `go` (Extra runtimes toggle or `scoop install go`). Treated as experimental.
+- Added an **opt-in experimental build** of PR #191, two ways in:
+  - the `installSpecstoryBuild` init toggle ("SpecStory build" prompt) runs an
+    inline build block in `run_onchange_after_10_packages.ps1.tmpl` at apply time
+    (fault-tolerant: Register-Failure if git/go missing, never aborts the apply);
+  - `just specstory-build` → `scripts/build-specstory.ps1` for a manual one-off.
+  Both do git clone → fetch `pull/191/head` → `go build` →
+  `~/.local/bin/specstory.exe`. Needs `git` + `go` (Extra runtimes toggle or
+  `scoop install go`). Treated as experimental.
+- `claude-copilot` / `claude-copilot-once` run claude with
+  `--dangerously-skip-permissions` regardless of whether `specstory` is present,
+  so the hands-off proxy flow behaves the same before/after this CLI is built.
 
 ## Revisit criteria (when to promote out of backlog)
 
 - **PR #191 merges / a Windows release ships** → replace the experimental build
   with the official install (npm if published, else scoop/winget/GitHub
   release), re-add to the standard installer, drop `scripts/build-specstory.ps1`
-  + the `just` recipe (or repoint them at the release), update `docs/tools.md`
-  + `.zh-TW`.
+  + the `just` recipe + the `installSpecstoryBuild` init toggle (and its
+  `windows.yml` flag, `.chezmoi.toml.tmpl` prompt, and docs/skill mirrors) — or
+  repoint them at the release, update `docs/tools.md` + `.zh-TW`.
 - If upstream publishes an **npm package** after all → simplest path: add it
   back to the `Npm-InstallGlobal` list.
 

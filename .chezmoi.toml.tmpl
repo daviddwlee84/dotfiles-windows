@@ -16,6 +16,7 @@
 
     # --- feature toggles (role-defaulted) ---
     installCodingAgents  = {{ promptBoolOnce . "installCodingAgents" "Install coding agents (Claude Code, OpenCode, Codex, Copilot CLI, SpecStory)" $full }}
+    installSpecstoryBuild = {{ promptBoolOnce . "installSpecstoryBuild" "Build the experimental SpecStory CLI for Windows from the unmerged PR #191 (needs git + go)" false }}
     installWindowsApps   = {{ promptBoolOnce . "installWindowsApps" "Install GUI apps via winget (VSCode, Cursor, Notepad++, Terminal, Alacritty, PowerToys, Raycast)" $full }}
     installWsl           = {{ promptBoolOnce . "installWsl" "Install WSL2 (Docker Desktop backend; needs admin + reboot)" $full }}
     installWslUbuntu     = {{ promptBoolOnce . "installWslUbuntu" "Install a WSL2 Ubuntu distro and bootstrap cross-platform dotfiles inside it (needs admin; requires WSL2 platform)" false }}
