@@ -93,6 +93,7 @@ Pitfalls owned by this folder. Keep alphabetical.
 | [`nvim-treesitter-no-c-compiler-despite-zig`](nvim-treesitter-no-c-compiler-despite-zig.md) | `No C compiler found`, `checkhealth nvim-treesitter`, `BrechtSanders.WinLabs.POSIX.UCRT`, zig installed but treesitter won't compile, `main` branch | fixed |
 | [`onedrive-kfm-profile-not-loaded`](onedrive-kfm-profile-not-loaded.md) | `is not recognized as a name of a cmdlet`, `OneDrive - <tenant>\Documents\PowerShell`, bare prompt / no starship | fixed |
 | [`scoop-local-changes-overwritten-by-merge`](scoop-local-changes-overwritten-by-merge.md) | `Your local changes to the following files would be overwritten by merge`, `bucket/*.json`, `Updating Buckets...`, scoop update/bootstrap stalls, CRLF | fixed |
+| [`wsl-loginctl-enable-linger-no-systemd`](wsl-loginctl-enable-linger-no-systemd.md) | `loginctl enable-linger`, `System has not been booted with systemd as init system (PID 1)`, `Failed to connect to bus: Host is down`, WSL docker role, ansible exit status 2 | fixed |
 | [`wsl-install-no-action-reboot-required`](wsl-install-no-action-reboot-required.md) | `No action was taken as a system reboot is required.`, `The requested operation requires elevation.`, Docker Desktop "WSL 2 is not installed" | workaround documented |
 | [`wsl-ubuntu-oobe-and-wsl-l-encoding`](wsl-ubuntu-oobe-and-wsl-l-encoding.md) | `Enter new UNIX username`, `wsl -l` mojibake, `wsl.conf` default user ignored, `$'\r': command not found` | workaround documented |
 

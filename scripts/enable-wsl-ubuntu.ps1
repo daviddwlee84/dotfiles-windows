@@ -114,13 +114,17 @@ id "`$u" >/dev/null 2>&1 || useradd -m -s /bin/bash -G sudo,adm "`$u"
 passwd -l "`$u" >/dev/null 2>&1 || true
 printf '%s ALL=(ALL) NOPASSWD:ALL\n' "`$u" > "/etc/sudoers.d/90-`$u"
 chmod 0440 "/etc/sudoers.d/90-`$u"
-printf '[user]\ndefault=%s\n' "`$u" > /etc/wsl.conf
+# systemd=true so the cross-platform dotfiles' docker role can run: rootless
+# docker uses loginctl enable-linger, which needs systemd as PID 1 -- without it
+# the in-WSL ansible bootstrap dies ("System has not been booted with systemd as
+# init system (PID 1). Can't operate."). Read on boot; applied by --terminate below.
+printf '[user]\ndefault=%s\n[boot]\nsystemd=true\n' "`$u" > /etc/wsl.conf
 printf 'provisioned by dotfiles-windows (installWslUbuntu)\n' > /etc/dotfiles-windows-provisioned
 "@ -replace "`r`n", "`n"
         $rootScript | & wsl.exe -d $Distro -u root -- bash -s
         if ($LASTEXITCODE -ne 0) { Write-Warning "user setup in $Distro failed (exit $LASTEXITCODE)."; return }
 
-        & wsl.exe --terminate $Distro *> $null   # apply /etc/wsl.conf default user
+        & wsl.exe --terminate $Distro *> $null   # apply /etc/wsl.conf (default user + systemd)
     }
 
     if ($WslMode -ne 'headless') {

@@ -101,7 +101,9 @@ runcmd:
   `interactive` | `none`).
 - **User creation:** the **imperative** path (Option B) — `wsl --install -d
   Ubuntu-24.04 --no-launch` then `wsl -u root -- useradd …` + `passwd -l` +
-  `/etc/sudoers.d` NOPASSWD + `/etc/wsl.conf [user] default=` — chosen over
+  `/etc/sudoers.d` NOPASSWD + `/etc/wsl.conf [user] default=` + `[boot]
+  systemd=true` (the ubuntu_server docker role needs systemd for rootless
+  `loginctl enable-linger`) — chosen over
   cloud-init (Option A). Rationale: everything lives in the one PS script (repo's
   single-source-of-truth convention), no deployed `~/.cloud-init/` artifact to
   gate, and it's version-agnostic (not Ubuntu-24.04+-only). Cloud-init remains a
