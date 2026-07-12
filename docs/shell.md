@@ -16,7 +16,8 @@ logic lives in the fragments; the loader stays boring.
 | `00_env.ps1` | XDG base dirs, `$env:EDITOR`, PATH |
 | `05_mirrors.ps1` | China package mirrors (when enabled) |
 | `10_tools.ps1` | `init` hooks: starship, zoxide, mise, atuin, fzf, direnv, tv |
-| `20_aliases.ps1` | aliases + helpers (`reload`, `cas`/`cau`, git shortcuts) |
+| `20_aliases.ps1` | aliases + helpers (`reload`, `cas`/`cau`, modern-CLI shims) |
+| `21_git.ps1` | oh-my-zsh `git`-plugin aliases ported to pwsh (`gst`, `gco`, `gl`=pull, `gcam`, `glol`, …) |
 | `28_tldr.ps1` | `tldrf` — tldr with a `zh_TW → zh → en` language fallback |
 | `30_apps.ps1` | app control (`applaunch`/`appquit`/…), audio, clipboard |
 | `35_yazi.ps1` | `y` — launch yazi, cd to where you quit |
@@ -177,6 +178,26 @@ non-fatal; starship still works offline).
     module — is pwsh-only. For the full experience use pwsh; Clink just makes an
     unavoidable cmd session pleasant. Inspect it with `clink info` (lists the
     profile dir + loaded scripts).
+
+## Git aliases
+
+`profile.d/21_git.ps1` ports the whole [oh-my-zsh `git` plugin](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/git)
+to native pwsh functions, so the ~200 aliases the macOS/Linux dotfiles get for
+free (`gst`, `gco`, `gcam`, `gp`, `gl`, `glol`, `grbom`, `gwip`, …) mean the same
+here. Fuzzy-browse the live set with `tv aliases`; preview shows each definition.
+
+Three deliberate Windows-only differences from upstream omz:
+
+| Difference | Why |
+|---|---|
+| `gcm` / `gm` are **not** defined | They stay the PowerShell built-ins `Get-Command` / `Get-Member`. Use `gswm` (switch to main) and the `gma`/`gmc`/`gms`/`gmff` merge family instead. |
+| `gl` = `git pull` | Matches upstream omz (replacing this repo's earlier `gl` = `git log`). For a graph log use `glo` / `glog` / `glol` / `glola`. `gs` is kept as a bonus `git status` alias; `gst` is the canonical one. |
+| `gbD` / `gcB` / `gbgD` collapse to `gbd` / `gcb` / `gbgd` | pwsh command names are case-**insensitive**, so the force variants can't be distinct — only the safe lowercase form is defined (a mistyped `gbD` never force-deletes). Force via the explicit flag: `gbd --force <b>`, `gco -B <b>`. |
+
+Because a built-in alias outranks a same-named function, the fragment first drops
+the shadowing aliases for `gc` (Get-Content), `gcb` (Get-Clipboard), `gcs`
+(Get-PSCallStack), `gl` (Get-Location), `gp` (Get-ItemProperty) and `gpv`
+(Get-ItemPropertyValue). Reach those cmdlets by their full name if you need them.
 
 ## herdr workspace helpers (`hvibe` / `hcode` / …)
 
