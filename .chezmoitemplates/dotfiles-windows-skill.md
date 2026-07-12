@@ -23,6 +23,7 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   `~/.config/powershell/local.ps1` (untracked user override, loaded last).
 - Fragments: `00_env` (PATH/XDG/env), `10_tools` (starship, zoxide, atuin,
   fzf, direnv, tv), `20_aliases` (`ll`/`gs`/`reload`/`cas`/`cau`/`chezmoi-cd`/`run-for`),
+  `25_herdr` (`hvibe`/`hcode`/`hhere`/`hroot`/`hmark` workspace helpers, gated on herdr),
   `30_apps` (`applaunch`/`appquit`/`apprestart`/`sysvol`/`sysmute`/`x`), `35_yazi` (`y`),
   `40_copilot` (imports the Copilot module), `90_psreadline` (vi-mode gated on `enableVimMode`).
 

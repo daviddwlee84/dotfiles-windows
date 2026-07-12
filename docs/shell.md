@@ -177,3 +177,33 @@ non-fatal; starship still works offline).
     module — is pwsh-only. For the full experience use pwsh; Clink just makes an
     unavoidable cmd session pleasant. Inspect it with `clink info` (lists the
     profile dir + loaded scripts).
+
+## herdr workspace helpers (`hvibe` / `hcode` / …)
+
+When the opt-in **herdr** multiplexer is installed, `profile.d/25_herdr.ps1` adds
+PowerShell analogs of the macOS/Linux dotfiles' `24_herdr.sh` helpers — the same
+muscle-memory for spinning up agent workspaces. The fragment is inert if `herdr`
+isn't on PATH.
+
+| Command | Alias | What it does |
+|---|---|---|
+| `herdr-vibe` | `hvibe` | New `vibe/<repo>` workspace: N agent panes + a lazygit tab + an nvim tab. E.g. `hvibe 3 codex`, `hvibe --agents claude,codex`, `--tab-per-agent`. |
+| `herdr-code` | `hcode` | New `coding-agent/<repo>` workspace: nvim + agent split + a monitor tab (btop). E.g. `hcode`, `hcode codex`. |
+| `herdr-here` | `hhere` | Plain workspace at `$PWD` (+ optional command) and attach. No git repo needed. |
+| `herdr-root` | `hroot` | Like `hhere`, but opens at the git-root. |
+| `herdr-mark` / `herdr-unmark` | `hmark` / `hunmark` | Flag / clear a pane's ⭐ "review-pending" status (defaults to `$env:HERDR_PANE_ID`). |
+
+Run from **outside** herdr these attach a client so the new workspace is visible;
+from **inside** they just focus it. `--no-attach` builds in the background;
+`--on-exit shell\|kill\|restart` controls each pane after its command exits;
+`--session NAME` targets a running `herdr --session NAME`.
+
+Differences from the Unix original: no `jq` (native `ConvertFrom-Json`); each
+pane's on-exit wrapper is a pwsh script passed as `pwsh -EncodedCommand …` rather
+than a bash `trap`; and SpecStory auto-wrapping only engages if a `specstory` CLI
+is on PATH (no Windows build yet, so agents run raw).
+
+!!! warning "herdr is preview/beta"
+    herdr's Windows build is opt-in (`installHerdr`) and preview-only; these
+    helpers drive its CLI scripting surface (`herdr workspace|tab|pane`), which is
+    validated on a real Windows box, not in CI.

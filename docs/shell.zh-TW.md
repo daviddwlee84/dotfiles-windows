@@ -161,3 +161,31 @@ cmd 的行編輯器是 **[Clink](https://chrisant996.github.io/clink/)** —— 
     `y`（yazi）、`sysvol`、`copilot-proxy` 模組 —— 都只在 pwsh。要完整體驗請用 pwsh；
     Clink 只是讓不得不用的 cmd session 舒服一點。用 `clink info` 檢視（會列出 profile
     目錄與載入的腳本）。
+
+## herdr workspace 輔助指令（`hvibe` / `hcode` / …）
+
+安裝了可選的 **herdr** 多工器後，`profile.d/25_herdr.ps1` 會加入 macOS/Linux
+dotfiles 那份 `24_herdr.sh` 輔助指令的 PowerShell 對應版本 —— 同樣的手感，用來快速
+開出 agent workspace。若 PATH 上沒有 `herdr`，此片段不做任何事。
+
+| 指令 | 別名 | 功能 |
+|---|---|---|
+| `herdr-vibe` | `hvibe` | 新 `vibe/<repo>` workspace：N 個 agent pane + 一個 lazygit tab + 一個 nvim tab。例：`hvibe 3 codex`、`hvibe --agents claude,codex`、`--tab-per-agent`。 |
+| `herdr-code` | `hcode` | 新 `coding-agent/<repo>` workspace：nvim + agent split + 一個 monitor tab（btop）。例：`hcode`、`hcode codex`。 |
+| `herdr-here` | `hhere` | 在 `$PWD` 開一個純 workspace（可帶指令）並 attach，不需 git repo。 |
+| `herdr-root` | `hroot` | 同 `hhere`，但改在 git 根目錄開啟。 |
+| `herdr-mark` / `herdr-unmark` | `hmark` / `hunmark` | 標記／清除某 pane 的 ⭐「待審閱」狀態（預設 `$env:HERDR_PANE_ID`）。 |
+
+從 herdr **外部**執行時會 attach 一個 client 讓新 workspace 可見；從**內部**執行則
+只是 focus 它。`--no-attach` 在背景建立；`--on-exit shell\|kill\|restart` 控制每個
+pane 在其指令結束後的行為；`--session NAME` 指向執行中的 `herdr --session NAME`。
+
+與 Unix 原版的差異：不用 `jq`（改用原生 `ConvertFrom-Json`）；每個 pane 的 on-exit
+包裝是一段 pwsh 腳本，以 `pwsh -EncodedCommand …` 傳入，而非 bash 的 `trap`；且
+SpecStory 自動包裝只有在 PATH 上真的有 `specstory` CLI 時才啟用（Windows 目前尚無
+原生版，所以 agent 直接原樣執行）。
+
+!!! warning "herdr 仍是 preview/beta"
+    herdr 的 Windows 版本是可選的（`installHerdr`）且僅 preview；這些輔助指令驅動它的
+    CLI scripting 介面（`herdr workspace|tab|pane`），只能在真正的 Windows 機器上驗證，
+    CI 不涵蓋。
