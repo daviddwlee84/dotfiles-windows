@@ -109,6 +109,35 @@ macOS/Linux dotfiles 有一大層 POSIX `shell/*.sh`。把它機械式翻成 Pow
 `Start-Process`、`ConvertFrom-Json`），而不是去呼叫原本的 bash。只有 Bun 節流 shim
 （純 JS）原封不動沿用。見 [copilot-proxy](copilot-proxy.md)。
 
+## JSON 設定用 `run_onchange` pwsh 合併器，而非 `modify_` 腳本
+
+有些 JSON 設定面是**由工具在執行期擁有**的 —— Claude Code 會改寫
+`~/.claude/settings.json`（它安裝的外掛、你授予的權限），VSCode/Cursor 會改寫各自的
+`settings.json`。直接部署一份靜態受管副本會蓋掉這些即時狀態，所以它們是用**合併**、
+而非覆寫。macOS/Linux repo 用 chezmoi 的 **`modify_` 腳本**來合併（一個 `sh` + `jq`
+過濾器：從 stdin 讀入 live 檔，把合併結果吐到 stdout）。在 Windows 上這行不通：
+
+- **直譯器是用「目標檔」的副檔名決定的。** chezmoi 依受管檔的副檔名從
+  `[interpreters.<ext>]` 選 `modify_`/`create_` 腳本的直譯器。`modify_settings.json`
+  的目標是 `settings.json` → `.json`，查不到任何直譯器。Unix 上 chezmoi 會退回用腳本的
+  shebang（`#!/bin/sh`）+ 執行位元；Windows 兩者都不吃，所以無法可靠執行 —— 而且你
+  沒辦法給它 `.ps1` 副檔名，因為那綁死在目標名上。這裡只接了
+  `[interpreters.ps1] = pwsh`，而它只有在「受管檔本身就是 `.ps1`」時才幫得上忙。
+- **工具鏈不對。** 父 repo 的過濾器是 `sh` + `jq` —— 在 pwsh 為主的機器上不保證存在，
+  就算改寫成 pwsh 也還是撞上上面的路由問題。
+
+所以每個合併改成放在 `.chezmoiscripts/` 的 **`run_onchange_after_*.ps1.tmpl`**：一個
+真正的 `.ps1`，乾淨地走 `[interpreters.ps1] = pwsh`、原生執行、零外部依賴，並把一份
+chezmoi 忽略的 overlay（`editors/*.json`、`claude/settings-overlay.json`，經
+`{{ include }}` 內嵌）遞迴深度合併進 live 檔 —— 保留工具寫入的每個 key。這就是
+`AGENTS.md` 的 invariant #5。
+
+**取捨：** `modify_` 過濾器每次 apply 都會重新套用；`run_onchange` 只在其 render 後
+內容（即 overlay）改變時才重跑。若工具之後覆蓋了某個受管 key，它不會被還原，直到
+overlay 改變或你重置狀態（`chezmoi state delete-bucket --bucket=entryState`）。父 repo
+需要每次 apply 都強制，是因為 CodeIsland / workmux 會一直改寫
+`~/.claude/settings.json`；Windows 沒有這種對手，所以較輕的觸發就夠了。
+
 ## XDG 路徑，而非 `%APPDATA%`
 
 Windows 與 XDG 用不同的軸切目錄 —— Windows 看資料夾是否*漫遊*

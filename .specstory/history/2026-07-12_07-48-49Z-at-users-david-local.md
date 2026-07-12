@@ -3219,3 +3219,736 @@ I didn't commit — say the word and I'll branch + commit (the `windows-latest` 
 _**User (2026-07-12 08:16:19Z)**_
 
 git commit on main
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-12 08:16:46Z)**_
+
+<think><details><summary>Thought Process</summary>
+The user is explicitly asking to commit directly on main, overriding the default guidance to branch first. I'm staging the modified files—the chezmoiignore configuration and the backup script template—and preparing to commit them.
+
+I also need to include the new files: the Claude settings script, the settings overlay JSON, plus the plan file and SpecStory transcript per the agent-history-hygiene practice. Since neither contains secrets, they're safe to commit alongside the feature. I'll follow the repo's conventional commit style with a `feat(claude):` scope and add the Co-Authored-By line at the end of the message. t hooks won't interfere. I've already reviewed everything, so I'll stage the specific files I modified — the settings overlay, the chezmoi scripts, the markdown docs, and the plan and specstory history files — then commit with a message about the git commit on main. I'll skip the pre-commit hook check and just proceed with staging and committing the changes.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:16:46Z)**_
+
+On `main` and you've explicitly asked to commit here, so I'll commit directly. Staging the feature files plus the plan and SpecStory transcript (per this repo's agent-history convention — both dirs are already tracked, and neither contains secrets).
+
+_**Agent (claude-opus-4-8 2026-07-12 08:16:46Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Stage feature files, plan, and transcript
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+git add \
+  claude/settings-overlay.json \
+  .chezmoiscripts/run_onchange_after_25_claude_settings.ps1.tmpl \
+  .chezmoiignore \
+  .chezmoiscripts/run_once_before_01_backup.ps1.tmpl \
+  AGENTS.md \
+  docs/tools.md \
+  docs/tools.zh-TW.md \
+  .claude/plans/snazzy-painting-wilkes.md \
+  .specstory/history/2026-07-12_07-48-49Z-at-users-david-local.md
+echo "=== staged ===" && git diff --cached --stat
+```
+
+```text
+=== staged ===
+ .chezmoiignore                                     |    2 +
+ .chezmoiscripts/run_once_before_01_backup.ps1.tmpl |   11 +-
+ .../run_onchange_after_25_claude_settings.ps1.tmpl |   57 +
+ .claude/plans/snazzy-painting-wilkes.md            |  143 +
+ .../2026-07-12_07-48-49Z-at-users-david-local.md   | 3221 ++++++++++++++++++++
+ AGENTS.md                                          |    2 +-
+ claude/settings-overlay.json                       |   22 +
+ docs/tools.md                                      |    9 +
+ docs/tools.zh-TW.md                                |    7 +
+ 9 files changed, 3471 insertions(+), 3 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:17:01Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit the change set on main
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+git commit -F - <<'MSG'
+feat(claude): deploy claude-hud via a run_onchange settings merger
+
+Port claude-hud (statusline HUD) + safe general Claude Code settings from the
+parent macOS/Linux repo's dot_claude/modify_settings.json to Windows. modify_
+is unreliable on Windows (invariant #5), so mirror the editor-overlay idiom:
+a chezmoi-ignored overlay source (claude/settings-overlay.json) + a gated
+run_onchange pwsh merger that recursively deep-merges into ~/.claude/settings.json,
+preserving Claude Code's runtime-managed state (plugins, permissions, hooks).
+
+- Overlay: claude-hud + pyright-lsp plugins, claude-hud marketplace,
+  permissions.defaultMode=auto, skipDangerousModePermissionPrompt, and a
+  Windows-pwsh statusLine (dynamic bun->node detection; the parent's `bash -c`
+  form won't run under pwsh). Self-no-ops until the plugin/runtime exist.
+- Gated on the existing installCodingAgents toggle -> no new init prompt.
+- backup: snapshot ~/.claude/settings.json, and fix a pre-existing collision
+  where Code/Cursor (and now .claude) settings.json all backed up to the same
+  leaf name, silently losing backups -- now mirrors the target path.
+- Docs: claude-hud bullet in tools.md + zh-TW twin; Config surfaces in AGENTS.md.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+MSG
+```
+
+```text
+[WARNING] Unstaged files detected.
+[INFO] Stashing unstaged files to /Users/david/.cache/pre-commit/patch1783844219-9001.
+Auto-redact secrets in agent artifacts...................................Passed
+Detect hardcoded secrets.................................................Passed
+detect private key.......................................................Passed
+check for added large files..............................................Passed
+check for merge conflicts................................................Passed
+fix end of files.........................................................Passed
+trim trailing whitespace.................................................Passed
+[INFO] Restored changes from /Users/david/.cache/pre-commit/patch1783844219-9001.
+[main fc936fa] feat(claude): deploy claude-hud via a run_onchange settings merger
+ 9 files changed, 3471 insertions(+), 3 deletions(-)
+ create mode 100644 .chezmoiscripts/run_onchange_after_25_claude_settings.ps1.tmpl
+ create mode 100644 .claude/plans/snazzy-painting-wilkes.md
+ create mode 100644 .specstory/history/2026-07-12_07-48-49Z-at-users-david-local.md
+ create mode 100644 claude/settings-overlay.json
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:17:09Z)**_
+
+<think><details><summary>Thought Process</summary>
+The commit went through successfully with all pre-commit checks passing, including secret detection and key scanning. Now I'm checking the current state of the working tree.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:17:09Z)**_
+
+Committed on `main` as `fc936fa`. Pre-commit hooks all passed — including the secret-scan, private-key, and auto-redact checks on the artifacts.
+
+**`feat(claude): deploy claude-hud via a run_onchange settings merger`** — 9 files, +3471/-3.
+
+I did not push (you asked only to commit). Quick status:
+
+_**Agent (claude-opus-4-8 2026-07-12 08:17:09Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Confirm commit and working tree state
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+git log --oneline -1
+echo "--- ahead of remote by:" && git rev-list --count @{u}..HEAD 2>/dev/null || echo "(no upstream configured)"
+echo "--- working tree:" && git status --short | grep -v '^??' || echo "clean (only untracked left)"
+```
+
+```text
+fc936fa feat(claude): deploy claude-hud via a run_onchange settings merger
+--- ahead of remote by:
+1
+--- working tree:
+ M .specstory/history/2026-07-12_07-48-49Z-at-users-david-local.md
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:17:18Z)**_
+
+<think><details><summary>Thought Process</summary>
+The working tree is clean with everything committed. The specstory transcript is updating as our session continues, which is expected behavior and will be captured in a future commit. I'm ready to wrap up with a final status.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:17:18Z)**_
+
+All set. Commit `fc936fa` is on `main`, **1 ahead of remote** (not pushed, as requested). The only working-tree change left is the SpecStory transcript continuing to log *this* conversation — expected, and it'll fold into a later commit.
+
+Whenever you want to ship it: `git push` — then the `windows-latest` CI is the real gate.
+
+---
+
+_**User (2026-07-12 08:18:18Z)**_
+
+是說我們爲什麼是用 @.chezmoiscripts/run_onchange_after_25_claude_settings.ps1.tmpl 而非 chezmoi modify_ script呢？
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-12 08:18:56Z)**_
+
+<think><details><summary>Thought Process</summary>
+The user is asking why I chose a `run_onchange` script approach instead of chezmoi's `modify_` script like the parent repo uses. The key reason is in the repo's invariant: `modify_` has unreliable interpreter selection on Windows, so I'm using a PowerShell merger script instead to ensure consistent behavior across platforms. The interpreter lookup on Windows fails because `modify_settings.json` has a `.json` extension with no configured interpreter, and Windows can't fall back to shebang execution like Unix does. Even if the script ran, it relies on POSIX `sh` and `jq` which aren't reliably available on Windows, though the fundamental blocker is the interpreter mechanism itself. The `modify_` contract of reading stdin and writing stdout is sound, but `run_onchange` with a `.ps1.tmpl` extension sidesteps this entirely by using PowerShell directly—which aligns with how the repo already handles similar transformations for editors.
+
+The trade-off is that `modify_` re-asserts on every apply (catching any drift in the file), while `run_onchange` only fires when the script content changes. Since the overlay is embedded via `{{ include }}`, it re-runs whenever the overlay updates, giving us the same "re-assert when managed content changes" behavior. The difference is that `run_onchange` won't catch drift if the live settings.json gets modified outside our control—`modify_` would fix that on every apply, but `run_onchange` won't.
+
+For our case on Windows this is acceptable since we don't have tools like CodeIsland or workmux fighting over the file like on the parent system, so the every-apply enforcement is less critical. I should double-check if there's a pitfalls doc about `modify_` on Windows, since CLAUDE.md invariant #5 references it. I need to verify the specific technical details about the interpreter configuration and any relevant documentation in the repo to give an accurate answer about why modify_ scripts work differently on Windows.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:18:56Z)**_
+
+好問題。這其實是這個 repo 的一條硬性慣例（`AGENTS.md` invariant #5），核心原因是 **`modify_` script 在 Windows 上的 interpreter 選擇不可靠**。讓我先確認 repo 裡的具體依據，再給你完整的理由。
+
+_**Agent (claude-opus-4-8 2026-07-12 08:18:57Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Confirm interpreters config and modify_ references
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+echo "=== [interpreters] config in .chezmoi.toml.tmpl ===" && grep -nA3 "interpreters" .chezmoi.toml.tmpl
+echo
+echo "=== invariant #5 / modify_ mentions across repo ===" && grep -rniI "modify_" --include="*.md" --include="*.tmpl" . | grep -vi "specstory\|/site/\|worktrees" | head
+echo
+echo "=== any pitfall about modify_ ? ===" && ls pitfalls/ 2>/dev/null | grep -i "modify\|interpreter" || echo "(none)"
+```
+
+```text
+=== [interpreters] config in .chezmoi.toml.tmpl ===
+40:[interpreters.ps1]
+41-    command = "pwsh"
+42-    args = ["-NoProfile", "-NonInteractive"]
+43-
+
+=== invariant #5 / modify_ mentions across repo ===
+.chezmoi.toml.tmpl:39:# Run .ps1 scripts (.chezmoiscripts + modify_/create_) under PowerShell 7.
+AGENTS.md:64:5. **Editors use a run_onchange pwsh merger, not `modify_`** (`modify_` interpreter selection is unreliable on Windows). Overlay sources live in `editors/` (chezmoi-ignored, embedded via `{{ include }}`).
+.claude/plans/snazzy-painting-wilkes.md:5:The parent macOS/Linux dotfiles repo (`~/.local/share/chezmoi/dot_claude/modify_settings.json`)
+.claude/plans/snazzy-painting-wilkes.md:17:- `modify_settings.json` (sh + jq) is the parent's answer, but **invariant #5** says
+.claude/plans/snazzy-painting-wilkes.md:18:  `modify_` interpreter selection is unreliable on Windows — this repo uses a
+.chezmoitemplates/dotfiles-windows-skill.md:72:- Editor settings use a `run_onchange` pwsh merger (not `modify_`) on Windows.
+.chezmoiscripts/run_onchange_after_25_claude_settings.ps1.tmpl:5:# parent (macOS/Linux) repo's dot_claude/modify_settings.json; that repo uses a
+.chezmoiscripts/run_onchange_after_25_claude_settings.ps1.tmpl:6:# `modify_` + jq merge, which is unreliable on Windows (invariant #5), so we use
+
+=== any pitfall about modify_ ? ===
+(none)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:19:34Z)**_
+
+<think><details><summary>Thought Process</summary>
+The config maps PowerShell files by their `.ps1` extension to the pwsh interpreter, but when chezmoi runs a `modify_` or `create_` script, it determines the interpreter based on the *target* file's extension, not the script's. Since `modify_settings.json` targets `settings.json` with a `.json` extension, there's no interpreter mapping for it, so chezmoi attempts to execute it directly as a shell script. On Windows, executing a `modify_settings.json` script fails because chezmoi determines the interpreter from the target file's extension (`.json`), which has no associated interpreter — and Windows doesn't honor shebangs like Unix does. So `modify_` scripts only work on Windows when the target itself is a `.ps1` file; for JSON targets, there's no way to route them through PowerShell.
+
+The parent script uses POSIX tools (`sh` + `jq`), which isn't ideal for a Windows-first setup anyway. But `run_onchange` solves both problems: it lives in `.chezmoiscripts/` with a `.ps1.tmpl` extension, so it routes cleanly through the PowerShell interpreter and runs natively without external dependencies — and it matches the pattern already used elsewhere in the repo.
+
+There's a trade-off though: `modify_` re-applies on every run (acting as a filter), so it constantly reasserts the overlay even if other tools are fighting over the file. `run_onchange` only fires when its rendered content actually changes — meaning the overlay gets reapplied when I update it, but if Claude Code or something else overwrites the `statusLine` in the live file, it won't restore until the overlay itself changes.
+
+On Windows, since there's no CodeIsland or workmux competing for the settings file, that constant re-enforcement matters less, so the `run_onchange` approach is fine. I should explain this in Chinese since that's what the user asked in.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:19:47Z)**_
+
+確認了依據。`.chezmoi.toml.tmpl:39-42` 只有這一條 interpreter 映射:
+
+```toml
+[interpreters.ps1]        # 只有 .ps1 → pwsh
+    command = "pwsh"
+    args = ["-NoProfile", "-NonInteractive"]
+```
+
+## 核心原因:`modify_` 的 interpreter 是用「目標檔副檔名」決定的,而 `.json` 沒有對應
+
+chezmoi 執行 `modify_`/`create_` script 時,是**依目標檔的副檔名**去 `[interpreters.<ext>]` 查要用什麼直譯器跑。父 repo 的 `modify_settings.json` 目標是 `settings.json` → 副檔名 `.json` → **查不到任何 interpreter**。
+
+- 在 **macOS/Linux**:chezmoi 會退回用 shebang(`#!/bin/sh`)+ 執行位元直接 exec,所以父 repo 的 sh+jq 腳本跑得動。
+- 在 **Windows**:沒有 shebang、沒有執行位元,`.json` 也不是可執行檔關聯 → chezmoi 無法可靠地把它當腳本跑。
+
+而且你**改不了這個副檔名**——它綁在目標名 `settings.json` 上,不是你能挑的。要讓 `modify_` 走 pwsh,目標檔本身得是 `.ps1`(所以 `.chezmoi.toml.tmpl:39` 那句「modify_/create_ 走 pwsh」只有在管理 `.ps1` 檔時才成立,管 JSON 時不成立)。這就是 invariant #5 說的「`modify_` interpreter selection is unreliable on Windows」。
+
+次要問題:父腳本是 **sh + jq** 這套 POSIX 工具鏈,對 pwsh-first 的 Windows 也是錯的生態(sh 不保證有、jq 是額外依賴);就算改寫成 pwsh 也繞不過上面的路由問題。
+
+## 為什麼 `run_onchange` 能解決
+
+放在 `.chezmoiscripts/…run_onchange_after_25_claude_settings.ps1.tmpl`,有**真正的 `.ps1` 副檔名** → 乾淨地走 `[interpreters.ps1] = pwsh` → 原生 pwsh 執行、零外部依賴。而且這正是 repo 既有的做法(editor overlay 同一套模式),一致。
+
+## 要誠實講的取捨
+
+| | `modify_`(父 repo) | `run_onchange`(我們) |
+|---|---|---|
+| 觸發 | **每次 apply** 都當 filter 重跑 | 只在**腳本 render 後內容變動**時重跑 |
+| 重新強制套用 overlay | 每次 apply 都會 | overlay(`claude/settings-overlay.json`,經 `{{ include }}` 內嵌)變了才會 |
+
+實際差別:
+
+- ✅ 改 overlay → 下次 apply 自動重套。
+- ⚠️ 若 Claude Code 或你在 live 檔裡覆蓋掉我們的 `statusLine`,`run_onchange` **不會**自動修回,直到 overlay 內容改變(或 `chezmoi state delete-bucket --bucket=entryState` 重置)。`modify_` 則每次 apply 都會修回。
+
+父 repo 之所以特意用「每次 apply 都強制」的 `modify_`,是因為它要跟 **CodeIsland / workmux** 這些會搶著改 `settings.json` 的工具打架(那個 sh 腳本一大半在做 hook 陣列的加法合併)。Windows 上沒有這些工具在搶,所以少掉「每次強制」這點是可接受的——換來的是能在 Windows 上可靠執行。
+
+一句話總結:**不是偏好問題,是 `modify_` 在 Windows 上根本跑不可靠(interpreter 路由 + sh/jq 依賴),而 `run_onchange` pwsh merger 既能跑、又跟 repo 既有 editor overlay 一致。**
+
+---
+
+_**User (2026-07-12 08:25:09Z)**_
+
+這個加到doc notes裡
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-12 08:25:28Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm thinking about where to place this explanation about why we use `run_onchange` instead of `modify_` on Windows. The `docs/rationale.md` file seems like the right home since it's designed to document design choices and decisions like this one.
+
+Since I'd be adding to an existing document rather than creating a new one, I need to update both the English version and its Chinese Traditional twin (`rationale.zh-TW.md`). Looking at the existing structure, each design choice appears to be its own section with a heading and anchor link, so I'll need to match that format and style.
+
+Let me pull up both files to see how they're organized and where this new section fits best.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:25:28Z)**_
+
+`docs/rationale.md` is the home for design-choice writeups (it's exactly what that page is for). I'll add a section there and mirror it in the zh-TW twin. Let me read both to match structure/anchors.
+
+_**Agent (claude-opus-4-8 2026-07-12 08:25:28Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./docs/rationale.md`
+
+```text
+1	# Rationale
+2	
+3	Why this setup makes the choices it does.
+4	
+5	## PowerShell 7 default, cmd.exe optional (via Clink)
+6	
+7	`cmd.exe` (the DOS-lineage shell) has no real scripting story: no functions worth
+8	the name, no structured data, awkward quoting. **PowerShell 7 (`pwsh`)** is the
+9	modern default on Windows — an object pipeline, real modules, cross-platform, and
+10	first-class `init` integration for every tool here (starship, zoxide, atuin,
+11	fzf, direnv). Windows PowerShell 5.1 still ships in-box but is frozen; we install
+12	and target pwsh 7. Everything in this repo — the `$PROFILE` fragments, aliases,
+13	functions, copilot-proxy — is written for pwsh.
+14	
+15	cmd.exe isn't scripted *against*, but it isn't ignored either: some tools spawn it
+16	and muscle memory persists. The **opt-in `installClink` toggle** gives the DOS
+17	prompt a starship prompt plus `z` dir-jumping and Ctrl-R/Ctrl-T fzf, via
+18	[Clink](https://chrisant996.github.io/clink/) (cmd's PSReadLine analog). It reuses
+19	the **same `starship.toml`** and the XDG env already persisted to the User
+20	registry — so the *config* is shared; only the shell-activation "script" differs
+21	(Clink Lua vs the pwsh profile). This is **prompt + navigation parity, not feature
+22	parity**: atuin / direnv / tv and every pwsh function/module stay pwsh-only. pwsh
+23	remains the default and primary target; cmd is a scoped secondary. See
+24	[Shell → cmd.exe via Clink](shell.md#cmdexe-via-clink).
+25	
+26	(WSL is great, but it's a Linux environment — handled by the cross-platform
+27	dotfiles, not this repo. This repo is about a good *native* Windows shell. The
+28	one exception is Docker Desktop's backend: the `installWsl` toggle enables the
+29	WSL2 *platform* via `wsl --install --no-distribution` — plumbing for Docker's
+30	containers, not a Linux shell — self-elevating with one UAC prompt and a reboot.
+31	The optional `installWslUbuntu` toggle goes one step further: it registers an
+32	Ubuntu distro and *triggers* the cross-platform repo's own installer inside it
+33	(a frozen, non-interactive `chezmoi init` seeded from the Windows-side answers) —
+34	even then the Linux config is owned by that repo; this one is just the launcher.)
+35	
+36	## scoop for CLIs + winget for apps, not Chocolatey
+37	
+38	| | scoop | winget | Chocolatey |
+39	|---|---|---|---|
+40	| Admin required | no (user-scoped) | for machine-scope apps | usually yes |
+41	| Best at | CLI/dev tools | GUI/Store apps | broad legacy coverage |
+42	| Reproducible | `scoop export/import` | `winget export/import` | `packages.config` |
+43	| Update model | `scoop update *` | `winget upgrade --all` | `choco upgrade all` |
+44	
+45	**scoop** installs developer CLIs into a per-user directory with **no UAC prompts**,
+46	easy version pinning, and clean uninstalls — ideal for the ~20 shell tools here.
+47	**winget** is Microsoft's official manager and has the best catalog for GUI apps
+48	and first-party installers (VSCode, PowerToys, Steam, …).
+49	
+50	**Chocolatey** was the long-time default and still has the broadest package
+51	coverage, but it's admin-heavy and less reproducible for a per-user dev setup. It
+52	stays a documented fallback for the rare package missing from both scoop and winget.
+53	
+54	## Runtimes: scoop natives, not mise on Windows
+55	
+56	The macOS/Linux dotfiles use **mise** to manage language runtimes. On Windows we
+57	tried it and backed out — runtimes are installed **natively via scoop** (plus
+58	**uv** for Python) instead.
+59	
+60	Why mise didn't hold up here:
+61	
+62	- **Shims / activate don't reliably expose global tools.** `mise activate`'s
+63	  pwsh prompt-hook and the shims dir both failed to put globally-pinned tools
+64	  (`bun`, `go`) on PATH in practice — `mise use -g bun` "succeeded" yet `bun`
+65	  wasn't found.
+66	- **Arch gaps.** On Windows-on-ARM, `mise use -g bun` records the version but
+67	  ships **no windows-arm64 bun binary**, leaving a dead shim.
+68	- **It fought the machine's existing node.** A pre-existing `nvm` shadowed
+69	  mise's node, so npm used the wrong one.
+70	
+71	scoop shims live in `~/scoop/shims`, which scoop persists to the user PATH (and
+72	`profile.d/00_env.ps1` also prepends) — so `node` (`nodejs-lts`), `bun`, `go`,
+73	`rustup`, `ruby` are simply **on PATH**, no activation dance. **Python** is
+74	uv-managed (`uv python install --default --preview`), which also drops unversioned
+75	`python`/`python3` into `~/.local/bin`.
+76	
+77	The tradeoff: **no per-project runtime pinning** (mise's headline feature). For a
+78	Windows dev box that's a fair trade for "the tools are actually on PATH." If you
+79	want per-project versions, `scoop install mise` and use it directly — nothing
+80	here depends on it. The full debugging trail lives in
+81	`backlog/windows-arm64-managed-machine-rough-edges.md`.
+82	
+83	## Terminal multiplexer: WezTerm (stable default) + herdr (native beta)
+84	
+85	`tmux` and `zellij` are **Unix-only** — historically there were no native Windows
+86	builds, so they're absent here (you can still run them inside WSL). That's now
+87	changing: **herdr** ships an experimental native-Windows beta. The native options:
+88	
+89	| Option | Splits / tabs | Detach + persist | Notes |
+90	|---|---|---|---|
+91	| **WezTerm** | yes (panes/tabs, Lua `wezterm.mux`) | yes (mux server + `wezterm connect`) | native Windows; stable default |
+92	| **herdr** | yes (mouse-first panes/splits) | yes (persistent sessions, detach/attach) | native Windows, **preview beta**; closest to tmux/zellij — opt-in via `installHerdr` |
+93	| Windows Terminal | yes (panes/tabs) | no | great terminal, no session persistence |
+94	| Alacritty | no | no | fast, minimal; pair with a multiplexer |
+95	| tmux / zellij | — | — | Unix-only; use under WSL |
+96	
+97	**WezTerm** (`wez.wezterm`) is the stable default: a native Windows terminal with
+98	a built-in multiplexer — split panes, tabs, and a persistent mux server you can
+99	detach from and reconnect to (`wezterm connect`), plus scriptable layouts via its
+100	Lua `wezterm.mux` API. It isn't a 1:1 tmux (the session/persistence model
+101	differs), but it's the closest stable native experience.
+102	
+103	**herdr** (opt-in, `installHerdr`) is the newer, closest-to-tmux/zellij answer: a
+104	mouse-first native multiplexer (ConPTY) with panes, splits, persistent sessions,
+105	and detach/attach. It has no scoop/winget manifest — it installs via herdr.dev's
+106	`irm | iex` script (Windows is preview-only), and its config is managed at
+107	`~/.config/herdr/config.toml` (pwsh as the default shell). It's beta, so it stays
+108	off by default. Windows Terminal stays installed for its panes/tabs; Alacritty
+109	stays as the fast minimal option.
+110	
+111	## starship, not oh-my-posh
+112	
+113	Both are prompt engines; running both is redundant. We use **starship** because the
+114	exact same `starship.toml` already drives the macOS and Linux dotfiles — one config,
+115	one behavior everywhere (`starship init powershell`). oh-my-posh is excellent and
+116	very PowerShell-native, but adopting it would mean a second, Windows-only prompt
+117	config to maintain for no functional gain here.
+118	
+119	## A parallel PowerShell tree, not a ported shell layer
+120	
+121	The macOS/Linux dotfiles have a large POSIX `shell/*.sh` layer. Mechanically
+122	translating it to PowerShell would be a maintenance sink (two dialects of the same
+123	logic drifting apart). Instead the PowerShell config is written **natively** in
+124	`profile.d/*.ps1` — idiomatic pwsh, only the *behaviors* shared, not the code.
+125	
+126	## Native `copilot-proxy`, not a bash shim
+127	
+128	The `copilot-proxy` tool series is reimplemented as a real PowerShell module
+129	(`Invoke-RestMethod`, `Start-Process`, `ConvertFrom-Json`) rather than shelling out
+130	to the original bash. Only the Bun throttle shim (pure JS) is reused verbatim. See
+131	[copilot-proxy](copilot-proxy.md).
+132	
+133	## XDG paths, not `%APPDATA%`
+134	
+135	Windows and XDG split directories on different axes — Windows by whether a
+136	folder *roams* (`AppData\Roaming` vs `AppData\Local`), XDG by *purpose*
+137	(config / data / state / cache) — so `%APPDATA%` is not a clean "Windows XDG".
+138	Rather than map onto it, `profile.d/00_env.ps1` sets `XDG_CONFIG_HOME` and
+139	friends to Unix-style `~/.config` / `~/.local/share` paths. XDG-aware tools
+140	(starship, atuin, zoxide, yazi) then keep a tidy `$HOME` that mirrors the
+141	macOS/Linux dotfiles — one mental model, shared configs. Apps that ignore XDG
+142	and hard-code `%APPDATA%` (VSCode, Cursor, Alacritty) stay there and are managed
+143	at that path. Full mapping, plus the `PATH` mechanics, are in
+144	[Shell & environment](shell.md).
+145
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:25:56Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm looking at the rationale document structure and thinking about where to add a new section on config merges. The most logical placement would be alongside other native PowerShell design choices, probably near the settings and configuration management theme. I'll create a section titled something like "Config merges: `run_onchange` pwsh mergers, not `modify_` scripts" to fit with the existing pattern.
+
+Writing the section... So instead of trying to work around Windows's interpreter routing limitations, I'm using a PowerShell template script in `.chezmoiscripts/` that runs natively through the proper `pwsh` interpreter, recursively deep-merges the overlay files into the live settings while preserving any keys the tool has written, and avoids external dependencies entirely.
+
+The tradeoff is that a `modify_` filter re-asserts on every apply, whereas `run_onchange` only fires when the overlay itself changes — so if a tool overwrites a managed key, it won't be restored until the overlay changes or I manually reset the state. But since Windows doesn't have competing processes fighting over these files like the parent setup does, the lighter trigger is acceptable.
+
+Now I need to write the corresponding section in the Traditional Chinese documentation, matching the structure and finding where this explanation fits.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:25:56Z)**_
+
+Good — clean `## `-per-choice structure. Let me read the zh-TW twin to mirror placement and anchor style.
+
+_**Agent (claude-opus-4-8 2026-07-12 08:25:56Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./docs/rationale.zh-TW.md`
+
+```text
+1	# 設計取捨
+2	
+3	說明此設定為何這樣選擇。
+4	
+5	## PowerShell 7 為主，cmd.exe 選用（透過 Clink）
+6	
+7	`cmd.exe`（DOS 血統的 shell）沒有像樣的腳本能力：沒有真正的函式、沒有結構化資料、
+8	引號處理很彆扭。**PowerShell 7（`pwsh`）** 是 Windows 上的現代預設 —— 物件管線、
+9	真正的模組、跨平台，而且此處每個工具都有一流的 `init` 整合（starship、zoxide、
+10	atuin、fzf、direnv）。Windows PowerShell 5.1 雖然內建但已凍結；我們安裝並鎖定 pwsh 7。
+11	此 repo 的一切 —— `$PROFILE` 片段、aliases、函式、copilot-proxy —— 都是為 pwsh 而寫。
+12	
+13	cmd.exe 不是拿來寫腳本，但也沒被無視：有些工具會叫起它，肌肉記憶也還在。**選用的
+14	`installClink` 開關**會透過 [Clink](https://chrisant996.github.io/clink/)（cmd 的
+15	PSReadLine 對應）給 DOS 提示字元一個 starship prompt，外加 `z` 跳目錄與
+16	Ctrl-R/Ctrl-T fzf。它沿用**同一份 `starship.toml`** 與已寫入 User registry 的 XDG
+17	環境變數 —— 也就是說*設定*是共用的，只有 shell 啟動的「腳本」不同（Clink Lua vs
+18	pwsh profile）。這是 **prompt 與導覽的對等，而非功能對等**：atuin / direnv / tv 以及
+19	每個 pwsh 函式/模組仍然只在 pwsh。pwsh 仍是預設與主要目標；cmd 只是有限度的次要目標。
+20	見 [Shell → cmd.exe via Clink](shell.zh-TW.md#cmdexe-via-clink)。
+21	
+22	（WSL 很好，但它是 Linux 環境 —— 由跨平台 dotfiles 處理，不在此 repo。這個 repo
+23	的重點是一個好用的*原生* Windows shell。唯一例外是 Docker Desktop 的後端：
+24	`installWsl` 開關透過 `wsl --install --no-distribution` 啟用 WSL2 *平台* —— 這是給
+25	Docker 容器用的底層，不是 Linux shell —— 並會自動提權（一次 UAC）且需重開機。
+26	選用的 `installWslUbuntu` 開關再進一步：它註冊一個 Ubuntu 發行版，並在其中*觸發*
+27	跨平台 repo 自己的安裝程式（一條從 Windows 端答案凍結出來的非互動式 `chezmoi
+28	init`）—— 即使如此，Linux 設定仍由那個 repo 擁有，這個 repo 只是啟動器。）
+29	
+30	## scoop 管 CLI + winget 管應用程式，而非 Chocolatey
+31	
+32	| | scoop | winget | Chocolatey |
+33	|---|---|---|---|
+34	| 需要系統管理員 | 否（使用者層級） | 機器層級應用程式才需要 | 通常需要 |
+35	| 擅長 | CLI/開發工具 | GUI/Store 應用程式 | 廣泛的舊套件涵蓋 |
+36	| 可重現 | `scoop export/import` | `winget export/import` | `packages.config` |
+37	| 更新方式 | `scoop update *` | `winget upgrade --all` | `choco upgrade all` |
+38	
+39	**scoop** 把開發 CLI 裝到每個使用者自己的目錄，**不會跳 UAC**、易於鎖版本、
+40	移除乾淨 —— 非常適合這裡約 20 個 shell 工具。**winget** 是微軟官方管理器，對 GUI
+41	應用程式與第一方安裝程式（VSCode、PowerToys、Steam…）的目錄最完整。
+42	
+43	**Chocolatey** 長期以來是預設選擇，套件涵蓋也最廣，但它偏重系統管理員權限、對
+44	每使用者的開發設定較不可重現。它保留為備援，只在 scoop 與 winget 都缺的少數套件才用。
+45	
+46	## Runtime：scoop 原生，而非 Windows 上的 mise
+47	
+48	macOS/Linux dotfiles 用 **mise** 管理語言 runtime。在 Windows 上我們試過後放棄了
+49	—— runtime 改用 **scoop 原生安裝**（Python 交給 **uv**）。
+50	
+51	mise 在這裡撐不住的原因：
+52	
+53	- **shims / activate 無法可靠地把全域工具放上 PATH。** `mise activate` 的 pwsh
+54	  prompt-hook 與 shims 目錄實測都沒把全域鎖定的工具（`bun`、`go`）放上 PATH ——
+55	  `mise use -g bun`「成功」了，但 `bun` 卻找不到。
+56	- **架構缺口。** 在 Windows-on-ARM 上，`mise use -g bun` 記了版本，卻沒有
+57	  windows-arm64 的 bun 二進位，留下一個死掉的 shim。
+58	- **與機器既有的 node 打架。** 既有的 `nvm` 蓋掉了 mise 的 node，npm 用錯了。
+59	
+60	scoop 的 shims 在 `~/scoop/shims`，scoop 會把它寫進 user PATH（`profile.d/00_env.ps1`
+61	也會前置），所以 `node`（`nodejs-lts`）、`bun`、`go`、`rustup`、`ruby` 就直接
+62	**在 PATH 上**，不用 activate 那套。**Python** 由 uv 管理（`uv python install
+63	--default --preview`），同時把 `python`/`python3` 放到 `~/.local/bin`。
+64	
+65	代價是：**沒有 per-project 的 runtime 鎖版本**（mise 的招牌功能）。對 Windows 開發機
+66	而言，換來「工具真的在 PATH 上」是划算的。若你要 per-project 版本，`scoop install
+67	mise` 自己直接用 —— 這裡沒有任何東西依賴它。完整除錯過程見
+68	`backlog/windows-arm64-managed-machine-rough-edges.md`。
+69	
+70	## 終端多工器：WezTerm（穩定預設）+ herdr（原生 beta）
+71	
+72	`tmux` 與 `zellij` 是**只有 Unix** —— 過去沒有原生 Windows 版，所以此處沒有（你仍可在
+73	WSL 裡跑）。這點正在改變：**herdr** 推出了實驗性的原生 Windows beta。原生選項有：
+74	
+75	| 選項 | 分割/分頁 | 卸離+保留 | 備註 |
+76	|---|---|---|---|
+77	| **WezTerm** | 有（panes/tabs、Lua `wezterm.mux`） | 有（mux server + `wezterm connect`） | 原生 Windows；穩定預設 |
+78	| **herdr** | 有（滑鼠優先的 panes/splits） | 有（常駐 session、卸離/重連） | 原生 Windows、**preview beta**；最接近 tmux/zellij —— 透過 `installHerdr` 選用 |
+79	| Windows Terminal | 有（panes/tabs） | 無 | 很好的終端，但無 session 保留 |
+80	| Alacritty | 無 | 無 | 快、極簡；搭配多工器用 |
+81	| tmux / zellij | — | — | 只有 Unix；在 WSL 裡用 |
+82	
+83	**WezTerm**（`wez.wezterm`）是穩定預設：原生 Windows 終端、內建多工器 —— 分割 panes、
+84	分頁，以及可卸離再重連的常駐 mux server（`wezterm connect`），還能用 Lua `wezterm.mux`
+85	API 腳本化版面。它不是 1:1 的 tmux（session/保留模型不同），但已是最接近的穩定原生體驗。
+86	
+87	**herdr**（選用，`installHerdr`）是更新、最接近 tmux/zellij 的答案：滑鼠優先的原生多工器
+88	（ConPTY），有 panes、splits、常駐 session 與卸離/重連。它沒有 scoop/winget manifest ——
+89	透過 herdr.dev 的 `irm | iex` 腳本安裝（Windows 僅有 preview channel），設定則受管於
+90	`~/.config/herdr/config.toml`（以 pwsh 為預設 shell）。它仍是 beta，所以預設關閉。Windows
+91	Terminal 保留給 panes/tabs；Alacritty 保留為快速極簡選項。
+92	
+93	## starship，而非 oh-my-posh
+94	
+95	兩者都是 prompt 引擎；同時用是多餘的。我們選 **starship**，因為完全相同的
+96	`starship.toml` 已經在 macOS 與 Linux dotfiles 上運作 —— 一份設定、到處一致
+97	（`starship init powershell`）。oh-my-posh 很優秀、也很 PowerShell 原生，但採用它
+98	等於要多維護一份只給 Windows 用的 prompt 設定，卻沒有實質好處。
+99	
+100	## 平行的 PowerShell 樹，而非移植 shell 層
+101	
+102	macOS/Linux dotfiles 有一大層 POSIX `shell/*.sh`。把它機械式翻成 PowerShell 會變成
+103	維護黑洞（同一套邏輯的兩種方言逐漸走鐘）。因此 PowerShell 設定是在
+104	`profile.d/*.ps1` **原生撰寫** —— 道地的 pwsh，只共享*行為*，不共享程式碼。
+105	
+106	## 原生 `copilot-proxy`，而非 bash shim
+107	
+108	`copilot-proxy` 工具系列被改寫為真正的 PowerShell 模組（`Invoke-RestMethod`、
+109	`Start-Process`、`ConvertFrom-Json`），而不是去呼叫原本的 bash。只有 Bun 節流 shim
+110	（純 JS）原封不動沿用。見 [copilot-proxy](copilot-proxy.md)。
+111	
+112	## XDG 路徑，而非 `%APPDATA%`
+113	
+114	Windows 與 XDG 用不同的軸切目錄 —— Windows 看資料夾是否*漫遊*
+115	（`AppData\Roaming` vs `AppData\Local`），XDG 看*用途*（config / data / state /
+116	cache）—— 所以 `%APPDATA%` 並不是乾淨的「Windows 版 XDG」。與其硬對應，
+117	`profile.d/00_env.ps1` 直接把 `XDG_CONFIG_HOME` 等設成 Unix 風格的
+118	`~/.config` / `~/.local/share`。吃 XDG 的工具（starship、atuin、zoxide、yazi）
+119	於是維持乾淨的 `$HOME`，與 macOS/Linux dotfiles 一致 —— 一套心智模型、共用設定。
+120	那些忽略 XDG、硬寫死 `%APPDATA%` 的 app（VSCode、Cursor、Alacritty）就留在原處、
+121	於該路徑管理。完整對照與 `PATH` 機制見 [Shell 環境](shell.md)。
+122
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:27:02Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm noticing a mismatch between the Chinese heading text and the anchor slug it would generate — the heading uses Chinese characters, but the cross-link references an English slug like `powershell-7-cmdexe-clink`, which wouldn't match what mkdocs auto-generates from the Chinese text. shell-7-default-cmdexe-optional-via-clink`, which doesn't match the anchor I saw in the cross-link. This suggests either the links are broken but mkdocs --strict didn't catch them (depending on whether anchor validation is enabled), or there are explicit anchors defined somewhere I'm not seeing. Since the build passed with --strict, I'm not sure if anchor validation is even active in this mkdocs setup. For my purposes though, I don't actually need to add cross-references to this new section. Adding both sections now... On Windows, chezmoi can't reliably execute the `modify_` script because it routes interpreters based on the target file's extension (`.json` in this case), which has no interpreter mapping, and Windows ignores shebangs and file permissions that Unix falls back on. You can't force a `.ps1` extension since that's tied to the target filename, and the only wired interpreter is `[interpreters.ps1]` which only works when the managed file itself is a `.ps1` — so we need `run_onchange` with explicit `pwsh` invocation instead.
+
+The solution is to write a `.ps1.tmpl` script in `.chezmoiscripts/` that runs natively through the `[interpreters.ps1]` mapping, avoiding external dependencies like `sh` and `jq`, and performs a recursive deep merge of a chezmoi-ignored overlay into the live file while preserving all keys the tool wrote.
+
+The tradeoff is that `run_onchange` only re-fires when the overlay changes, so if the tool overwrites a managed key later, it won't be restored until the overlay changes or state is reset — but this lighter trigger is acceptable for Windows since there's no competing process constantly rewriting the settings file like CodeIsland does on the parent system.
+
+Now moving to the zh-TW version with the same `run_onchange` pwsh merge approach instead of `modify_`. chezmoi 選擇直譯器是根據目標檔的副檔名,但 `modify_settings.json` 的目標是 `settings.json`(`.json` 副檔名),所以找不到對應的直譯器設定。Unix 上會退回用腳本的 shebang 和執行位元,但 Windows 兩者都不支援,導致無法可靠執行 —— 而且無法給腳本 `.ps1` 副檔名,因為那會綁定到目標檔名上。
+
+所以改成把每個合併邏輯放在 `.chezmoiscripts/` 下的 `run_onchange_after_*.ps1.tmpl` 檔案,這樣就能直接走 `[interpreters.ps1] = pwsh` 的路由、原生執行、零外部依賴,並透過 `{{ include }}` 把 chezmoi 忽略的 overlay 檔案(像是 `editors/*.json`、`claude/settings-overlay.json`)納入處理。
+
+關鍵差異在於 `modify_` 過濾器每次 apply 都會重新套用,但 `run_onchange` 只在 overlay 改變時才重跑;如果工具之後覆蓋了某個受管的 key,它不會被還原,除非 overlay 改變或手動重置狀態。父 repo 需要每次都強制執行是因為 CodeIsland 和 workmux 會持續改寫 `~/.claude/settings.json`,但 Windows 上沒有這種持續寫入的情況。
+
+現在要編輯 EN 版本,在第 131 行後(copilot-proxy 段落結尾,`## XDG paths` 之前)插入新內容,用邊界文字作為錨點。
+
+同時也要編輯 zh-TW 版本,在對應位置做相同的修改。
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:27:02Z)**_
+
+`docs/rationale.md` is exactly where design choices live. I'll add a section to both twins, placed between the copilot-proxy and XDG sections. No inbound anchor links, so the strict build stays safe.
+
+_**Agent (claude-opus-4-8 2026-07-12 08:27:03Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/docs/rationale.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:27:25Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/david/src/tries/2026-07-09-windows-dotfiles/docs/rationale.zh-TW.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:27:32Z)**_
+
+Both twins updated. Verifying the strict docs build stays green:
+
+_**Agent (claude-opus-4-8 2026-07-12 08:27:42Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Rebuild docs strict; confirm green
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+just docs-build 2>&1 | grep -iE "error|warning:|abort|built|translated" | grep -viE "mkdocs 2.0|backward-incompat|plugin system|theme|migration|contribution|unlicensed|analysis" ; echo "exit: ${PIPESTATUS[0]}"
+```
+
+```text
+INFO    -  mkdocs_static_i18n: Translated 7 navigation elements to 'zh-TW'
+INFO    -  Documentation built in 1.69 seconds
+exit:
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:27:53Z)**_
+
+<think><details><summary>Thought Process</summary>
+The docs build completed successfully in 1.69 seconds, but I'm noticing the exit status check isn't working as expected—PIPESTATUS[0] is printing empty, which suggests the pipe might be interfering with how the exit code is being captured.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:27:53Z)**_
+
+Let me confirm the build exit code cleanly (the piped `PIPESTATUS` printed empty).
+
+_**Agent (claude-opus-4-8 2026-07-12 08:28:02Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Confirm docs-build exit code and no warnings
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+just docs-build >/tmp/db.log 2>&1; echo "docs-build exit: $?"
+grep -iE "warning|error|aborted" /tmp/db.log | grep -viE "mkdocs 2.0|backward-incompat|plugin system|theme|migration|contribution|unlicensed|full analysis|community" || echo "(no warnings/errors)"
+rm -f /tmp/db.log
+```
+
+```text
+docs-build exit: 0
+ │  ⚠  Warning from the Material for MkDocs team
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:28:19Z)**_
+
+<think><details><summary>Thought Process</summary>
+The docs build passed without any actual warnings, just the Material for MkDocs informational banner. Based on the pattern from our previous interaction where they asked me to add something to the doc notes, I should commit these changes even though they didn't explicitly say to this time.
+
+Actually, wait — they only said "add this to doc notes" without mentioning a commit, and the guidance is to only commit when asked. I'll report the changes and the clean build, then let them decide whether to commit this as a new commit or amend the previous one.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:28:19Z)**_
+
+`docs-build exit: 0` — the only "Warning" is Material's informational banner, not a build issue. Strict build is green.
+
+Done. I added the explanation as a new rationale section, mirrored in both language twins:
+
+- `docs/rationale.md` → **"`run_onchange` pwsh mergers for JSON config, not `modify_` scripts"**
+- `docs/rationale.zh-TW.md` → **「JSON 設定用 `run_onchange` pwsh 合併器，而非 `modify_` 腳本」**
+
+Placed between the copilot-proxy and XDG sections. It captures the same three points from my explanation: the interpreter-routing-by-target-extension problem (`.json` → no interpreter, Windows honors no shebang), the wrong `sh`+`jq` toolchain, and the every-apply-vs-on-change tradeoff (with the CodeIsland/workmux context for why the parent needs `modify_`). It cross-references invariant #5 in `AGENTS.md`.
+
+I have **not** committed these — the last commit (`fc936fa`) is already on main, and you only asked me to add the notes. Want me to commit them (new commit, or amend into `fc936fa`)?
+
+Current uncommitted state:
+
+_**Agent (claude-opus-4-8 2026-07-12 08:28:19Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Show uncommitted doc changes
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+git status --short | grep -v '^??'
+```
+
+```text
+ M .specstory/history/2026-07-12_07-48-49Z-at-users-david-local.md
+ M docs/rationale.md
+ M docs/rationale.zh-TW.md
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:28:23Z)**_
+
+Both `docs/rationale.md` and `docs/rationale.zh-TW.md` are modified (the `.specstory` file is just this session's live transcript). Ready to commit whenever you'd like — just say the word and tell me new-commit vs amend.
+
+---
+
+_**User (2026-07-12 08:30:41Z)**_
+
+sure create new commit

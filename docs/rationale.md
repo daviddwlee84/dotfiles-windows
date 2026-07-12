@@ -130,6 +130,42 @@ The `copilot-proxy` tool series is reimplemented as a real PowerShell module
 to the original bash. Only the Bun throttle shim (pure JS) is reused verbatim. See
 [copilot-proxy](copilot-proxy.md).
 
+## `run_onchange` pwsh mergers for JSON config, not `modify_` scripts
+
+Some JSON config surfaces are **owned by the tool at runtime** — Claude Code
+rewrites `~/.claude/settings.json` (plugins it installs, permissions you grant),
+VSCode/Cursor rewrite their `settings.json`. Deploying a static managed copy
+would clobber that live state, so these are **merged**, not overwritten. The
+macOS/Linux repo merges with a chezmoi **`modify_` script** (a `sh` + `jq`
+filter: read the live file on stdin, emit the merged result on stdout). On
+Windows that doesn't hold up:
+
+- **Interpreter routing is by the *target's* extension.** chezmoi chooses a
+  `modify_`/`create_` script's interpreter from the managed file's extension via
+  `[interpreters.<ext>]`. `modify_settings.json` targets `settings.json` →
+  `.json`, which maps to no interpreter. On Unix chezmoi falls back to the
+  script's shebang (`#!/bin/sh`) + exec bit; Windows honors neither, so it can't
+  run the script reliably — and you can't hand it a `.ps1` extension, because
+  that's fixed to the target name. Only `[interpreters.ps1] = pwsh` is wired up,
+  and it only helps when the *managed file itself* is a `.ps1`.
+- **Wrong toolchain.** The parent filter is `sh` + `jq` — not guaranteed on a
+  pwsh-first box, and rewriting it in pwsh still hits the routing wall above.
+
+So each merge is a **`run_onchange_after_*.ps1.tmpl`** in `.chezmoiscripts/`
+instead: a real `.ps1` that routes cleanly through `[interpreters.ps1] = pwsh`,
+runs natively with no external deps, and recursively deep-merges a
+chezmoi-ignored overlay (`editors/*.json`, `claude/settings-overlay.json`,
+embedded via `{{ include }}`) into the live file — preserving every key the tool
+wrote. This is invariant #5 in `AGENTS.md`.
+
+**Tradeoff:** a `modify_` filter re-asserts on *every* apply; `run_onchange` only
+re-fires when its rendered content (the overlay) changes. If the tool later
+overwrites a managed key, it isn't restored until the overlay changes or you
+reset state (`chezmoi state delete-bucket --bucket=entryState`). The parent needs
+every-apply enforcement because CodeIsland / workmux keep rewriting
+`~/.claude/settings.json`; Windows has no such contenders, so the lighter trigger
+is fine.
+
 ## XDG paths, not `%APPDATA%`
 
 Windows and XDG split directories on different axes — Windows by whether a
