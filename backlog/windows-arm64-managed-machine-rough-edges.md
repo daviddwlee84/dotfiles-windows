@@ -24,6 +24,14 @@ emulation but have sharp edges. Captured here so we don't re-derive them.
      compiler matches the emulated nvim — `scoop install gcc` (amd64 MinGW) is
      the pragmatic fix on ARM64. nvim-treesitter also may just not tick "C
      compiler" for zig on the main branch.
+   - **Resolved (2026-07)**: confirmed nvim-treesitter's `main` branch **never**
+     accepts zig — it compiles via `tree-sitter build` → Rust `cc` crate
+     (MSVC/GCC/Clang only; the README requirements link straight to the `cc`
+     crate). Dropped `zig` and moved amd64 `gcc` into the **baseline** scoop set
+     for all arches (previously ARM64-only), so plain x64 hosts get it too. Full
+     write-up: [`pitfalls/nvim-treesitter-no-c-compiler-despite-zig.md`](../pitfalls/nvim-treesitter-no-c-compiler-despite-zig.md).
+     The remaining open question below (all-arm64 vs all-amd64 nvim toolchain) is
+     now moot for the compiler — amd64 `gcc` is the answer on both arches.
    - Open question: ship an arm64-native nvim (winget `Neovim.Neovim`?) so the
      whole toolchain is arm64, vs. force amd64 everything.
 
@@ -52,9 +60,10 @@ emulation but have sharp edges. Captured here so we don't re-derive them.
 ## Decision (so far)
 
 Handle the cheap/clear ones in-repo (tree-sitter CLI, wakatime disable,
-managedMachine toggle, Notepad++ drop, UTF-8 console). Leave the arch-mismatch
-(nvim/zig) and mason-download story as documented workarounds until we decide
-whether to commit to an all-arm64 or all-amd64 Neovim toolchain.
+managedMachine toggle, Notepad++ drop, UTF-8 console). The nvim treesitter
+compiler is now settled too — amd64 `gcc` in the baseline (see point 1). Leave
+the mason-download story as a documented workaround until we decide whether to
+commit to an all-arm64 or all-amd64 Neovim toolchain.
 
 ## References
 

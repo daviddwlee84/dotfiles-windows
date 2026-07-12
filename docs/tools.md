@@ -26,8 +26,7 @@ tools; **winget** handles GUI apps.
 | bun | JS runtime + package manager (backs copilot-proxy) |
 | just | task runner (this repo's `justfile`) |
 | make | GNU make |
-| zig | C compiler for Neovim tree-sitter parsers |
-| gcc | amd64 C compiler (**ARM64 hosts only** — matches the x64-emulated nvim) |
+| gcc | C compiler for Neovim tree-sitter parsers (MinGW-w64; nvim-treesitter's `main` branch compiles via `tree-sitter build` → Rust `cc` crate, which needs gcc/clang/MSVC — **not** zig) |
 | tree-sitter | tree-sitter CLI (nvim-treesitter `main` branch) |
 | win32yank | clipboard provider for Neovim |
 | gnupg | `gpg` (git commit signing, verification) |

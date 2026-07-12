@@ -3952,3 +3952,80 @@ Both `docs/rationale.md` and `docs/rationale.zh-TW.md` are modified (the `.specs
 _**User (2026-07-12 08:30:41Z)**_
 
 sure create new commit
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-12 08:30:48Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Stage rationale doc changes and transcript
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+git add docs/rationale.md docs/rationale.zh-TW.md .specstory/history/2026-07-12_07-48-49Z-at-users-david-local.md
+echo "=== staged ===" && git diff --cached --stat
+```
+
+```text
+=== staged ===
+ .../2026-07-12_07-48-49Z-at-users-david-local.md   | 733 +++++++++++++++++++++
+ docs/rationale.md                                  |  36 +
+ docs/rationale.zh-TW.md                            |  29 +
+ 3 files changed, 798 insertions(+)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:30:58Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit rationale doc notes on main
+
+```bash
+cd /Users/david/src/tries/2026-07-09-windows-dotfiles
+git commit -F - <<'MSG'
+docs(rationale): why run_onchange pwsh mergers, not modify_ on Windows
+
+Record the design decision behind invariant #5: chezmoi routes a
+modify_/create_ script's interpreter by the *target's* extension, so a
+modify_settings.json (target .json) maps to no interpreter and can't run
+reliably on Windows (no shebang/exec-bit fallback); the parent's sh+jq
+toolchain is also wrong for a pwsh-first box. run_onchange *.ps1.tmpl mergers
+route cleanly through [interpreters.ps1]=pwsh instead. Notes the every-apply
+(modify_) vs on-overlay-change (run_onchange) tradeoff. Mirrored in the zh-TW
+twin.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+MSG
+```
+
+```text
+[WARNING] Unstaged files detected.
+[INFO] Stashing unstaged files to /Users/david/.cache/pre-commit/patch1783845056-18751.
+Auto-redact secrets in agent artifacts...................................Passed
+Detect hardcoded secrets.................................................Passed
+detect private key.......................................................Passed
+check for added large files..............................................Passed
+check for merge conflicts................................................Passed
+fix end of files.........................................................Passed
+trim trailing whitespace.................................................Passed
+[INFO] Restored changes from /Users/david/.cache/pre-commit/patch1783845056-18751.
+[main 8331157] docs(rationale): why run_onchange pwsh mergers, not modify_ on Windows
+ 3 files changed, 798 insertions(+)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:31:04Z)**_
+
+<think><details><summary>Thought Process</summary>
+Confirming the commit went through successfully.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-12 08:31:04Z)**_
+
+Committed as `8331157` on `main` — pre-commit hooks (secret scan, private-key, redaction) all passed.
+
+**`docs(rationale): why run_onchange pwsh mergers, not modify_ on Windows`** — `docs/rationale.md` + zh-TW twin + transcript.
+
+Repo now sits **2 commits ahead** of remote (`fc936fa` feature + `8331157` docs), nothing pushed. The only remaining working-tree change is this session's live SpecStory transcript, which will fold into a later commit. Push whenever you're ready — `windows-latest` CI is the gate.

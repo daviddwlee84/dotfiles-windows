@@ -166,19 +166,17 @@ Scoop-Install @(
     # here; Python via uv (below); go/rust/ruby under Extra runtimes.
     # copilot-proxy needs bun/bunx.
     'nodejs-lts', 'bun',
-    # LazyVim needs a C compiler for tree-sitter parsers (zig), the tree-sitter
-    # CLI the nvim-treesitter `main` branch requires, and a clipboard provider so
-    # `unnamedplus` yanks reach the Windows clipboard (win32yank).
-    'zig', 'tree-sitter', 'win32yank'
+    # LazyVim pins nvim-treesitter to the `main` branch, which compiles parsers
+    # by shelling out to `tree-sitter build`. That CLI compiles via Rust's `cc`
+    # crate, which only knows MSVC / GCC / Clang -- NOT zig (only the retired
+    # `master` branch accepted zig). So the parser compiler must be a real gcc on
+    # PATH; zig here does nothing. scoop's `gcc` is nuwen MinGW-w64, amd64-only --
+    # which also matches the amd64 nvim (native on x64, x64-emulated on ARM64), so
+    # this ONE line covers both arches (previously gcc was ARM64-only). Plus the
+    # tree-sitter CLI `main` requires, and win32yank so `unnamedplus` yanks reach
+    # the Windows clipboard. (Leaner gcc alt: scoop `mingw` = niXman MinGW-w64 UCRT.)
+    'gcc', 'tree-sitter', 'win32yank'
 )
-
-# On Windows-on-ARM, scoop's neovim is amd64 (runs under x64 emulation) while
-# zig installs arm64-native, so zig-built tree-sitter parsers are the wrong
-# arch for nvim. Add an amd64 gcc that matches the emulated nvim.
-if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') {
-    Info 'ARM64 host: adding amd64 gcc for nvim-treesitter'
-    Scoop-Install @('gcc')
-}
 
 # gh-dash: GitHub PR/issue dashboard TUI (`gh dash`). It's a gh extension, not a
 # scoop package, so it needs gh to be authenticated -- this no-ops on a fresh
