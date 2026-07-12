@@ -41,6 +41,46 @@ function Test-Admin {
     } catch { $false }
 }
 
+function Get-ScoopRoot {
+    if ($env:SCOOP) { $env:SCOOP } else { Join-Path $env:USERPROFILE 'scoop' }
+}
+
+function Reset-ScoopRepos {
+    # scoop's core repo + each bucket are git clones of disposable package
+    # indexes. On Windows they routinely show every manifest as "modified" from
+    # CRLF<->LF renormalization, which makes `scoop update`'s `git pull` abort:
+    # "Your local changes to the following files would be overwritten by merge".
+    # Hard-resetting to the committed state is always safe here. No-op without git.
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return }
+    $root = Get-ScoopRoot
+    $repos = @()
+    $core = Join-Path $root 'apps\scoop\current'
+    if (Test-Path (Join-Path $core '.git')) { $repos += $core }
+    $bucketsDir = Join-Path $root 'buckets'
+    if (Test-Path $bucketsDir) {
+        foreach ($b in (Get-ChildItem $bucketsDir -Directory -ErrorAction SilentlyContinue)) {
+            if (Test-Path (Join-Path $b.FullName '.git')) { $repos += $b.FullName }
+        }
+    }
+    foreach ($r in $repos) {
+        Info "  reset --hard $(Split-Path $r -Leaf)"
+        git -C $r reset --hard HEAD 2>$null
+    }
+}
+
+function Invoke-Scoop {
+    # Run scoop; if it exits non-zero -- commonly a bucket `git pull` aborting on
+    # phantom CRLF changes (see Reset-ScoopRepos) -- reset scoop's git repos and
+    # retry once. Buckets are disposable indexes, so the reset never loses work.
+    param([Parameter(ValueFromRemainingArguments)][string[]]$ScoopArgs)
+    scoop @ScoopArgs
+    if ($LASTEXITCODE -ne 0) {
+        Info "scoop $($ScoopArgs -join ' ') failed (exit $LASTEXITCODE) -- resetting scoop repos and retrying once"
+        Reset-ScoopRepos
+        scoop @ScoopArgs
+    }
+}
+
 Info 'Windows dotfiles bootstrap'
 
 # 0. Allow local scripts for the current user.
@@ -65,11 +105,32 @@ if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
     }
 }
 
-# 2. Baseline tools via scoop.
-Info 'Installing git, PowerShell 7, chezmoi, uv'
-scoop install git 7zip
+# 1b. Git first + stop CRLF churn in scoop's buckets. Git for Windows defaults to
+#     core.autocrlf=true, which rewrites scoop's LF manifests to CRLF; the whole
+#     `main`/`extras` bucket then shows as modified and the next `scoop update`
+#     (a git pull) aborts: "Your local changes to the following files would be
+#     overwritten by merge". Install git, set autocrlf=input (only if unset/true,
+#     so a deliberate choice is never overridden), and hard-reset the bucket
+#     clones to clear any drift already on disk.
+#     See pitfalls/scoop-local-changes-overwritten-by-merge.md.
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    Info 'Installing git'
+    Invoke-Scoop install git
+}
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    $autocrlf = git config --global core.autocrlf 2>$null
+    if ([string]::IsNullOrWhiteSpace($autocrlf) -or $autocrlf -eq 'true') {
+        Info "git core.autocrlf was '$autocrlf' -> setting 'input' (prevents scoop bucket CRLF churn)"
+        git config --global core.autocrlf input
+    }
+    Reset-ScoopRepos
+}
+
+# 2. Remaining baseline tools via scoop (git installed above).
+Info 'Installing 7zip, PowerShell 7, chezmoi, uv'
+Invoke-Scoop install 7zip
 foreach ($t in 'pwsh', 'chezmoi', 'uv') {
-    if (-not (Get-Command $t -ErrorAction SilentlyContinue)) { scoop install $t }
+    if (-not (Get-Command $t -ErrorAction SilentlyContinue)) { Invoke-Scoop install $t }
 }
 
 # 3. Refresh PATH from the registry so the just-installed scoop shims (chezmoi,
