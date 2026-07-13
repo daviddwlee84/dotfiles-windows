@@ -27,13 +27,48 @@ $overlay = $overlayJson | ConvertFrom-Json -AsHashtable
 # Recursive deep-merge: overlay leaves win; live-only keys are preserved. Unlike
 # the editor overlay's shallow top-level assign, this keeps the user's nested
 # state (e.g. permissions.allow/deny arrays, other enabledPlugins) intact.
+#
+# The `hooks` object gets special, ADDITIVE handling (see Merge-ClaudeHooks) so
+# our Notification/Stop notify entries are appended without clobbering hook
+# entries the user or other tools added. Every other array value is still
+# replaced wholesale (overlay wins), which is what we want for scalars/plugins.
 function Merge-Hashtable([hashtable]$base, [hashtable]$overlay) {
     foreach ($k in $overlay.Keys) {
-        if ($base.ContainsKey($k) -and ($base[$k] -is [hashtable]) -and ($overlay[$k] -is [hashtable])) {
+        if ($k -eq 'hooks' -and ($overlay[$k] -is [hashtable])) {
+            if ($base[$k] -isnot [hashtable]) { $base[$k] = @{} }
+            Merge-ClaudeHooks $base[$k] $overlay[$k]
+        }
+        elseif ($base.ContainsKey($k) -and ($base[$k] -is [hashtable]) -and ($overlay[$k] -is [hashtable])) {
             Merge-Hashtable $base[$k] $overlay[$k]
-        } else {
+        }
+        else {
             $base[$k] = $overlay[$k]
         }
+    }
+}
+
+# Additive per-event hook merge, mirroring the parent repo's jq reduce in
+# dot_claude/modify_settings.json: for each event, append only the overlay
+# entries whose .hooks[0].command isn't already present in the live array,
+# preserving live entries verbatim. Wholesale-replacing the arrays (the old
+# behavior) would drop hooks the user / other tools add at runtime. @(...) also
+# forces array shape so ConvertTo-Json emits a JSON array even for a single
+# entry (Claude requires hooks.<event> to be an array).
+function Merge-ClaudeHooks([hashtable]$base, [hashtable]$overlay) {
+    foreach ($evt in $overlay.Keys) {
+        # NB: plain two-line assign, NOT `$live = if (...) { @(..) } else { @() }`.
+        # A single-element @() flowing out of an if-EXPRESSION gets unwrapped back
+        # to a scalar (here a hashtable), so `$live + $additions` then throws
+        # "A hash table can only be added to another hash table". Direct `= @(...)`
+        # keeps the array shape.
+        $live = @()
+        if ($null -ne $base[$evt]) { $live = @($base[$evt]) }
+        $liveCmds = @($live | ForEach-Object { $_.hooks[0].command })
+        $additions = @($overlay[$evt] | Where-Object {
+            $cmd = $_.hooks[0].command
+            (-not $cmd) -or ($liveCmds -notcontains $cmd)
+        })
+        $base[$evt] = @($live + $additions)
     }
 }
 

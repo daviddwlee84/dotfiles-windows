@@ -152,6 +152,14 @@ Enabled by **Install coding agents**:
   `permissions.defaultMode: auto` + `skipDangerousModePermissionPrompt`. **Restart
   Claude Code** after `chezmoi apply` to see the HUD. See
   [running multiple agents](claude-code-agents.md).
+- **Desktop notifications** — `apprise` (`uv tool install --with pywin32 apprise`)
+  fires native Windows toasts on Claude Code's **Notification** (needs your
+  attention) and **Stop** (task finished) events, via a native-pwsh hook
+  (`~/.claude/hooks/notify.ps1`) the settings overlay wires into `hooks`. Routing
+  lives in `~/.config/apprise/apprise.yaml` — the `windows://` backend tagged
+  `desktop`; add your own remote services (Discord/Slack/…) in the create-once
+  `~/.config/apprise/custom.yaml`. Port of the parent repo's `notify.sh` +
+  `apprise.yaml`.
 
 The official **ChatGPT** desktop app installs via the Microsoft Store (see GUI
 apps); **Codex** is the `@openai/codex` npm CLI above, not a Store app. SpecStory

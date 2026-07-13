@@ -143,6 +143,12 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
   同時啟用 `pyright-lsp` 外掛，並設定 `permissions.defaultMode: auto` 與
   `skipDangerousModePermissionPrompt`。執行 `chezmoi apply` 後請**重啟 Claude
   Code** 才會看到 HUD。參見[同時執行多個代理](claude-code-agents.zh-TW.md)。
+- **桌面通知** —— `apprise`（`uv tool install --with pywin32 apprise`）在 Claude
+  Code 的 **Notification**（需要你注意）與 **Stop**（任務完成）事件時，透過原生
+  pwsh hook（`~/.claude/hooks/notify.ps1`，由 settings overlay 寫入 `hooks`）
+  彈出原生 Windows toast。路由設定於 `~/.config/apprise/apprise.yaml` —— 標記為
+  `desktop` 的 `windows://` 後端；自己的遠端服務（Discord/Slack/…）請加在只建立一次
+  的 `~/.config/apprise/custom.yaml`。移植自上游 repo 的 `notify.sh` + `apprise.yaml`。
 
 官方 **ChatGPT** 桌面程式透過 Microsoft Store 安裝（見 GUI 應用程式）；**Codex**
 是上面的 `@openai/codex` npm CLI，不是 Store app。SpecStory 沒有原生 Windows CLI

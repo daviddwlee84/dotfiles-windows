@@ -1,0 +1,17 @@
+# Your custom Apprise notification services.
+# This file is created once by chezmoi and NEVER overwritten, so it is safe to
+# put service URLs that contain secrets (webhook tokens, API keys) here — they
+# are not synced back into the dotfiles repo.
+#
+# Tag services so hooks/tools can target a subset. The Claude notify hook uses
+# the `desktop` tag (defined in apprise.yaml). Example remote services:
+#
+#   urls:
+#     - discord://webhook_id/webhook_token:
+#         tag: chat
+#     - tgram://bottoken/ChatID:
+#         tag: chat
+#
+# See example.yaml and https://appriseit.com/getting-started/configuration/
+version: 1
+urls: []
