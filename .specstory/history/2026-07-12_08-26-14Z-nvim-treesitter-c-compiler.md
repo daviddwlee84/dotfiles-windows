@@ -7712,3 +7712,135 @@ git status --porcelain
 ?? backlog/wsl-systemd-vs-wsl-profile.md
 ```
 </details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-12 10:44:42Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit and push TODO + backlog eval doc
+
+```bash
+cd "$(git rev-parse --show-toplevel)"
+git add TODO.md backlog/wsl-systemd-vs-wsl-profile.md \
+  .specstory/history/2026-07-12_08-26-14Z-nvim-treesitter-c-compiler.md
+
+git commit -F - <<'EOF'
+docs(todo): capture WSL systemd-vs-dedicated-profile decision
+
+Records the open architectural choice raised after the WSL systemd fix: keep
+booting systemd for the reused `ubuntu_server` profile (shipped) vs. add a
+dedicated no-systemd WSL profile in the cross-platform repo (Docker Desktop's
+WSL2 integration may already cover `docker`), and/or make the docker role
+`failed_when: false`. Adds a [?/M] TODO entry + backlog eval doc with the
+option trade-offs so it isn't re-derived later.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+EOF
+echo "=== push ===" && git push origin main 2>&1 | tail -4
+echo "=== sync ===" && git status -sb | head -1
+```
+
+```text
+[WARNING] Unstaged files detected.
+[INFO] Stashing unstaged files to /Users/david/.cache/pre-commit/patch1783853073-71464.
+Auto-redact secrets in agent artifacts...................................Passed
+Detect hardcoded secrets.................................................Passed
+detect private key.......................................................Passed
+check for added large files..............................................Passed
+check for merge conflicts................................................Passed
+fix end of files.........................................................Passed
+trim trailing whitespace.................................................Passed
+[INFO] Restored changes from /Users/david/.cache/pre-commit/patch1783853073-71464.
+[main 4d9bf19] docs(todo): capture WSL systemd-vs-dedicated-profile decision
+ 3 files changed, 642 insertions(+)
+ create mode 100644 backlog/wsl-systemd-vs-wsl-profile.md
+=== push ===
+To https://github.com/daviddwlee84/dotfiles-windows.git
+   71f227d..4d9bf19  main -> main
+=== sync ===
+## main...origin/main
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-12 10:44:54Z)**_
+
+<think><details><summary>Thought Process</summary>
+I've pushed the commit and confirmed main is in sync. The architectural question is answered—systemd is the default approach, with a dedicated WSL profile as a viable alternative to evaluate—and I've captured this in the TODO and backlog documentation.
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-12 10:44:59Z)**_
+
+Done — committed and pushed (`71f227d..4d9bf19 main -> main`, in sync).
+
+## Answer to your question
+
+Both are valid; they trade off differently:
+
+- **Keep systemd + `ubuntu_server`** (what shipped) — least surprising, WSL gets the full server env unchanged, rootless docker actually works, zero cross-repo change. Cost: forces systemd (minor boot overhead; needs modern WSL).
+- **Dedicated no-systemd WSL profile** — leaner and avoids forcing systemd, and it has a strong argument: this repo already installs **Docker Desktop with WSL2 integration**, which exposes `docker` inside *any* distro — so the companion distro may not need its own rootless `dockerd` (or systemd) at all. Cost: a new profile to design and maintain in `daviddwlee84/dotfiles`, plus toolset divergence from the server profile.
+
+My recommendation: **ship systemd now (done), do the `failed_when: false` safety net upstream regardless, and defer the dedicated-profile decision to a spike** — the deciding question is "does WSL need its own dockerd, or does Docker Desktop integration cover it?"
+
+## Recorded so it isn't lost
+
+- `TODO.md` → **`[?/M]` WSL: systemd-enabled `ubuntu_server` vs. a dedicated no-systemd WSL profile**
+- `backlog/wsl-systemd-vs-wsl-profile.md` → full option table (A systemd / B WSL profile / C graceful role), the key spike question, and the interim decision
+
+(Format matches the existing `[?/…]` entries; note the repo's `todo-kanban.sh`/`add-todo.sh` validators referenced in CLAUDE.md aren't actually present in the tree, so I couldn't auto-validate — worth reconciling that doc drift sometime, but the entry is hand-matched to the lane format.)
+
+---
+
+_**User (2026-07-12 10:45:38Z)**_
+
+是說 WSL 是一定沒有systemd嗎？還是也可以有？
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-12 10:46:09Z)**_
+
+<think><details><summary>Thought Process</summary>
+用戶用繁體中文問 WSL 是否一定沒有 systemd，還是也可以有。我需要澄清 WSL2 其實可以支援 systemd，只是預設關閉，使用者可以透過設定檔選擇啟用。
+
+systemd 支援是在 2022 年 9 月加入的，需要較新版本的 WSL（Microsoft Store 版本 0.67.6 以上或 Windows 11 22H2+），在此之前 WSL 使用微軟自訂的 init 系統作為 PID 1。啟用方式是在 `/etc/wsl.conf` 中設定 `[boot] systemd=true`，然後重啟發行版即可。
+
+啟用後的 systemd 是原生的、微軟支援的實現，可以執行 docker、snapd 等服務，雖然有些 WSL 特定的限制，但 `loginctl enable-linger` 等功能都能正常運作。用戶的系統是 Windows 11 24H2，完全支援 systemd。
+
+我可以提供檢查方式——執行 `wsl -d <distro> -- ps -p 1 -o comm=` 或 `systemctl is-system-running` 來驗證是否已啟用——然後用繁體中文簡潔地說明重點：WSL 預設沒有 systemd 但可選啟用、如何透過 wsl.conf 設定、以及所需的版本要求。
+
+我對這些事實很有把握，不需要額外搜尋。
+
+現在用繁體中文來撰寫回應。
+</details></think>
+
+_**Agent (claude-opus-4-8 2026-07-12 10:46:19Z)**_
+
+可以有 —— **WSL 不是「一定沒有 systemd」,而是「預設關閉、可以手動開」。**
+
+## 預設 vs 開啟
+
+- **預設**:WSL2 的 PID 1 是微軟自己的 `/init`,**不是** systemd。所以 `systemctl` / `loginctl` 會報 `System has not been booted with systemd as init system (PID 1). Can't operate.` —— 這就是 docker role 掛掉的原因。
+- **開啟**:在該 distro 的 `/etc/wsl.conf` 加上:
+  ```ini
+  [boot]
+  systemd=true
+  ```
+  然後 `wsl --terminate <distro>`(或 `wsl --shutdown`)讓它重讀 wsl.conf。下次啟動 WSL 就會把 **真正的 systemd 當作 PID 1** 跑起來,`loginctl enable-linger`、systemd services、timers 都能用。
+
+這正是我這次修的東西 —— `enable-wsl-ubuntu.ps1` 現在會寫入 `[boot] systemd=true`,把 distro 從「預設無 systemd」翻成「有 systemd」。
+
+## 前提條件
+
+WSL 的原生 systemd 支援是 2022/9 才加的,需要:
+- **Store 版的 WSL**(`wsl.exe` ~0.67.6+),Windows 11 內建就是這個版本;
+- 你的機器是 Windows `10.0.26100`(= Windows 11 24H2),**完全支援** ✅。
+
+舊的「Windows 選用功能」版 WS(沒更新到 Store 版)可能沒有 —— 早年得靠 `genie` / `distrod` 之類的 hack,現在原生 `systemd=true` 是乾淨做法。
+
+## 怎麼確認某個 distro 有沒有 systemd
+
+```powershell
+wsl -d Ubuntu-24.04 -- bash -lc 'ps -p 1 -o comm= ; systemctl is-system-running || true'
+```
+`ps -p 1` 顯示 `systemd` → 有;顯示 `init` → 沒有。
+
+所以我先前講的「stock WSL 沒有 systemd」是指**預設狀態**,不是不可能 —— 剛好整個 fix 的重點就是:WSL **能**有 systemd,我們把它打開。而 backlog 那份 B 方案(專用 no-systemd WSL profile)討論的則是「要不要乾脆**不靠** systemd」,那是另一條路,不是因為 WSL 做不到 systemd。

@@ -14,6 +14,7 @@ tools; **winget** handles GUI apps.
 | zoxide | smarter `cd` |
 | fzf, fd, ripgrep | fuzzy find / file search / grep |
 | bat, eza | `cat` / `ls` replacements |
+| glow | Markdown reader / pager — renders `.md` in the terminal |
 | delta | git diff pager |
 | jq | JSON processor |
 | yazi, btop | file manager / system monitor |
