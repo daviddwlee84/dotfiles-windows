@@ -14,6 +14,7 @@ GUI 應用程式。
 | zoxide | 更聰明的 `cd` |
 | fzf、fd、ripgrep | 模糊搜尋 / 找檔案 / grep |
 | bat、eza | `cat` / `ls` 替代品 |
+| glow | Markdown 閱讀器 / 分頁器 —— 在終端機渲染 `.md` |
 | delta | git diff 分頁器 |
 | jq | JSON 處理器 |
 | yazi、btop | 檔案管理員 / 系統監控 |
