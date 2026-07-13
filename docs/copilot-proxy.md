@@ -42,6 +42,12 @@ claude-copilot            # a Claude Code session backed by Copilot
 - **`copilot-here`** writes only the gitignored `.claude/settings.local.json`, never
   the committed `.claude/settings.json`, and adds a `.git/info/exclude` entry so the
   pin never lands in a commit.
+- **`claude-copilot` / `claude-copilot-once`** run Claude Code with
+  `--dangerously-skip-permissions` — the proxy path is the trusted, hands-off flow,
+  so it never stops for permission prompts (plain `claude` is unaffected; the global
+  default stays `auto`). When the SpecStory CLI is on `PATH` they also wrap the
+  session in `specstory run` for auto-saved transcripts; on Windows that CLI has no
+  official release, so it's opt-in via the **SpecStory build** init prompt.
 - **The throttle shim** (`copilot-throttle-shim.js`, run under Bun) caps concurrent
   in-flight requests and transparently retries 403/429 bursts — it's the same JS used
   on macOS/Linux, unchanged.

@@ -163,7 +163,9 @@ Enabled by **Install coding agents**:
 
 The official **ChatGPT** desktop app installs via the Microsoft Store (see GUI
 apps); **Codex** is the `@openai/codex` npm CLI above, not a Store app. SpecStory
-has no native-Windows CLI package, so it's omitted here.
+has no native-Windows CLI package, so it's omitted here — an experimental build
+from the unmerged PR #191 is opt-in via the **SpecStory build** init prompt
+(`installSpecstoryBuild`) or `just specstory-build` (needs git + go).
 
 ## PowerShell modules (PSGallery)
 

@@ -11,6 +11,8 @@
 #   copilot-run <cmd...>            run a command with the proxy env injected
 #   claude-copilot [args...]        one-off Claude Code session on the proxy
 #   claude-copilot-once [args...]   pinned one-shot session, auto-reverted
+# (claude-copilot / -once run claude with --dangerously-skip-permissions — the
+#  proxy flow is the trusted, hands-off path; plain `claude` is unaffected.)
 #   copilot-here [on|off|status]    per-project pin via ./.claude/settings.local.json
 #   copilot-model [<id>|-l|-c]      switch the pinned model
 #   copilot-embed [--model M] [--json] [TEXT|-] | -l
@@ -406,13 +408,20 @@ function claude-copilot {
     elseif ($Argv -and $Argv[0] -in '-h', '--help') {
         Write-Host "Usage: claude-copilot [--no-specstory] [claude args...]"
         Write-Host "  One-off Claude Code session on the Copilot proxy. Sticky: copilot-here on"
+        Write-Host "  Runs claude with --dangerously-skip-permissions (hands-off proxy flow)."
         return
     }
     if ($ss -eq 'auto' -and (Get-Command specstory -ErrorAction SilentlyContinue)) {
-        if ($Argv -and $Argv.Count -gt 0) { copilot-run specstory run claude -c "claude $($Argv -join ' ')" }
+        # specstory's `claude_cmd` (~/.specstory/cli/config.toml) already carries
+        # --dangerously-skip-permissions for the no-arg path; the `-c` override
+        # replaces claude_cmd wholesale, so re-add the flag when passing args.
+        if ($Argv -and $Argv.Count -gt 0) { copilot-run specstory run claude -c "claude --dangerously-skip-permissions $($Argv -join ' ')" }
         else { copilot-run specstory run claude }
     } else {
-        copilot-run claude @Argv
+        # No specstory on PATH (the Windows default — no native CLI yet): run claude
+        # directly, still bypassing permission prompts so behaviour matches the
+        # specstory path regardless of whether specstory is installed.
+        copilot-run claude --dangerously-skip-permissions @Argv
     }
 }
 

@@ -70,6 +70,7 @@ powershell -ExecutionPolicy Bypass -File "%TEMP%\bootstrap.ps1"
 |---|---|---|
 | Role | `workstation` | `workstation` = 完整桌面；`minimal` = 只有 shell |
 | Coding agents | 開（workstation） | Claude Code、OpenCode、Codex、Copilot CLI、SpecStory |
+| SpecStory build | 關 | 從尚未合併的 PR #191 建置實驗性的 Windows SpecStory CLI（需 git + go） |
 | Windows GUI apps | 開（workstation） | VSCode、Cursor、Notepad++、Terminal、Alacritty、PowerToys、Raycast、Docker Desktop、Discord |
 | WSL2 backend | 開（workstation） | Docker Desktop 後端所需的 WSL2；自動提權（一次 UAC），需重開機 |
 | WSL2 Ubuntu | 關 | 安裝 WSL2 Ubuntu 發行版並在其中安裝跨平台 dotfiles（需先開 `installWsl`） |

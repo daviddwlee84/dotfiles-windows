@@ -49,6 +49,10 @@ jobs:
             '--promptString','Your full name (git)=CI Runner',
             '--promptString','Your git email=ci@example.com',
             '--promptBool','Install coding agents (Claude Code, OpenCode, Codex, Copilot CLI, SpecStory)=false',
+            # true (unlike the other install toggles) so the render+parse step
+            # below exercises the specstory build block; `chezmoi apply --exclude
+            # scripts` means it never actually builds in CI.
+            '--promptBool','Build the experimental SpecStory CLI for Windows from the unmerged PR #191 (needs git + go)=true',
             '--promptBool','Install GUI apps via winget (VSCode, Cursor, Notepad++, Terminal, Alacritty, PowerToys, Raycast)=false',
             '--promptBool','Install WSL2 (Docker Desktop backend; needs admin + reboot)=false',
             '--promptBool','Install a WSL2 Ubuntu distro and bootstrap cross-platform dotfiles inside it (needs admin; requires WSL2 platform)=false',

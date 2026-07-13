@@ -6,6 +6,7 @@
 #
 # Toggles (from .chezmoi.toml.tmpl):
 #   installCodingAgents  = {{ .installCodingAgents }}
+#   installSpecstoryBuild= {{ .installSpecstoryBuild }}
 #   installWindowsApps   = {{ .installWindowsApps }}
 #   installUtilityApps   = {{ .installUtilityApps }}
 #   installGamingApps    = {{ .installGamingApps }}
@@ -262,8 +263,9 @@ Npm-InstallGlobal @(
 # NOTE: SpecStory ships no native-Windows CLI (macOS: brew; Linux/WSL: GitHub
 # release binaries only), so it is intentionally omitted -- `npm i -g
 # @specstory/cli` 404s. The Copilot module already no-ops when `specstory` is
-# absent. Experimental Windows build from the unmerged PR #191:
-# `just specstory-build` (see backlog/specstory-windows-native-cli.md).
+# absent. An experimental Windows build from the unmerged PR #191 is opt-in via
+# the installSpecstoryBuild toggle (block below) or `just specstory-build`
+# (see backlog/specstory-windows-native-cli.md).
 
 # OpenCode Desktop (GUI companion to the opencode-ai CLI) via scoop extras.
 Scoop-Install @('extras/opencode-desktop')
@@ -277,6 +279,43 @@ if (Have uv) {
     Info 'uv tool install apprise (+pywin32 for windows://)'
     uv tool install --with pywin32 apprise
     if ($LASTEXITCODE -ne 0) { Register-Failure 'uv:apprise' }
+}
+{{ end -}}
+
+{{ if .installSpecstoryBuild -}}
+# EXPERIMENTAL SpecStory Windows CLI. There is no native-Windows release yet;
+# Windows/WSL support lives in the unmerged getspecstory PR #191. Build it from
+# source (opt-in) and drop specstory.exe in ~/.local/bin so the Copilot module's
+# session auto-save (claude-copilot) can pick it up. Needs git (core) + go (enable
+# Extra runtimes, or `scoop install go`). Treat as experimental — may break until
+# the PR lands. Tracking + revisit criteria: backlog/specstory-windows-native-cli.md.
+if ((Have git) -and (Have go)) {
+    try {
+        $ssCache = Join-Path $HOME '.cache\specstory-build'
+        $ssRepo  = Join-Path $ssCache 'getspecstory'
+        $ssBin   = Join-Path $HOME '.local\bin'
+        New-Item -ItemType Directory -Force -Path $ssCache, $ssBin | Out-Null
+        if (-not (Test-Path (Join-Path $ssRepo '.git'))) {
+            Info 'specstory: cloning specstoryai/getspecstory'
+            git clone --filter=blob:none https://github.com/specstoryai/getspecstory.git $ssRepo
+        }
+        Push-Location $ssRepo
+        try {
+            Info 'specstory: fetching PR #191'
+            git fetch origin 'pull/191/head:pr-191' --force
+            git checkout --force 'pr-191'
+            $ssOut = Join-Path $ssBin 'specstory.exe'
+            Push-Location (Join-Path $ssRepo 'specstory-cli')
+            try { Info "specstory: go build -> $ssOut"; go build -o $ssOut . } finally { Pop-Location }
+            if (Test-Path $ssOut) { Info "specstory: built $ssOut" }
+            else { Register-Failure 'specstory-build (go build produced no binary)' }
+        } finally { Pop-Location }
+    } catch {
+        Write-Warning "specstory-build error: $_"
+        Register-Failure 'specstory-build'
+    }
+} else {
+    Register-Failure 'specstory-build (needs git + go; enable Extra runtimes or run: scoop install go)'
 }
 {{ end -}}
 

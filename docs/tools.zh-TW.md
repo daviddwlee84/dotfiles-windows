@@ -152,7 +152,8 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
 
 官方 **ChatGPT** 桌面程式透過 Microsoft Store 安裝（見 GUI 應用程式）；**Codex**
 是上面的 `@openai/codex` npm CLI，不是 Store app。SpecStory 沒有原生 Windows CLI
-套件，故此處略過。
+套件，故此處略過 —— 從尚未合併的 PR #191 建置的實驗性版本可透過 **SpecStory build**
+初始化提問（`installSpecstoryBuild`）或 `just specstory-build` 選用啟用（需 git + go）。
 
 ## PowerShell 模組（PSGallery）
 
