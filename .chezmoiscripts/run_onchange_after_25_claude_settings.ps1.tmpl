@@ -24,6 +24,69 @@ $overlayJson = @'
 
 $overlay = $overlayJson | ConvertFrom-Json -AsHashtable
 
+# --- Completion-feedback hooks, gated on `agentSounds` -----------------------
+#
+# Built here rather than in claude/settings-overlay.json because that file is
+# `include`d verbatim and so cannot carry Go-template conditionals.
+#
+# `notify` wires notify.ps1 (apprise -> Windows toast); `peon` wires peon-ping's
+# game voice lines. Values lifted from a real peon-ping install.ps1 (verified
+# against upstream source, NOT its README — the README's documented command
+# shape is wrong on the POSIX side too). Windows specifics that differ from the
+# macOS/Linux parent repo:
+#   - command is `powershell -NoProfile -NonInteractive -File "<peon.ps1>"`
+#   - `timeout = 10`, and there is NO `async` field
+#   - the event set includes PreToolUse and has NO UserPromptSubmit
+# Parent repo equivalent: dot_claude/modify_settings.json.tmpl.
+{{- $peon   := or (eq .agentSounds "peon")   (eq .agentSounds "both") }}
+{{- $notify := or (eq .agentSounds "notify") (eq .agentSounds "both") }}
+$notifyCmd = 'exec pwsh -NoProfile -File "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/notify.ps1"'
+# peon-ping is installed with `-OpenPeon`, which reroots its whole tree at the
+# tool-agnostic ~/.openpeon — so peon.ps1 is NOT under ~/.claude/hooks/.
+# Wrapped in a Test-Path guard so the hook is a silent no-op on a box where the
+# install hasn't run (or failed): an unguarded `-File <missing>` makes Claude
+# Code surface a hook error on every event. Mirrors the mandatory
+# `command -v workmux` / `[ -x ... ]` guards in the parent repo.
+$peonPs1   = Join-Path $HOME '.openpeon\hooks\peon-ping\peon.ps1'
+$peonCmd   = "powershell -NoProfile -NonInteractive -Command `"if (Test-Path '$peonPs1') { & '$peonPs1' }`""
+
+# Event -> the commands that should be wired for the current tier.
+$soundHooks = @{}
+{{- if $notify }}
+foreach ($evt in @('Notification', 'Stop')) {
+    $soundHooks[$evt] = @(@{ matcher = ''; hooks = @(@{ type = 'command'; command = $notifyCmd }) })
+}
+{{- end }}
+{{- if $peon }}
+foreach ($evt in @('SessionStart', 'SessionEnd', 'SubagentStart', 'Stop',
+                   'Notification', 'PermissionRequest', 'PreToolUse',
+                   'PostToolUseFailure', 'PreCompact')) {
+    $entry = @{ matcher = ''; hooks = @(@{ type = 'command'; command = $peonCmd; timeout = 10 }) }
+    if ($soundHooks.ContainsKey($evt)) { $soundHooks[$evt] = @($soundHooks[$evt] + $entry) }
+    else                               { $soundHooks[$evt] = @($entry) }
+}
+{{- end }}
+if ($soundHooks.Count -gt 0) {
+    if ($overlay['hooks'] -isnot [hashtable]) { $overlay['hooks'] = @{} }
+    foreach ($evt in $soundHooks.Keys) { $overlay['hooks'][$evt] = $soundHooks[$evt] }
+}
+
+# Commands the CURRENT tier disables — pruned from the live file below. Without
+# this the additive merge makes agentSounds a one-way ratchet: switching
+# notify -> none would leave notify.ps1 wired forever, so `none` would not
+# actually silence a machine that previously had sound. Only OUR OWN
+# fingerprints are listed, so foreign hook entries can never be touched.
+# (Upstream's own install.ps1 strips `peon\.(ps1|sh)` / `notify\.sh` the same
+# way before re-adding, so this matches its behaviour.)
+$prunePatterns = @(
+{{- if not $notify }}
+    'notify\.ps1'
+{{- end }}
+{{- if not $peon }}
+    'peon\.ps1'
+{{- end }}
+)
+
 # Recursive deep-merge: overlay leaves win; live-only keys are preserved. Unlike
 # the editor overlay's shallow top-level assign, this keeps the user's nested
 # state (e.g. permissions.allow/deny arrays, other enabledPlugins) intact.
@@ -86,6 +149,24 @@ if (Test-Path $settingsPath) {
 }
 
 Merge-Hashtable $settings $overlay
+
+# Prune our own now-disabled entries (see $prunePatterns above). Runs AFTER the
+# additive merge so a tier that re-enables something wins. Foreign entries are
+# never matched. Event keys whose array empties out are removed so turning
+# everything off doesn't leave `"SessionStart": []` litter behind.
+if ($prunePatterns.Count -gt 0 -and $settings['hooks'] -is [hashtable]) {
+    foreach ($evt in @($settings['hooks'].Keys)) {
+        $kept = @(@($settings['hooks'][$evt]) | Where-Object {
+            $cmd = $_.hooks[0].command
+            if (-not $cmd) { return $true }
+            foreach ($p in $prunePatterns) { if ($cmd -match $p) { return $false } }
+            return $true
+        })
+        if ($kept.Count -gt 0) { $settings['hooks'][$evt] = $kept }
+        else                   { $settings['hooks'].Remove($evt) }
+    }
+}
+
 New-Item -ItemType Directory -Force -Path $claudeDir | Out-Null
 $settings | ConvertTo-Json -Depth 12 | Set-Content -Path $settingsPath -Encoding utf8
 Write-Host "claude overlay -> $settingsPath"

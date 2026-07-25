@@ -16,6 +16,15 @@
 
     # --- feature toggles (role-defaulted) ---
     installCodingAgents  = {{ promptBoolOnce . "installCodingAgents" "Install coding agents (Claude Code, OpenCode, Codex, Copilot CLI, SpecStory)" $full }}
+    # How a coding agent announces it finished. Gates HOOK WIRING ONLY — the
+    # peon CLI installs alongside the agents so you can experiment any time.
+    #   none   = silent
+    #   notify = notify.ps1 -> apprise -> Windows toast (current behavior)
+    #   peon   = peon-ping game voice lines + its own overlay banner
+    #   both   = toast + voice (two banners; `peon notifications off` to trim)
+    # peon's own volume/pack/notification style stay unmanaged by chezmoi, so
+    # tweaking them never shows up as drift. Parent repo: docs/tools/agent-sounds.md
+    agentSounds          = {{ promptChoiceOnce . "agentSounds" "Agent completion feedback (none|notify|peon|both)" (list "none" "notify" "peon" "both") (ternary "notify" "none" $full) | quote }}
     installSpecstoryBuild = {{ promptBoolOnce . "installSpecstoryBuild" "Build the experimental SpecStory CLI for Windows from the unmerged PR #191 (needs git + go)" false }}
     installWindowsApps   = {{ promptBoolOnce . "installWindowsApps" "Install GUI apps via winget (VSCode, Cursor, Notepad++, Terminal, Alacritty, PowerToys, Raycast)" $full }}
     installWsl           = {{ promptBoolOnce . "installWsl" "Install WSL2 (Docker Desktop backend; needs admin + reboot)" $full }}

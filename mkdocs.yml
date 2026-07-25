@@ -64,3 +64,4 @@ nav:
   - Rationale: rationale.md
   - copilot-proxy: copilot-proxy.md
   - Multi-agent workflow: claude-code-agents.md
+  - Agent completion sounds: agent-sounds.md

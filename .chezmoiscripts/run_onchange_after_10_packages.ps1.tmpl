@@ -280,6 +280,40 @@ if (Have uv) {
     uv tool install --with pywin32 apprise
     if ($LASTEXITCODE -ne 0) { Register-Failure 'uv:apprise' }
 }
+
+# peon-ping — game-character voice lines for agent events (CESP player; packs
+# from the OpenPeon registry). Installed regardless of the `agentSounds` tier so
+# `peon preview` / `peon packs list` are always available to experiment with;
+# the tier only decides whether HOOKS get wired, and that happens in
+# run_onchange_after_25_claude_settings.ps1.tmpl.
+#
+# `--openpeon` reroots the whole install at the tool-agnostic ~/.openpeon so the
+# installer never touches ~/.claude/settings.json — hook wiring is ours to
+# declare (same rule the parent repo applies to workmux's `wm setup`).
+# NB: the PowerShell installer's param block is
+#   param([string[]]$Packs, [switch]$All, [string]$Lang, [switch]$Local,
+#         [switch]$Global, [switch]$OpenPeon, [switch]$InitLocalConfig)
+# — there is NO -NoRc (that is the bash install.sh flag only), and it does not
+# touch $PROFILE, so nothing extra is needed to keep our profile clean.
+# Idempotent: skipped once peon.ps1 exists.
+$peonRoot = Join-Path $HOME '.openpeon'
+$peonHook = Join-Path $peonRoot 'hooks\peon-ping\peon.ps1'
+if (-not (Test-Path $peonHook)) {
+    Info 'peon-ping (agent completion sounds, ~/.openpeon root)'
+    try {
+        $peonInstaller = Join-Path $env:TEMP 'peon-ping-install.ps1'
+        Invoke-WebRequest -UseBasicParsing -ErrorAction Stop `
+            -Uri 'https://raw.githubusercontent.com/PeonPing/peon-ping/main/install.ps1' `
+            -OutFile $peonInstaller
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $peonInstaller `
+            -OpenPeon -Packs 'sc2_scv'
+        if ($LASTEXITCODE -ne 0) { Register-Failure 'peon-ping' }
+    } catch {
+        Register-Failure 'peon-ping'
+    }
+} else {
+    Info 'peon-ping already installed — skipping (upgrade: peon update)'
+}
 {{ end -}}
 
 {{ if .installSpecstoryBuild -}}
