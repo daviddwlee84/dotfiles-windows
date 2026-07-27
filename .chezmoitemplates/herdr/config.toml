@@ -254,18 +254,28 @@ command = 'pwsh -NoProfile -File "{{ $herdrDir }}/path-pick.ps1"'
 description = "copy a file path from the pane (fzf, two-tier)"
 
 # --- herdr-plus plugin (sesh + tmuxp + popup-menu analog) ---
-# Requires: herdr plugin install cloudmanic/herdr-plus
+# Requires: herdr plugin install -y cloudmanic/herdr-plus  (needs go on Windows —
+# the plugin's Windows build command is `go build -o bin/herdr-plus.exe .`).
 # Projects = declarative multi-pane workspace templates; Quick Actions = fuzzy
 # command launcher. If the plugin is not installed these bindings simply no-op.
+#
+# ⚠ WINDOWS ACTION IDS: herdr-plus declares SEPARATE, platform-scoped actions in
+# its herdr-plugin.toml — `projects` / `quick-actions` are platforms=["linux",
+# "macos"], and the Windows ones are suffixed `-windows`. Binding the unix id on
+# Windows fails at PRESS time (not load time) with:
+#   custom command failed
+#   cloudmanic.herdr-plus.quick-actions does not support the current platform (windows)
+# The parent repo (macOS/Linux) binds the unsuffixed ids; this repo must not.
+# See pitfalls/herdr-plus-action-does-not-support-platform-windows.md
 
 [[keys.command]]
 key = "prefix+O"
 type = "plugin_action"
-command = "cloudmanic.herdr-plus.projects"
+command = "cloudmanic.herdr-plus.projects-windows"
 description = "herdr-plus: Projects (layout launcher)"
 
 [[keys.command]]
 key = "prefix+y"
 type = "plugin_action"
-command = "cloudmanic.herdr-plus.quick-actions"
+command = "cloudmanic.herdr-plus.quick-actions-windows"
 description = "herdr-plus: Quick Actions"
