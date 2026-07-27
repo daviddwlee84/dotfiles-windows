@@ -1,0 +1,48 @@
+# Session/workspace switcher cable channel for herdr (tv) — sesh analog.
+# Windows port of the parent repo's dot_config/television/cable/herdr-sesh.toml.
+#
+# `sesh` manages tmux sessions, so it does not apply under herdr; this channel
+# switches herdr WORKSPACES (the project-level unit) and opens new ones from
+# zoxide frecency dirs. Bound to `prefix+T` in ~/.config/herdr/config.toml.
+#
+# Sources (cycle with Ctrl+S):
+#   1. Existing herdr workspaces  -> Enter = `herdr workspace focus <id>`
+#   2. zoxide frecency dirs       -> Enter = `herdr workspace create --cwd <dir>`
+#
+# TSV columns: 0 = kind (ws|dir), 1 = ref (workspace_id|path), 2 = display.
+#
+# Every command is wrapped in `pwsh -NoProfile -Command` (this repo's tv
+# convention — see git-ops.toml); the unix original uses POSIX sh and jq.
+
+[metadata]
+name = "herdr-sesh"
+description = "herdr workspace switcher + zoxide dir opener (herdr-aware sesh analog)"
+requirements = ["herdr", "zoxide"]
+
+[source]
+command = [
+  '''pwsh -NoProfile -Command "$t=[char]9; $j = herdr workspace list 2>$null | ConvertFrom-Json; $j.result.workspaces | ForEach-Object { 'ws' + $t + $_.workspace_id + $t + $_.label + '  (' + $_.pane_count + 'p, ' + $_.tab_count + 't)' }"''',
+  '''pwsh -NoProfile -Command "$t=[char]9; zoxide query -l 2>$null | ForEach-Object { 'dir' + $t + $_ + $t + $_ }"''',
+]
+display = "{split:\t:2}"
+output = "{split:\t:1}"
+
+[preview]
+command = '''pwsh -NoProfile -Command "$kind='{split:\t:0}'; $ref='{split:\t:1}'; if ($kind -eq 'ws') { Write-Host \"workspace $ref`n\"; herdr workspace get $ref 2>$null | ConvertFrom-Json | ConvertTo-Json -Depth 6 } else { Write-Host \"$ref`n\"; if (Get-Command eza -EA SilentlyContinue) { eza -la --git --color=always $ref } else { Get-ChildItem -Force $ref | Format-Table -AutoSize | Out-String } }"'''
+
+[ui]
+input_header = "herdr Workspaces / Dirs"
+
+[keybindings]
+enter = "actions:open"
+ctrl-d = ["actions:close_ws", "reload_source"]
+
+[actions.open]
+description = "Focus the workspace, or open a new workspace at the directory"
+command = '''pwsh -NoProfile -Command "$kind='{split:\t:0}'; $ref='{split:\t:1}'; if (-not $ref) { exit 0 }; if ($kind -eq 'ws') { herdr workspace focus $ref *> $null } else { herdr workspace create --cwd $ref --focus *> $null }"'''
+mode = "fork"
+
+[actions.close_ws]
+description = "Close the selected herdr workspace"
+command = '''pwsh -NoProfile -Command "$kind='{split:\t:0}'; $ref='{split:\t:1}'; if ($kind -eq 'ws' -and $ref) { herdr workspace close $ref *> $null }"'''
+mode = "fork"

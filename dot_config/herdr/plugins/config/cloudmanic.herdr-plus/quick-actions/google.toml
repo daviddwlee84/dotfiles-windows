@@ -1,0 +1,6 @@
+# herdr-plus Quick Action — the plugin's "Google" starter example.
+# Managed by chezmoi. `x open` -> Start-Process (see github.toml).
+name = "Google"
+description = "Open https://google.com"
+type = "command"
+command = '''pwsh -NoProfile -Command "Start-Process 'https://google.com'"'''

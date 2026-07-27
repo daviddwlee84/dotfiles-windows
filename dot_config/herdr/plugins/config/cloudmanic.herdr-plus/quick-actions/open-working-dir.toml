@@ -1,0 +1,7 @@
+# herdr-plus Quick Action — the plugin's "Reveal Working Dir" starter example.
+# Managed by chezmoi. {{.WorkDir}} = the directory you launched the picker from.
+# The unix side's `x open <dir>` becomes explorer.exe, the Windows file manager.
+name = "Reveal Working Dir"
+description = "Open the launch directory in File Explorer"
+type = "command"
+command = '''pwsh -NoProfile -Command "Start-Process explorer.exe -ArgumentList '{{.WorkDir}}'"'''

@@ -1,0 +1,185 @@
+#!/usr/bin/env pwsh
+# chezmoi modify_ script: overlay a managed herdr config onto ~/.config/herdr/config.toml.
+#
+# Runs under pwsh via [interpreters.ps1] in .chezmoi.toml.tmpl. chezmoi pipes the
+# CURRENT target file into stdin and takes the new contents from stdout.
+#
+# WHY AN OVERLAY (this replaced a plain managed dot_config/herdr/config.toml):
+# herdr rewrites this file at runtime — the onboarding flag, in-app settings
+# popups, [session] / [remote] / [experimental] / [update] state. A plain managed
+# file clobbers all of that on every `chezmoi apply`, which can re-trigger
+# onboarding. The parent (unix) repo hit this and moved create_ -> modify_ on
+# 2026-07-06; this repo's config was added five days later and still used the
+# plain form. Same fix, ported.
+#
+# MERGE MODEL — template-as-base, pull-through unmanaged keys:
+#   - Base = the managed template (.chezmoitemplates/herdr/config.toml), which
+#     carries the comments + the tmux-parity rationale.
+#   - Every TOP-LEVEL key in the live file that is NOT managed and NOT already in
+#     the template is copied across (preserves onboarding, [session], [remote],
+#     [experimental], and any future herdr writeback).
+#   - Managed tables are enforced wholesale (template wins).
+#   - FORCED single keys are re-asserted INTO a pulled-through table, so the table
+#     keeps herdr's own bookkeeping. Windows needs exactly one: update.channel
+#     must stay "preview" (the installer rejects "stable" on Windows builds), but
+#     [update] also holds herdr's last-check state, which we do not want to wipe.
+#     This sub-key merge is the one deliberate divergence from the unix overlay.
+#
+# WHY tomlkit (not a hand-rolled emitter): herdr's config has an array-of-tables
+# ([[keys.command]]) and comments worth keeping; stdlib tomllib is read-only.
+# Python runtime: prefer `uv` (guarantees >=3.11 -> stdlib tomllib), fall back to
+# system python, then to emitting the raw template (a fresh host with neither
+# still gets a full config — note we emit the TEMPLATE, not stdin, because on a
+# fresh host stdin is empty).
+#
+# To manage an additional key: edit .chezmoitemplates/herdr/config.toml.
+# Validate the result with `herdr server reload-config` (empty diagnostics).
+
+$ErrorActionPreference = 'Stop'
+
+# Emit bytes verbatim so nothing re-encodes the config's ⭐ / box-drawing glyphs
+# and no BOM or trailing CRLF churn creeps into chezmoi's diff.
+function Write-StdoutBytes {
+    param([byte[]] $Bytes)
+    $out = [Console]::OpenStandardOutput()
+    $out.Write($Bytes, 0, $Bytes.Length)
+    $out.Flush()
+}
+
+$utf8 = [System.Text.UTF8Encoding]::new($false)   # no BOM
+
+$templateText = @'
+{{ template "herdr/config.toml" . }}
+'@
+
+$liveText = [Console]::In.ReadToEnd()
+
+$tmpDir = [System.IO.Path]::GetTempPath()
+$stamp = [System.IO.Path]::GetRandomFileName()
+$tmplFile = Join-Path $tmpDir "herdr-tmpl-$stamp.toml"
+$liveFile = Join-Path $tmpDir "herdr-live-$stamp.toml"
+$pyFile = Join-Path $tmpDir "herdr-merge-$stamp.py"
+$outFile = Join-Path $tmpDir "herdr-out-$stamp.toml"
+
+try {
+    [System.IO.File]::WriteAllText($tmplFile, $templateText, $utf8)
+    [System.IO.File]::WriteAllText($liveFile, $liveText, $utf8)
+
+    # Pick a Python. uv is in this repo's scoop package set; `python` is the
+    # uv-managed default install (--default --preview creates the unversioned shim).
+    $py = $null
+    if (Get-Command uv -ErrorAction SilentlyContinue) {
+        $py = @('uv', 'run', '--no-project', '--quiet', '--with', 'tomlkit', '--python', '>=3.11', 'python')
+    } elseif (Get-Command python -ErrorAction SilentlyContinue) {
+        $py = @('python')
+    } elseif (Get-Command python3 -ErrorAction SilentlyContinue) {
+        $py = @('python3')
+    }
+
+    if (-not $py) {
+        [Console]::Error.WriteLine('modify_config.toml: no uv/python found; emitting managed template (runtime keys not preserved this run)')
+        Write-StdoutBytes $utf8.GetBytes($templateText)
+        return
+    }
+
+    $pySource = @'
+import os
+import sys
+
+tmpl_path = os.environ["HERDR_TEMPLATE_FILE"]
+live_path = os.environ["HERDR_LIVE_FILE"]
+out_path = os.environ["HERDR_OUT_FILE"]
+
+with open(tmpl_path, "r", encoding="utf-8") as fh:
+    template_text = fh.read()
+
+
+def emit(text):
+    with open(out_path, "w", encoding="utf-8", newline="") as fh:
+        fh.write(text)
+
+
+try:
+    import tomllib  # Python 3.11+
+except ModuleNotFoundError:
+    try:
+        import tomli as tomllib
+    except ModuleNotFoundError:
+        # No TOML reader -> can't safely merge; ship the managed template as-is.
+        emit(template_text)
+        sys.exit(0)
+
+try:
+    import tomlkit
+except ModuleNotFoundError:
+    print(
+        "modify_config.toml: tomlkit unavailable; emitting managed template "
+        "(runtime keys not preserved this run)",
+        file=sys.stderr,
+    )
+    emit(template_text)
+    sys.exit(0)
+
+# Tables the template owns outright.
+MANAGED = {"theme", "ui", "terminal", "keys"}
+# Single keys re-asserted into an otherwise pulled-through table.
+FORCED = {("update", "channel"): "preview"}
+
+with open(live_path, "r", encoding="utf-8") as fh:
+    live_text = fh.read().strip()
+
+doc = tomlkit.parse(template_text)  # base, with comments intact
+try:
+    live = tomllib.loads(live_text) if live_text else {}
+except tomllib.TOMLDecodeError:
+    # A corrupt live file must not block the apply — enforce the template.
+    print("modify_config.toml: live config is not valid TOML; enforcing template", file=sys.stderr)
+    live = {}
+
+for key, value in live.items():
+    if key in MANAGED:
+        continue
+    if key in doc:
+        # The template also declares this table. Keep herdr's runtime keys and
+        # let the template win only on the keys it actually sets.
+        if isinstance(value, dict) and isinstance(doc[key], dict):
+            for sub_key, sub_value in value.items():
+                if sub_key not in doc[key]:
+                    doc[key][sub_key] = sub_value
+        continue
+    doc[key] = value
+
+for (table, sub_key), forced_value in FORCED.items():
+    if table not in doc:
+        doc[table] = tomlkit.table()
+    doc[table][sub_key] = forced_value
+
+emit(tomlkit.dumps(doc))
+'@
+
+    [System.IO.File]::WriteAllText($pyFile, $pySource, $utf8)
+
+    $env:HERDR_TEMPLATE_FILE = $tmplFile
+    $env:HERDR_LIVE_FILE = $liveFile
+    $env:HERDR_OUT_FILE = $outFile
+
+    $exe = $py[0]
+    $rest = @($py[1..($py.Count - 1)]) + @($pyFile)
+    & $exe @rest
+    $rc = $LASTEXITCODE
+
+    if ($rc -ne 0 -or -not (Test-Path -LiteralPath $outFile)) {
+        [Console]::Error.WriteLine("modify_config.toml: merge failed (exit $rc); emitting managed template")
+        Write-StdoutBytes $utf8.GetBytes($templateText)
+        return
+    }
+
+    Write-StdoutBytes ([System.IO.File]::ReadAllBytes($outFile))
+} finally {
+    foreach ($f in $tmplFile, $liveFile, $pyFile, $outFile) {
+        Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
+    }
+    foreach ($v in 'HERDR_TEMPLATE_FILE', 'HERDR_LIVE_FILE', 'HERDR_OUT_FILE') {
+        Remove-Item "env:$v" -ErrorAction SilentlyContinue
+    }
+}

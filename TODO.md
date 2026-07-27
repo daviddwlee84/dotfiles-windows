@@ -28,6 +28,7 @@ Likely next batch — items you'd reach for if you sat down to work today.
 Worth doing, no rush.
 
 - [ ] **[M] Example medium item** — link to research if non-trivial. → [research](backlog/example-medium.md)
+- [ ] **[S] Verify the herdr port on a real Windows box** — the full keymap, six pwsh helper scripts, three tv channels and the herdr-plus config were ported from the parent repo on 2026-07-27 and validated as far as macOS allows (overlay merge + idempotency, TOML validity, regex parity with the unix pipelines, channel TSV against a stub `herdr`, the `installHerdr` gate). Nine behaviours can only be confirmed with herdr actually running on Windows — chiefly whether the preview build supports `[[keys.command]]` / `type = "popup"` at all, how it spawns the `pwsh -File` command strings, and whether `prefix+ctrl+N` survives ConPTY. → [research](backlog/herdr-windows-port-verification.md)
 
 ## P3
 

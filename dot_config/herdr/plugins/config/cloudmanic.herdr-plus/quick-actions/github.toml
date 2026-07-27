@@ -1,0 +1,7 @@
+# herdr-plus Quick Action — the plugin's "GitHub" starter example.
+# Managed by chezmoi. Windows port: the unix side's `x open` (wslview / open /
+# xdg-open) becomes Start-Process, which hands the URL to the registered shell
+# handler. Wrapped in pwsh so it does not depend on which shell herdr-plus uses.
+name = "GitHub"
+description = "Open https://github.com"
+command = '''pwsh -NoProfile -Command "Start-Process 'https://github.com'"'''

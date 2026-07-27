@@ -1,0 +1,63 @@
+# Live agent panes cable channel for herdr (tv) — herdr-aware.
+# Windows port of the parent repo's dot_config/television/cable/herdr-agent-panes.toml.
+#
+# Lists panes from the running herdr server and lets you jump to the one running
+# an agent. Bound to `prefix+a` in ~/.config/herdr/config.toml.
+#
+# herdr has no "focus pane by id" command (pane focus is directional only), so
+# Enter jumps to the pane's WORKSPACE + TAB (`herdr workspace focus` +
+# `herdr tab focus`) — tab-level granularity, which is enough when there's one
+# agent per tab.
+#
+# TSV columns:
+#   0. pane_id        (w1:p1)
+#   1. workspace_id   (w1)
+#   2. tab_id         (w1:t1)
+#   3. agent_status   (working / idle / blocked / unknown)
+#   4. cwd            (foreground cwd, falling back to pane cwd)
+
+[metadata]
+name = "herdr-agent-panes"
+description = "Live panes across the herdr server — jump to a running agent's workspace/tab"
+requirements = ["herdr"]
+
+[source]
+command = '''pwsh -NoProfile -Command "$t=[char]9; $j = herdr pane list 2>$null | ConvertFrom-Json; $j.result.panes | ForEach-Object { $c = if ($_.foreground_cwd) { $_.foreground_cwd } else { $_.cwd }; $_.pane_id + $t + $_.workspace_id + $t + $_.tab_id + $t + $_.agent_status + $t + $c }"'''
+display = "{split:\t:0}  [{split:\t:3}]  {split:\t:4|split:/:-1}"
+output = "{split:\t:0}"
+
+[preview]
+command = '''pwsh -NoProfile -Command "$p='{split:\t:0}'; Write-Host \"$p  [{split:\t:3}]\"; Write-Host \"workspace: {split:\t:1}   tab: {split:\t:2}\"; Write-Host \"cwd: {split:\t:4}\"; Write-Host ''; Write-Host '--- pane (herdr pane read, last ~80) ---'; $o = herdr pane read $p --source visible --lines 80 2>$null; if ($o) { $o } else { Write-Host \"(pane $p no longer exists - press Ctrl+R to reload)\" }"'''
+
+[ui]
+input_header = "Live herdr Agent Panes"
+
+[ui.preview_panel]
+size = 60
+
+[keybindings]
+enter = "actions:focus"
+alt-t = "actions:focus"
+alt-k = "actions:close_pane"
+ctrl-y = "actions:copy_id"
+alt-p = "actions:copy_dir"
+
+[actions.focus]
+description = "Jump to the pane's workspace + tab"
+command = '''pwsh -NoProfile -Command "$ws='{split:\t:1}'; $tab='{split:\t:2}'; if ($ws) { herdr workspace focus $ws *> $null }; if ($tab) { herdr tab focus $tab *> $null }"'''
+mode = "fork"
+
+[actions.close_pane]
+description = "Close the pane (confirm prompt)"
+command = '''pwsh -NoProfile -Command "$p='{split:\t:0}'; if (-not $p) { exit 0 }; $a = Read-Host \"Close pane $p? [y/N]\"; if ($a -match '^[yY]') { herdr pane close $p *> $null; Write-Host \"closed $p\" } else { Write-Host 'aborted' }; Read-Host '[Press Enter]'"'''
+mode = "execute"
+
+[actions.copy_id]
+description = "Copy pane id to clipboard"
+command = '''pwsh -NoProfile -Command "$d='{split:\t:0}'; if ($d) { Set-Clipboard -Value $d }"'''
+mode = "fork"
+
+[actions.copy_dir]
+description = "Copy directory path to clipboard"
+command = '''pwsh -NoProfile -Command "$d='{split:\t:4}'; if ($d) { Set-Clipboard -Value $d }"'''
+mode = "fork"

@@ -1,0 +1,263 @@
+{{- $herdrDir := printf "%s/.config/herdr" (.chezmoi.homeDir | replace "\\" "/") -}}
+# herdr — native Windows terminal multiplexer + AI-agent orchestrator (preview beta).
+#
+# Windows port of the parent dotfiles repo's .chezmoitemplates/herdr/config.toml.
+# It mirrors the tmux/unix keymap as closely as the Windows build allows; every
+# binding that could NOT be carried over is listed in
+# backlog/herdr-windows-port-verification.md with the reason.
+#
+# THIS FILE IS THE MANAGED BODY of a chezmoi modify_ overlay
+# (dot_config/herdr/modify_config.toml.ps1.tmpl). The overlay enforces the tables
+# below on every `chezmoi apply` and preserves the keys herdr writes back at
+# runtime (onboarding / [session] / [remote] / [experimental] / [update] state).
+# Tracking this as a PLAIN managed file — which is what this repo did before —
+# clobbers that writeback and can re-trigger onboarding.
+#
+# Schema: https://herdr.dev/docs/configuration/
+# Full default: `herdr --default-config`
+# Validate after editing: `herdr server reload-config` (expect empty diagnostics)
+#
+# Helper-script paths are baked ABSOLUTE at render time on purpose: `pwsh -File`
+# does NOT expand a leading `~` (verified), and herdr passes the command string
+# through without shell tilde expansion on Windows.
+#
+# Prefix is ctrl+b (herdr default, same as tmux).
+
+[update]
+# Windows builds are preview-only; the installer rejects "stable" here.
+# Re-asserted by the overlay as a single key so herdr's own [update] bookkeeping
+# (last-check timestamps etc.) survives an apply.
+channel = "preview"
+
+[theme]
+name = "catppuccin"           # mocha (dark)
+auto_switch = true            # follow OS light/dark
+light_name = "catppuccin-latte"
+dark_name = "catppuccin"
+
+[ui]
+mouse_capture = true
+pane_borders = true
+pane_gaps = true
+confirm_close = true
+show_agent_labels_on_pane_borders = true
+
+# "auto" draws herdr's own cursor on Windows to avoid ConPTY flicker;
+# set "native" to hand the cursor to the outer terminal. Windows-only key.
+host_cursor = "auto"
+
+# Agent sidebar ordering. herdr's default is "spaces" (grouped by space);
+# "priority" turns the panel into an attention queue (blocked/waiting agents
+# float to the top). With many concurrent agent panes the queue is what you
+# actually scan. Valid values: "spaces" | "priority".
+agent_panel_sort = "priority"
+
+# Expanded Agent sidebar row layout. herdr's own default is
+#   [["state_icon", "workspace", "tab"], ["agent"]]
+# and we append the `$review` metadata token so the review-pending ⭐
+# (prefix+m / hmark) is actually VISIBLE in the sidebar.
+#
+# Required since herdr 0.7.4: `--custom-status` / the flat `custom_status` field
+# were replaced by a namespaced token map, and unlike custom_status a token is
+# rendered ONLY where a row layout names it — set a token with no layout entry
+# and the flag silently exists in the API but shows up nowhere.
+#
+# Keep `$review` in sync with $Token in dot_config/herdr/review-mark.ps1.
+# NOTE this pins the layout: upstream changes to the default rows will NOT reach
+# us, so re-check this block against `herdr --default-config` on herdr upgrades.
+[ui.sidebar.agents]
+rows = [
+  ["state_icon", "workspace", "tab", "$review"],
+  ["agent"],
+]
+
+[terminal]
+# Match the rest of this repo (WezTerm / Windows Terminal default to pwsh).
+default_shell = "pwsh"
+# CWD policy for new panes/tabs/workspaces (no explicit --cwd):
+#   "follow"  = inherit the SOURCE pane/workspace (default)
+#   "home"    = $HOME · "current" = herdr's own process dir · or a fixed path
+# NOTE (herdr >=0.7.x): with "follow", a NEW TAB inherits the FOCUSED pane's live
+# cwd — same as a split (herdr issue #912). NO new_cwd value opens a new tab at
+# the WORKSPACE ("space") dir — for that use the prefix+C command below.
+new_cwd = "follow"
+
+# --- Built-in action rebinds (tmux muscle memory) ---
+# Only existing actions can be rebound; herdr defaults are kept for everything
+# not listed here. An action accepts an ARRAY of bindings, so one action can
+# carry both the intuitive key and the tmux-default key.
+[keys]
+split_vertical = ["prefix+|", "prefix+%"]         # side-by-side (left/right) = tmux prefix+| and prefix+% (-h)
+split_horizontal = ["prefix+minus", "prefix+\""]  # stacked (top/bottom)      = tmux prefix+- and prefix+" (-v)
+reload_config = "prefix+shift+r"   # tmux: prefix+R
+rename_tab = "prefix+,"            # tmux: prefix+, (rename window) — frees prefix+shift+t for the sesh popup
+new_worktree = "prefix+shift+b"    # moved off prefix+shift+g so prefix+G can be lazygit
+
+# --- Indexed quick-switch (native herdr actions) ---
+# switch_tab (prefix+1..9) is a herdr built-in; these add the workspace + agent
+# analogs so a number key jumps directly. "N..M" is native herdr config syntax.
+# On the unix side prefix+SHIFT+digit was found unusable (under the kitty
+# keyboard protocol shift+1 still carries the printable "!"), hence ctrl/alt.
+# Whether Windows/ConPTY behaves the same is UNVERIFIED — see the backlog note.
+switch_workspace = "prefix+ctrl+1..9"    # prefix+ctrl+N → workspace N
+focus_agent = "prefix+alt+1..9"          # prefix+alt+N  → jump to agent N's pane
+
+# --- Workspace navigate-mode: vim j/k (entered via prefix+w) ---
+navigate_workspace_down = ["j", "down"]
+navigate_workspace_up = ["k", "up"]
+
+# --- Custom command panes (the tmux-popup recreations) ---
+# type = "pane": a temporary pane that closes when the command exits — herdr's
+# analog of `tmux display-popup -E`. The command runs from the focused pane's
+# cwd and gets $HERDR_SOCKET_PATH / $HERDR_ACTIVE_PANE_ID /
+# $HERDR_ACTIVE_PANE_CWD in its environment.
+# type = "popup" (herdr >= 0.7.4) floats ABOVE the tiled layout instead, so
+# nothing reflows — used for the two bindings you stay inside for a while.
+
+[[keys.command]]
+key = "prefix+G"
+type = "pane"
+command = "lazygit"
+description = "lazygit (popup pane)"
+
+# btop as a floating command pane (a real PTY that closes when you quit it).
+# Quick Actions can't host this: herdr-plus runs an action with no PTY/stdin, so
+# an interactive TUI exits immediately.
+# NOTE: the unix config also binds prefix+N to nvtop — deliberately NOT ported,
+# nvtop is Linux-only. See backlog/herdr-windows-port-verification.md.
+[[keys.command]]
+key = "prefix+M"
+type = "pane"
+command = "btop"
+description = "btop system monitor (popup pane)"
+
+# --- Scratch shell as a real floating popup (prefix+`) ---
+# type = "popup" floats above the layout, so quitting the shell puts you back
+# exactly where you were. lazygit/btop above deliberately stay type = "pane":
+# you quit those immediately and popups are session-modal.
+[[keys.command]]
+key = "prefix+`"
+type = "popup"
+command = "pwsh"
+width = "85%"
+height = "80%"
+description = "scratch shell (popup)"
+
+# --- Run an arbitrary command in a floating popup (prefix+E) ---
+# The generalisation of prefix+G: fzf-pick or type any command, run it in the
+# FOCUSED PANE'S cwd, and the popup closes itself when the command exits.
+# Enter runs the highlighted history entry; Alt+Enter runs exactly what you typed.
+# Exit behaviour: closes on success, holds on failure. Override with
+# $env:HERDR_RUN_HOLD = 'always'|'never'.
+[[keys.command]]
+key = "prefix+E"
+type = "popup"
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/run-command.ps1"'
+width = "80%"
+height = "70%"
+description = "run a command in the pane cwd (popup)"
+
+# --- New tab at the workspace ("space") root dir (prefix+C) ---
+# herdr's native new-tab (prefix+c) and the mouse "+" button follow new_cwd,
+# which on herdr >=0.7.x means the FOCUSED pane's live cwd. This binding instead
+# opens a new tab at the workspace ROOT dir — the lowest-numbered tab's pane cwd,
+# i.e. what herdr uses for the space label. prefix+c keeps native behaviour.
+[[keys.command]]
+key = "prefix+C"
+type = "pane"
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/new-tab-at-space-root.ps1" "$HERDR_ACTIVE_PANE_ID"'
+description = "new tab at the workspace (space) root dir"
+
+# URL picker (tmux prefix+u analog — joshmedeski/tmux-fzf-url). Reads the focused
+# pane, fzf-picks a URL (same rewrites: http(s)/ftp/file, www., IP, git@ remote,
+# quoted owner/repo, npm import), opens it with the Windows shell handler.
+# Visible screen by default; `--source recent` scans full scrollback.
+[[keys.command]]
+key = "prefix+u"
+type = "pane"
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/url-pick.ps1" "$HERDR_ACTIVE_PANE_ID"'
+description = "URL picker — open a URL from the pane (fzf)"
+
+[[keys.command]]
+key = "prefix+T"
+type = "pane"
+command = "tv herdr-sesh"
+description = "Session / workspace / dir switcher (herdr-aware tv channel)"
+
+[[keys.command]]
+key = "prefix+a"
+type = "pane"
+command = "tv herdr-agent-panes"
+description = "Live agent panes (herdr-aware tv channel)"
+
+# --- Review-pending flag (mark-unread / ⭐) ---
+# prefix+m toggles a per-pane "I still need to review this" flag (a herdr
+# metadata token, orthogonal to agent state — it survives the pane going idle
+# when you peek in). prefix+i opens the flagged-panes inbox.
+[[keys.command]]
+key = "prefix+m"
+type = "pane"
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/review-mark.ps1" toggle "$HERDR_ACTIVE_PANE_ID"'
+description = "toggle review-pending flag (⭐) on the current pane"
+
+[[keys.command]]
+key = "prefix+i"
+type = "pane"
+command = "tv herdr-review"
+description = "Review-pending inbox — flagged panes (herdr-aware tv channel)"
+
+# --- Copy focused-pane facts to the clipboard (prefix+P/D/V/S) ---
+# One helper (pane-copy.ps1) distills a pane's data and pipes it to Set-Clipboard.
+# The SAME four ops are also herdr-plus Quick Actions. Uppercase letters resolve
+# to prefix+shift+<letter>; P/D/V/S avoid herdr's reserved shift builtins
+# (shift+H/J/K/L swap-pane) and this repo's shift+B / shift+R.
+[[keys.command]]
+key = "prefix+P"
+type = "pane"
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-copy.ps1" process "$HERDR_ACTIVE_PANE_ID"'
+description = "copy pane process info"
+
+[[keys.command]]
+key = "prefix+D"
+type = "pane"
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-copy.ps1" coord "$HERDR_ACTIVE_PANE_ID"'
+description = "copy pane coordinate (session>space>tab>pane)"
+
+[[keys.command]]
+key = "prefix+V"
+type = "pane"
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-copy.ps1" content "$HERDR_ACTIVE_PANE_ID" --source visible'
+description = "copy pane content (visible screen)"
+
+[[keys.command]]
+key = "prefix+S"
+type = "pane"
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-copy.ps1" content "$HERDR_ACTIVE_PANE_ID" --source recent'
+description = "copy pane content (full scrollback)"
+
+# Copy a file PATH from the pane (extrakto-style). Extracts path-like tokens;
+# two-tier: paths that EXIST under the pane cwd (copied as resolved absolute) on
+# top, unverified candidates below a separator. Lowercase p pairs with the
+# uppercase copy family (P/D/V/S), same u/U convention as the unix side.
+[[keys.command]]
+key = "prefix+p"
+type = "pane"
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/path-pick.ps1" "$HERDR_ACTIVE_PANE_ID" --cwd "$HERDR_ACTIVE_PANE_CWD"'
+description = "copy a file path from the pane (fzf, two-tier)"
+
+# --- herdr-plus plugin (sesh + tmuxp + popup-menu analog) ---
+# Requires: herdr plugin install cloudmanic/herdr-plus
+# Projects = declarative multi-pane workspace templates; Quick Actions = fuzzy
+# command launcher. If the plugin is not installed these bindings simply no-op.
+
+[[keys.command]]
+key = "prefix+O"
+type = "plugin_action"
+command = "cloudmanic.herdr-plus.projects"
+description = "herdr-plus: Projects (layout launcher)"
+
+[[keys.command]]
+key = "prefix+y"
+type = "plugin_action"
+command = "cloudmanic.herdr-plus.quick-actions"
+description = "herdr-plus: Quick Actions"

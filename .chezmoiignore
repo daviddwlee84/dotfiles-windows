@@ -47,9 +47,13 @@ site/**
 .venv
 .venv/**
 
-# herdr config is only deployed when the opt-in installHerdr toggle is on.
+# herdr config, keybind helper scripts, herdr-plus plugin config and the
+# herdr-aware tv channels are only deployed when the opt-in installHerdr toggle
+# is on. The channels are gated too: without herdr they would show up in `tv`'s
+# channel list and return nothing.
 {{ if not .installHerdr }}
-.config/herdr/config.toml
+.config/herdr/**
+AppData/Roaming/television/cable/herdr-*.toml
 {{ end }}
 
 # Clink profile (starship.lua for cmd.exe) is only deployed when the opt-in

@@ -1,0 +1,64 @@
+# Review-pending inbox cable channel for herdr (tv) — herdr-aware.
+# Windows port of the parent repo's dot_config/television/cable/herdr-review.toml.
+#
+# Lists herdr panes carrying a "review-pending" flag — the ones whose agent
+# finished but you haven't reviewed yet. Companion to herdr-agent-panes.toml; the
+# flag is set by hmark / prefix+m (dot_config/herdr/review-mark.ps1) and stored as
+# the pane's `review` metadata TOKEN, orthogonal to agent state. Bound to
+# `prefix+i` in ~/.config/herdr/config.toml.
+#
+# Enter jumps to the pane's WORKSPACE + TAB but KEEPS the flag (you may still be
+# mid-review). Alt+C = focus AND clear ("mark read"). herdr has no "focus pane by
+# id" (pane focus is directional only), so we focus at tab granularity.
+#
+# Source: panes whose `tokens.review` is non-empty — PRESENCE is the flag, so the
+# glyph text is free-form. Keep the token name in sync with $Token in
+# review-mark.ps1. herdr >= 0.7.4 (0.7.4 replaced the flat `custom_status` field
+# with this token map; on older herdr the filter silently matches nothing):
+#   0. pane_id  1. workspace_id  2. tab_id  3. tokens.review  4. cwd
+
+[metadata]
+name = "herdr-review"
+description = "Review-pending herdr panes — jump to sessions you flagged for later"
+requirements = ["herdr"]
+
+[source]
+command = '''pwsh -NoProfile -Command "$t=[char]9; $j = herdr pane list 2>$null | ConvertFrom-Json; $j.result.panes | Where-Object { $_.tokens -and $_.tokens.review } | ForEach-Object { $c = if ($_.foreground_cwd) { $_.foreground_cwd } else { $_.cwd }; $_.pane_id + $t + $_.workspace_id + $t + $_.tab_id + $t + $_.tokens.review + $t + $c }"'''
+display = "{split:\t:0}  {split:\t:3}  {split:\t:4|split:/:-1}"
+output = "{split:\t:0}"
+
+[preview]
+command = '''pwsh -NoProfile -Command "$p='{split:\t:0}'; Write-Host \"$p  {split:\t:3}\"; Write-Host \"workspace: {split:\t:1}   tab: {split:\t:2}\"; Write-Host \"cwd: {split:\t:4}\"; Write-Host ''; Write-Host '--- pane (herdr pane read, last ~80) ---'; $o = herdr pane read $p --source visible --lines 80 2>$null; if ($o) { $o } else { Write-Host \"(pane $p no longer exists - press Ctrl+R to reload)\" }"'''
+
+[ui]
+input_header = "Review-pending herdr panes"
+
+[ui.preview_panel]
+size = 60
+
+[keybindings]
+enter = "actions:focus"
+alt-t = "actions:focus"
+alt-c = ["actions:focus_clear", "reload_source"]
+ctrl-y = "actions:copy_id"
+alt-p = "actions:copy_dir"
+
+[actions.focus]
+description = "Jump to the pane's workspace + tab (keep the flag)"
+command = '''pwsh -NoProfile -Command "$ws='{split:\t:1}'; $tab='{split:\t:2}'; if ($ws) { herdr workspace focus $ws *> $null }; if ($tab) { herdr tab focus $tab *> $null }"'''
+mode = "fork"
+
+[actions.focus_clear]
+description = "Jump to the pane AND clear the flag (mark read)"
+command = '''pwsh -NoProfile -Command "$p='{split:\t:0}'; $ws='{split:\t:1}'; $tab='{split:\t:2}'; if ($ws) { herdr workspace focus $ws *> $null }; if ($tab) { herdr tab focus $tab *> $null }; $cfg = if ($env:XDG_CONFIG_HOME) { $env:XDG_CONFIG_HOME } else { Join-Path $HOME '.config' }; if ($p) { & pwsh -NoProfile -File (Join-Path $cfg 'herdr/review-mark.ps1') clear $p *> $null }"'''
+mode = "fork"
+
+[actions.copy_id]
+description = "Copy pane id to clipboard"
+command = '''pwsh -NoProfile -Command "$d='{split:\t:0}'; if ($d) { Set-Clipboard -Value $d }"'''
+mode = "fork"
+
+[actions.copy_dir]
+description = "Copy directory path to clipboard"
+command = '''pwsh -NoProfile -Command "$d='{split:\t:4}'; if ($d) { Set-Clipboard -Value $d }"'''
+mode = "fork"

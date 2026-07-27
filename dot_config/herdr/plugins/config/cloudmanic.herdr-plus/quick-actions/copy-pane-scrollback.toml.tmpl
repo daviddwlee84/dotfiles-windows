@@ -1,0 +1,9 @@
+{{- $herdrDir := printf "%s/.config/herdr" (.chezmoi.homeDir | replace "\\" "/") -}}
+# herdr-plus Quick Action — managed by chezmoi.
+# Windows port of the parent repo's same-named action. Two changes from unix:
+# pane-copy.sh -> pane-copy.ps1 run through pwsh, and the script path is baked
+# ABSOLUTE at render time because `pwsh -File` does not expand a leading ~.
+# $HERDR_PLUS_PANE_ID is the focused pane herdr-plus captures when the picker fires.
+name = "Copy pane: content (scrollback)"
+description = "The focused pane's full retained scrollback buffer"
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-copy.ps1" content "$HERDR_PLUS_PANE_ID" --source recent'
