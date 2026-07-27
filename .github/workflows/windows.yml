@@ -41,6 +41,14 @@ jobs:
           $issues | Format-Table -AutoSize
           if ($issues | Where-Object Severity -eq 'Error') { throw "PSScriptAnalyzer found $(($issues | Where-Object Severity -eq 'Error').Count) error(s)" }
 
+      # Runs BEFORE init on purpose: a prompt with no matching flag makes the
+      # init step below die with an opaque `promptChoiceOnce: EOF`, and the
+      # Pester step at the end never gets reached. This surfaces the actual
+      # missing flag instead. (Invariant #1.)
+      - name: 'Init prompts are answerable non-interactively (invariant #1)'
+        shell: pwsh
+        run: Invoke-Pester -CI -Path ./tests/InitPrompts.Tests.ps1 -Output Detailed
+
       - name: chezmoi init (writes config from prompt answers)
         shell: pwsh
         run: |
@@ -48,7 +56,15 @@ jobs:
             '--promptChoice','Role: workstation (full desktop) or minimal (shell only)=minimal',
             '--promptString','Your full name (git)=CI Runner',
             '--promptString','Your git email=ci@example.com',
-            '--promptBool','Install coding agents (Claude Code, OpenCode, Codex, Copilot CLI, SpecStory)=false',
+            # true (unlike most install toggles) so the render+parse step below
+            # covers the agent blocks that are gated behind it: the npm/peon-ping
+            # install in run_onchange_after_10_packages and the whole of
+            # run_onchange_after_25_claude_settings. `chezmoi apply --exclude
+            # scripts` means nothing is ever actually installed in CI.
+            '--promptBool','Install coding agents (Claude Code, OpenCode, Codex, Copilot CLI, SpecStory)=true',
+            # `both` (not the workstation default `notify`) so the render+parse
+            # covers BOTH hook-building branches of run_onchange_after_25.
+            '--promptChoice','Agent completion feedback (none|notify|peon|both)=both',
             # true (unlike the other install toggles) so the render+parse step
             # below exercises the specstory build block; `chezmoi apply --exclude
             # scripts` means it never actually builds in CI.
