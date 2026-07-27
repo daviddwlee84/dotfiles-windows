@@ -18,6 +18,12 @@
 
 Set-StrictMode -Off
 $ErrorActionPreference = 'Stop'
+# LOAD-BEARING: every success test below is `$LASTEXITCODE -eq 0`, which requires a
+# non-zero NATIVE exit NOT to throw. pwsh currently defaults this to $false, but pin
+# it — if it were ever $true, `& herdr` would throw on failure, the try/catch would
+# swallow it, and every diagnostic (including the stale-server warning) would go
+# silent. `-NoProfile` means no profile can set it for us.
+$PSNativeCommandUseErrorActionPreference = $false
 
 # herdr emits UTF-8; without this a pane read full of box-drawing characters
 # comes back mojibake under -NoProfile (the repo's UTF-8 console setup lives in
@@ -29,18 +35,28 @@ try {
 
 function Test-HerdrPresent {
     if (Get-Command herdr -ErrorAction SilentlyContinue) { return $true }
+    # Held: every caller exits immediately after this, and the pane closes with it.
     Write-Host 'herdr not found on PATH' -ForegroundColor Red
+    Write-Host 'The keybind helpers run under -NoProfile, so they see only the' -ForegroundColor Yellow
+    Write-Host 'persistent PATH. Check: (Get-Command herdr).Source' -ForegroundColor Yellow
+    Start-Sleep -Seconds 4
     $false
 }
 
-# herdr's CLI and the running server speak a VERSIONED protocol. After `herdr
-# update` the CLI is new but the already-running server is still old, and every
-# pane command fails with:
+# herdr's CLI and the running server speak a VERSIONED protocol. When they differ
+# (the CLI was updated while a server kept running, or a pane inherited an older
+# CLI on its PATH) every pane command fails with:
 #   {"error":{"code":"protocol_mismatch","message":"client protocol 17 is newer
 #    than server protocol 16; restart the Herdr server ..."}}
 # Without this check the scripts swallow that and report a generic "failed to
 # read pane <id>", which hides the real (trivial) fix. See
 # pitfalls/herdr-keybind-failed-to-read-pane-protocol-mismatch.md
+#
+# ⚠ LAST-RESORT matcher. herdr's structured error MESSAGE echoes back arguments we
+# passed ("pane <id> not found"), so a caller-supplied pane id containing the marker
+# word would false-positive here. Prefer Get-HerdrErrorCode; only fall back to this
+# when stderr is NOT structured JSON (the unreachable-socket case, which emits a
+# plain `Error: Os { code: 2, ... }` line and carries no user text).
 function Test-HerdrProtocolMismatch {
     param([string] $Text)
     if (-not $Text) { return $false }
@@ -48,34 +64,96 @@ function Test-HerdrProtocolMismatch {
     ($Text -match 'client protocol \d+ is (newer|older) than server protocol \d+')
 }
 
-# Returns $true (and explains, once) when the server is stale. A command pane
-# closes the instant the script exits, so hold long enough to actually read it.
-$script:HerdrStaleServerWarned = $false
-function Assert-HerdrServerFresh {
+# herdr reports failures as one JSON object per stderr line:
+#   {"error":{"code":"protocol_mismatch","message":"..."},"id":"cli:pane:read"}
+# Return error.code, or '' when stderr is not structured JSON. Reading the CODE is
+# the only safe test: codes are a closed vocabulary, messages contain our arguments.
+function Get-HerdrErrorCode {
     param([string] $Text)
-    if (-not (Test-HerdrProtocolMismatch $Text)) { return $false }
+    if (-not $Text) { return '' }
+    foreach ($line in ($Text -split "`n")) {
+        if (-not $line.Trim()) { continue }
+        $o = $null
+        try { $o = $line | ConvertFrom-Json -ErrorAction Stop } catch { continue }
+        if ($o -and $o.PSObject.Properties['error'] -and $o.error) { return [string]$o.error.code }
+    }
+    ''
+}
+
+# Explain once. A command pane closes the instant the script exits, so hold.
+$script:HerdrStaleServerWarned = $false
+function Show-HerdrStaleServer {
     if (-not $script:HerdrStaleServerWarned) {
         $script:HerdrStaleServerWarned = $true
-        Write-Host 'herdr server is STALE — CLI and server protocol versions differ.' -ForegroundColor Red
-        Write-Host 'Cause: `herdr update` upgraded the CLI, but the running server is still the old build.' -ForegroundColor Yellow
-        Write-Host 'Fix: quit herdr and relaunch it. (Restarting the server EXITS pane processes.)' -ForegroundColor Yellow
+        Write-Host 'herdr: CLI and server protocol versions differ.' -ForegroundColor Red
+        Write-Host 'Cause: `herdr update` replaced the CLI while a server kept running, OR this' -ForegroundColor Yellow
+        Write-Host '       pane inherited an older herdr on its PATH than the running server.' -ForegroundColor Yellow
+        Write-Host 'Fix:   quit herdr and relaunch it (restarting the server EXITS pane processes),' -ForegroundColor Yellow
+        Write-Host '       then check: herdr --version, and (Get-Command herdr).Source' -ForegroundColor Yellow
         Start-Sleep -Seconds 5
     }
     $true
 }
 
+function Assert-HerdrServerFresh {
+    param([string] $Text)
+    if (Test-HerdrProtocolMismatch $Text) { return (Show-HerdrStaleServer) }
+    $false
+}
+
+# Classify a FAILED herdr call and warn when the cause is a protocol mismatch.
+# Returns the structured error code ('' when neither stream was structured JSON).
+#
+# $OutText is the FAILED call's stdout. Measured today it is always EMPTY (herdr puts
+# the error object on stderr), but it is inspected as a fallback so a future herdr
+# that reports on stdout still gets diagnosed. This cannot reintroduce the pane-content
+# false positive: it runs ONLY when the command failed, and a failed call returns no
+# payload — the success path never reaches here.
+function Resolve-HerdrFailure {
+    param([string] $ErrText, [string] $OutText)
+    $code = Get-HerdrErrorCode $ErrText
+    if (-not $code) { $code = Get-HerdrErrorCode $OutText }
+    if ($code) {
+        if ($code -eq 'protocol_mismatch') { $null = Show-HerdrStaleServer }
+        return $code
+    }
+    # Neither stream is structured JSON => pure diagnostics (e.g. the unreachable-socket
+    # `Error: Os { code: 2, ... }` line). No user text to confuse, so the regex is safe.
+    if (Assert-HerdrServerFresh $ErrText) { return '' }
+    $null = Assert-HerdrServerFresh $OutText
+    ''
+}
+
+# Split a captured `2>&1` stream into (payload, diagnostics). ErrorRecords are
+# diagnostics; everything else is the command's real output. Verified on pwsh 7.6.3:
+# under 2>&1 each stderr LINE arrives as one ErrorRecord and stdout lines stay String.
+function Split-HerdrStream {
+    param([object[]] $Raw)
+    $err = @($Raw | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] })
+    $out = @($Raw | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] })
+    [pscustomobject]@{
+        Out = ($out | ForEach-Object { [string]$_ }) -join "`n"
+        Err = ($err | ForEach-Object { [string]$_ }) -join "`n"
+    }
+}
+
 # Run a herdr subcommand and parse its JSON. Returns $null on any failure so
 # callers can fall through instead of throwing inside a pane that is about to close.
+#
+# MEASURED CONTRACT (herdr 0.7.5-preview): on failure stdout is EMPTY and the
+# {"error":{...}} object is on STDERR with exit 1; on success stderr is empty. So the
+# error object is parsed from stderr — parsing it from stdout was dead code.
 function Invoke-HerdrJson {
     param([Parameter(ValueFromRemainingArguments)] [string[]] $Argument)
     try {
-        # 2>&1 (not 2>$null) so a protocol_mismatch on either stream is seen.
-        # Contamination is harmless here: non-JSON just fails ConvertFrom-Json.
-        $raw = & herdr @Argument 2>&1
+        $raw = @(& herdr @Argument 2>&1)
+        $ok = ($LASTEXITCODE -eq 0)
+        $s = Split-HerdrStream $raw
+        if (-not $ok) { $null = Resolve-HerdrFailure $s.Err $s.Out; return $null }
+        # Success: stderr is empty by contract, and stdout is the payload — which
+        # carries arbitrary user text (pane titles, cwds) and is NEVER scanned.
         if (-not $raw) { return $null }
-        $text = (@($raw) | ForEach-Object { [string]$_ }) -join "`n"
-        if (Assert-HerdrServerFresh $text) { return $null }
-        return ($text | ConvertFrom-Json -ErrorAction Stop)
+        try { return ($s.Out | ConvertFrom-Json -ErrorAction Stop) } catch { return $null }
     } catch { return $null }
 }
 
@@ -117,17 +195,23 @@ function Resolve-HerdrCwd {
 }
 
 # Read a pane's terminal text. $Source is visible | recent | recent-unwrapped.
+# Returns $null ONLY on a real failure; '' is a legitimate result (a blank pane).
+#
+# ⚠ The returned text is the pane's CONTENT — arbitrary user data. It is never
+# scanned for herdr error markers: a pane showing the word "protocol_mismatch"
+# (e.g. someone debugging herdr) previously tripped a bogus "server is STALE".
 function Get-HerdrPaneText {
     param([string] $PaneId, [string] $Source = 'visible')
     try {
         $raw = @(& herdr pane read $PaneId --source $Source --format text 2>&1)
-        # Scan BOTH streams for a stale-server error before using the output...
-        $all = ($raw | ForEach-Object { [string]$_ }) -join "`n"
-        if (Assert-HerdrServerFresh $all) { return $null }
-        # ...but keep stderr OUT of the returned pane text (2>$null's old behaviour).
-        $clean = @($raw | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] })
-        if (-not $clean) { return $null }
-        return (($clean | ForEach-Object { [string]$_ }) -join "`n")
+        $ok = ($LASTEXITCODE -eq 0)
+        $s = Split-HerdrStream $raw
+        if (-not $ok) { $null = Resolve-HerdrFailure $s.Err $s.Out; return $null }
+        # Success => return the payload as-is. Do NOT test `-not $raw` here: an empty
+        # pane (or a single blank line) is falsy, and returning $null for it would be
+        # reported by callers as "failed to read pane". They check `$null -eq $content`
+        # precisely so '' falls through to "no URLs found" / "no paths found".
+        return $s.Out
     } catch { return $null }
 }
 
@@ -140,11 +224,16 @@ function Set-HerdrClipboard {
         Set-Clipboard -Value $Text -ErrorAction Stop
         return $true
     } catch {
+        $primary = $_
         if (Get-Command clip.exe -ErrorAction SilentlyContinue) {
             $Text | clip.exe
-            return $true
+            # clip.exe's exit code is the only signal it gives — don't assume success.
+            if ($LASTEXITCODE -eq 0) { return $true }
+            Show-HerdrNotice "clipboard: clip.exe failed (exit $LASTEXITCODE)" 3
+            return $false
         }
-        Write-Host "could not reach the clipboard: $_" -ForegroundColor Red
+        # Held: the copy keybinds exit right after this and the pane closes with them.
+        Show-HerdrNotice "could not reach the clipboard: $primary" 3
         return $false
     }
 }

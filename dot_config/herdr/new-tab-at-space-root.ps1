@@ -70,5 +70,17 @@ if (-not $root) {
     exit 1
 }
 
-& herdr tab create --workspace $wid --cwd $root --focus
-exit $LASTEXITCODE
+# The only state-mutating call in this script. Capture it: on failure the pane
+# closes immediately, so an undiagnosed error is indistinguishable from a dead
+# keybind (this is how the protocol-mismatch trap stayed hidden for so long).
+$raw = @(& herdr tab create --workspace $wid --cwd $root --focus 2>&1)
+$rc = $LASTEXITCODE
+if ($rc -ne 0) {
+    $s = Split-HerdrStream $raw
+    $code = Resolve-HerdrFailure $s.Err $s.Out   # warns if it is a protocol mismatch
+    if ($code -ne 'protocol_mismatch') {
+        $detail = if ($code) { $code } else { "$($s.Err)$($s.Out)" }
+        Show-HerdrNotice "new-tab-at-space-root: herdr tab create failed — $detail" 3
+    }
+}
+exit $rc

@@ -23,7 +23,8 @@ param([Parameter(ValueFromRemainingArguments)] [string[]] $Argument)
 . (Join-Path $PSScriptRoot '_common.ps1')
 
 function Show-Usage {
-    Write-Host 'usage: url-pick.ps1 [PANE_ID] [--source visible|recent]'
+    # Held: without a pause a bad arg shape looks identical to a dead keybind.
+    Show-HerdrNotice 'usage: url-pick.ps1 [PANE_ID] [--source visible|recent]' 3
     exit 64
 }
 
@@ -89,8 +90,14 @@ if ($urls.Count -eq 0) {
 $chosen = $urls | fzf --multi --prompt='url> ' --height=100% --border --no-sort
 if ($LASTEXITCODE -ne 0 -or -not $chosen) { exit 0 }
 
+$failed = @()
 foreach ($url in @($chosen)) {
     if (-not $url) { continue }
     try { Start-Process $url | Out-Null }
-    catch { Write-Host "url-pick: could not open $url ($_)" -ForegroundColor Yellow }
+    catch { $failed += $url }
+}
+# Held: this is the script's last action, so an unheld warning dies with the pane.
+if ($failed) {
+    Show-HerdrNotice "url-pick: could not open $($failed -join ', ')" 3
+    exit 1
 }

@@ -55,19 +55,43 @@ $pane = Resolve-HerdrPane -PaneId $paneArg
 if (-not $pane) { Write-Host 'review-mark: could not determine a pane id' -ForegroundColor Red; exit 1 }
 
 # NB: capture the output instead of `| Out-Null`. herdr reports failures as a JSON
-# error object (e.g. protocol_mismatch after `herdr update` left a stale server),
-# and discarding it made this print "review flag set" on a no-op — the pane then
-# closed too fast to notice anything was wrong.
+# error object on STDERR with exit 1 (stdout is empty), and discarding it made this
+# print "review flag set" on a no-op — the pane then closed too fast to notice.
+# Judge success by the EXIT CODE and the structured error CODE; never substring-match
+# the error message, which echoes back the pane id / token we passed.
 function Invoke-ReviewMetadata {
     param([Parameter(ValueFromRemainingArguments)] [string[]] $Argument)
-    $raw = @(& herdr @Argument 2>&1)
-    $text = ($raw | ForEach-Object { [string]$_ }) -join "`n"
-    if (Assert-HerdrServerFresh $text) { return $false }
-    if ($LASTEXITCODE -ne 0 -or $text -match '"error"') {
-        Show-HerdrNotice "review-mark: herdr rejected the update — $text" 3
+    try {
+        $raw = @(& herdr @Argument 2>&1)
+        $ok = ($LASTEXITCODE -eq 0)
+        $s = Split-HerdrStream $raw
+        if ($ok) { return $true }
+        $code = Resolve-HerdrFailure $s.Err $s.Out   # warns if it is a protocol mismatch
+        if ($code -ne 'protocol_mismatch') {
+            $detail = if ($code) { $code } else { $s.Err }
+            Show-HerdrNotice "review-mark: herdr rejected the update — $detail" 3
+        }
+        return $false
+    } catch {
+        Show-HerdrNotice "review-mark: $_" 3
         return $false
     }
-    $true
+}
+
+function Set-ReviewFlag {
+    if (Invoke-ReviewMetadata pane report-metadata $pane --source $SourceId --token "$Token=$status") {
+        Write-Host "review flag set on $pane"
+        return
+    }
+    exit 1      # a failed update must not exit 0 — callers judge by exit code
+}
+
+function Clear-ReviewFlag {
+    if (Invoke-ReviewMetadata pane report-metadata $pane --source $SourceId --clear-token $Token) {
+        Write-Host "review flag cleared on $pane"
+        return
+    }
+    exit 1
 }
 
 function Set-ReviewFlag {

@@ -55,9 +55,19 @@ herdr --version
 ## Prevention
 
 - After **any** `herdr update`, restart herdr before trusting keybinds. The updater says so, but the failure surfaces much later and in an unrelated-looking form.
-- `dot_config/herdr/_common.ps1` now detects this explicitly: `Test-HerdrProtocolMismatch` / `Assert-HerdrServerFresh` scan herdr's output (both streams) for `protocol_mismatch`, print *"herdr server is STALE — quit herdr and relaunch"*, and hold the pane ~5s so it is readable. `Invoke-HerdrJson` and `Get-HerdrPaneText` route through it.
-- `review-mark.ps1` no longer swallows output with `| Out-Null`; it checks the exit code and the JSON `"error"` key and only claims success when the call actually succeeded.
-- General rule for these helpers: **never** `2>$null` + generic message. A pane that closes on exit needs the real error printed and held.
+- `dot_config/herdr/_common.ps1` detects this explicitly. The detection rule, learned the hard way (the first attempt shipped a false positive — see below):
+  **judge failure by the EXIT CODE, then read the STRUCTURED error code; never substring-match a payload.**
+  `Split-HerdrStream` separates stderr (diagnostics) from stdout (payload); `Get-HerdrErrorCode` parses herdr's `{"error":{"code":...}}` object off stderr; `Resolve-HerdrFailure` warns only when the code is `protocol_mismatch`. The regex (`Test-HerdrProtocolMismatch`) is a LAST RESORT used only when neither stream is structured JSON — because herdr's error *message* echoes back the arguments we passed, so even stderr text is partly caller-controlled.
+- **Measured contract** (herdr 0.7.5-preview, pwsh 7.6.3): on failure stdout is empty, the error object is on stderr, exit is 1; on success stderr is empty. Under `2>&1` each stderr line arrives as an `ErrorRecord` while stdout lines stay `String`, and `$LASTEXITCODE` survives the array wrap. The design depends on `$PSNativeCommandUseErrorActionPreference` being `$false` (now pinned explicitly in `_common.ps1`) — if it were `$true`, a non-zero exit would throw and every diagnostic would go silent.
+- `review-mark.ps1` no longer swallows output with `| Out-Null`; it judges by exit code and exits non-zero on failure.
+- General rule for these helpers: **never** `2>$null` + generic message. A pane that closes on exit needs the real error printed AND held (`Show-HerdrNotice`).
+- Regression tests: `tests/HerdrCommon.Tests.ps1` (46 tests) pins all of the above, including the false positive below.
+
+### The false positive this fix originally shipped
+
+The first version of the detector scanned the **pane's own text** for the marker word. A pane displaying the string `protocol_mismatch` — for instance a shell in which you are debugging this very problem — was therefore reported as a broken server, while the real server was healthy. Symptom: `prefix+p`/`prefix+u` print the stale-server banner even though `herdr pane list` works fine from the same machine.
+
+The lesson generalises beyond herdr: **a diagnostic that pattern-matches data it also displays will eventually match its own evidence.** Only a failed command's output is a diagnostic.
 
 ## Related
 
