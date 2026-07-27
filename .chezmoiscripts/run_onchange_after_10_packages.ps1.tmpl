@@ -301,13 +301,34 @@ $peonHook = Join-Path $peonRoot 'hooks\peon-ping\peon.ps1'
 if (-not (Test-Path $peonHook)) {
     Info 'peon-ping (agent completion sounds, ~/.openpeon root)'
     try {
-        $peonInstaller = Join-Path $env:TEMP 'peon-ping-install.ps1'
+        # Upstream install.ps1 dot-sources scripts/install-utils.ps1 relative to
+        # $PSScriptRoot when run via -File; it only self-downloads that helper
+        # when $PSScriptRoot is empty (irm|iex). So stage BOTH files preserving
+        # the scripts/ layout in a temp dir, then run install.ps1 with -File.
+        $peonStage = Join-Path $env:TEMP 'peon-ping-install'
+        New-Item -ItemType Directory -Force -Path (Join-Path $peonStage 'scripts') | Out-Null
+        $peonInstaller = Join-Path $peonStage 'install.ps1'
         Invoke-WebRequest -UseBasicParsing -ErrorAction Stop `
             -Uri 'https://raw.githubusercontent.com/PeonPing/peon-ping/main/install.ps1' `
             -OutFile $peonInstaller
+        Invoke-WebRequest -UseBasicParsing -ErrorAction Stop `
+            -Uri 'https://raw.githubusercontent.com/PeonPing/peon-ping/main/scripts/install-utils.ps1' `
+            -OutFile (Join-Path $peonStage 'scripts\install-utils.ps1')
         & powershell -NoProfile -ExecutionPolicy Bypass -File $peonInstaller `
-            -OpenPeon -Packs 'sc2_scv'
+            -OpenPeon -Packs 'league_of_legends'
         if ($LASTEXITCODE -ne 0) { Register-Failure 'peon-ping' }
+        # The installer downloads the pack but leaves default_pack="peon" — a pack
+        # that ships NO sounds — so a fresh install is silent ("No sound files
+        # found for pack 'peon'"). Activate the pack we just seeded. Runs only on
+        # first install (whole block is guarded on peon.ps1 absence), so a pack the
+        # user later switches to via `peon packs use` is never clobbered.
+        $peonCli = Join-Path $HOME '.local\bin\peon.cmd'
+        if (Test-Path $peonCli) {
+            & $peonCli packs use league_of_legends
+            if ($LASTEXITCODE -ne 0) { Register-Failure 'peon-ping:activate-pack' }
+        } else {
+            Register-Failure 'peon-ping:activate-pack (peon CLI shim missing)'
+        }
     } catch {
         Register-Failure 'peon-ping'
     }

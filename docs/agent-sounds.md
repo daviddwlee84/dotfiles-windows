@@ -23,8 +23,10 @@ Default is `notify` on the `workstation` role and `none` on `minimal`. It gates
 regardless, so `peon preview task.complete` / `peon packs list` are always
 available to experiment with.
 
-Default pack is `sc2_scv` (StarCraft II Terran SCV — its `task.complete` line
-is *"Job's finished!"*).
+Default pack is `league_of_legends` (League of Legends champion voice lines).
+The installer downloads it and then activates it (`peon packs use
+league_of_legends`) so sounds fire on first run — the raw installer otherwise
+leaves the empty `peon` pack active.
 
 Two banners at `both` is expected. Trim it at runtime instead of changing tier:
 `peon notifications off` keeps the sound and drops peon's overlay.
@@ -89,7 +91,7 @@ two fingerprints before re-adding, so this matches its behaviour.
 
 `peon volume` / `notifications` / `packs use` write `~/.openpeon/config.json` at
 runtime. chezmoi does not manage that file, so tweaking any of it produces
-**no** drift. The installer seeds `sc2_scv` once and is skipped on later applies
+**no** drift. The installer seeds and activates `league_of_legends` once and is skipped on later applies
 (guarded on `peon.ps1` existing), so a pack you switch to later sticks.
 
 ## Verify
@@ -142,5 +144,5 @@ verified on macOS by rendering all four tiers and executing them under `pwsh`
 and the tier matrix is exact.
 
 **Not yet verified on a real Windows host**: the peon-ping install itself
-(`install.ps1 -OpenPeon -Packs sc2_scv`), the toast/voice actually firing, and
+(`install.ps1 -OpenPeon -Packs league_of_legends`), the toast/voice actually firing, and
 `$env:TEMP` behaviour. Those need a Windows box.

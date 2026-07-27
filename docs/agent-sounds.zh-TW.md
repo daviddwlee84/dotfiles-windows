@@ -21,8 +21,9 @@ Windows 上 coding agent 做完事情時怎麼通知你：toast、遊戲角色�
 —— `peon` CLI 會跟著 coding agents 一起裝，所以 `peon preview task.complete` /
 `peon packs list` 隨時都能玩。
 
-預設音效包是 `sc2_scv`（StarCraft II Terran SCV，`task.complete` 是
-*"Job's finished!"*）。
+預設音效包是 `league_of_legends`（League of Legends 英雄語音）。安裝器會下載後
+再啟用它（`peon packs use league_of_legends`），所以第一次執行就有聲音——原始
+安裝器否則會停在沒有任何聲音的空 `peon` pack。
 
 `both` 有兩個橫幅是預期的。不用改層級，用 runtime 開關就好：`peon notifications off`
 會保留聲音、關掉 peon 的 overlay。
@@ -79,7 +80,7 @@ hook 條目必須從 `claude/settings-overlay.json` **搬出來**放進 run_onch
 
 `peon volume` / `notifications` / `packs use` 會在 runtime 寫
 `~/.openpeon/config.json`。chezmoi 不管那個檔案，所以你怎麼調都**不會**產生 drift。
-安裝器只 seed 一次 `sc2_scv`，之後的 apply 會跳過（用 `peon.ps1` 是否存在來判斷），
+安裝器只 seed 並啟用一次 `league_of_legends`，之後的 apply 會跳過（用 `peon.ps1` 是否存在來判斷），
 所以你後來換的 pack 會一直留著。
 
 ## 驗證
@@ -126,5 +127,5 @@ template 渲染、PowerShell 剖析、以及合併/prune 行為都已在 macOS �
 被剝除、層級矩陣正確。
 
 **尚未在真正的 Windows 機器上驗證**：peon-ping 安裝本身
-（`install.ps1 -OpenPeon -Packs sc2_scv`）、toast/語音是否真的發得出來、以及
+（`install.ps1 -OpenPeon -Packs league_of_legends`）、toast/語音是否真的發得出來、以及
 `$env:TEMP` 的行為。這些需要一台 Windows。
