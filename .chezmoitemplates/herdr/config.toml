@@ -131,31 +131,39 @@ type = "pane"
 command = "btop"
 description = "btop system monitor (popup pane)"
 
-# --- Scratch shell as a real floating popup (prefix+`) ---
-# type = "popup" floats above the layout, so quitting the shell puts you back
-# exactly where you were. lazygit/btop above deliberately stay type = "pane":
-# you quit those immediately and popups are session-modal.
-[[keys.command]]
-key = "prefix+`"
-type = "popup"
-command = "pwsh"
-width = "85%"
-height = "80%"
-description = "scratch shell (popup)"
+# --- Scratch shell as a real floating popup (prefix+`) --- DISABLED on Windows ---
+# type = "popup" is NOT implemented in the herdr Windows preview
+# (0.7.5-preview.2026-07-21): the parser rejects it with
+#   invalid keybinding config: unknown variant `popup`, expected one of
+#   `shell`, `pane`, `plugin_action` ... keeping current
+# and drops the binding. Left DEAD (not revived as a tiled `pane`) per preference.
+# To restore: uncomment and keep `type = "popup"` once a Windows preview ships it,
+# or use `type = "pane"` for a tiled fallback (drop width/height — panes ignore
+# them). See backlog/herdr-windows-port-verification.md item #2.
+# [[keys.command]]
+# key = "prefix+`"
+# type = "popup"
+# command = "pwsh"
+# width = "85%"
+# height = "80%"
+# description = "scratch shell (popup)"
 
-# --- Run an arbitrary command in a floating popup (prefix+E) ---
+# --- Run an arbitrary command in a floating popup (prefix+E) --- DISABLED on Windows ---
+# Same reason as prefix+` above: `type = "popup"` is unknown to the herdr Windows
+# preview (0.7.5-preview.2026-07-21) and the binding is rejected. Left DEAD per
+# preference; restore/fallback notes are on the prefix+` block above.
 # The generalisation of prefix+G: fzf-pick or type any command, run it in the
 # FOCUSED PANE'S cwd, and the popup closes itself when the command exits.
 # Enter runs the highlighted history entry; Alt+Enter runs exactly what you typed.
 # Exit behaviour: closes on success, holds on failure. Override with
 # $env:HERDR_RUN_HOLD = 'always'|'never'.
-[[keys.command]]
-key = "prefix+E"
-type = "popup"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/run-command.ps1"'
-width = "80%"
-height = "70%"
-description = "run a command in the pane cwd (popup)"
+# [[keys.command]]
+# key = "prefix+E"
+# type = "popup"
+# command = 'pwsh -NoProfile -File "{{ $herdrDir }}/run-command.ps1"'
+# width = "80%"
+# height = "70%"
+# description = "run a command in the pane cwd (popup)"
 
 # --- New tab at the workspace ("space") root dir (prefix+C) ---
 # herdr's native new-tab (prefix+c) and the mouse "+" button follow new_cwd,

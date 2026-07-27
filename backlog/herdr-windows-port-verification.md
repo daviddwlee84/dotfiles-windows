@@ -73,9 +73,14 @@ Everything below was exercised from macOS with chezmoi + pwsh 7.4 + uv:
    "plugin_action"` behave as documented. `herdr server reload-config` should
    report empty diagnostics — if it rejects a key, that is the first signal.
 2. **`type = "popup"` (herdr >= 0.7.4)** is used for `prefix+E` and
-   ``prefix+` ``. If popups are not implemented on Windows, fall back to
-   `type = "pane"` for both (the unix repo's own history shows they worked as
-   panes first).
+   ``prefix+` ``. **CONFIRMED unsupported** on the Windows preview
+   `0.7.5-preview.2026-07-21` (2026-07): the parser rejects it —
+   `invalid keybinding config: unknown variant `popup`, expected one of `shell`,
+   `pane`, `plugin_action` ... keeping current` — and drops the binding. Both were
+   **disabled** (commented out) in `.chezmoitemplates/herdr/config.toml` rather
+   than revived as tiled `pane`s, per user preference (dead is acceptable until a
+   Windows preview ships `popup`). Note: `type = "shell"` is NOT a substitute — it
+   runs detached in the background. Restore path documented inline in the config.
 3. **How herdr spawns a `command` string on Windows.** The config passes
    `pwsh -NoProfile -File "<abs path>" "$HERDR_ACTIVE_PANE_ID"`. Two unknowns:
    whether herdr expands `$HERDR_ACTIVE_PANE_ID` in the string (it does on
