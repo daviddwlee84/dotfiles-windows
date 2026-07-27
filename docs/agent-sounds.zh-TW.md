@@ -90,6 +90,35 @@ peon preview task.complete       # 應該說 "Job's finished!"
 peon volume 0.4; chezmoi diff    # 必須是空的
 ```
 
+**上面三行全過也不代表真的會發出聲音。** 這組指令曾經在 parent repo 一台完全沒聲音的
+macOS 機器上全部通過
+（→ [`peon-hooks-wired-but-no-sound`](https://github.com/daviddwlee84/dotfiles/blob/main/pitfalls/peon-hooks-wired-but-no-sound.md)）：
+`peon status` 只看 `~/.openpeon`；`preview` 根本繞過 hook；settings 裡的 key 可以
+全部存在、但 hook 指向的檔案不存在 —— 因為 `Test-Path` 保護會把「播放器不存在」變成
+一次**成功**的 no-op，Claude Code 於是回報 `completed successfully`。
+
+這件事在 Windows 比 macOS 更需要注意：`run_onchange_after_10_packages.ps1.tmpl` 裡
+`install.ps1 -OpenPeon` 那步如果失敗，它只會呼叫 `Register-Failure`，apply 照樣繼續 ——
+於是 hook 接好了、播放器卻從來沒裝上。要檢查的是產出物本身，然後用 Claude Code 的方式
+實際觸發一次：
+
+```powershell
+Test-Path "$HOME\.openpeon\hooks\peon-ping\peon.ps1"   # 必須是 True
+'{"hook_event_name":"Stop","session_id":"probe","cwd":"."}' |
+  & "$HOME\.openpeon\hooks\peon-ping\peon.ps1"
+Get-Content "$HOME\.openpeon\.state.json" | ConvertFrom-Json |
+  Select-Object -Expand last_played                    # -> task.complete = sounds/JobsFinished.mp3
+```
+
+`last_played` 是唯一能被機器檢查、證明聲音真的送出去的證據；exit code 0 不是。
+
+兩個上游行為，先知道再決定要不要怪這個 repo（都在 macOS 的 peon 2.35.1 上確認過）：
+
+- **終端機在前景時 overlay 會被抑制** —— 聲音會播，橫幅不會。切到別的視窗再讓它跑完。
+- **`peon notifications test` 是 no-op** —— 它跑的是 `PEON_TEST=1`，會關掉 peon script
+  解析器的 installer-layout fallback，於是回報成功卻不發通知。請改用一次真正的、
+  非前景的 turn 來測。
+
 ## 驗證狀態
 
 template 渲染、PowerShell 剖析、以及合併/prune 行為都已在 macOS 上驗證過：四個層級

@@ -101,6 +101,39 @@ Get-Content ~/.claude/settings.json | ConvertFrom-Json | Select-Object -Expand h
 peon volume 0.4; chezmoi diff    # must be empty
 ```
 
+**None of those four lines proves a sound will actually fire.** That exact
+combination once passed on a fully silent macOS machine in the parent repo
+(→ [`peon-hooks-wired-but-no-sound`](https://github.com/daviddwlee84/dotfiles/blob/main/pitfalls/peon-hooks-wired-but-no-sound.md)).
+`peon status` only inspects `~/.openpeon`; `preview` bypasses the hook entirely;
+and the settings keys can all be present while the hook target is missing,
+because the `Test-Path` guard turns a missing `peon.ps1` into a *successful*
+no-op that Claude Code reports as `completed successfully`.
+
+That matters more here than on macOS: if the `install.ps1 -OpenPeon` step in
+`run_onchange_after_10_packages.ps1.tmpl` fails it calls `Register-Failure` and
+the apply carries on — leaving hooks wired against a player that was never
+installed. Check the artifact, then fire the hook the way Claude Code does:
+
+```powershell
+Test-Path "$HOME\.openpeon\hooks\peon-ping\peon.ps1"   # must be True
+'{"hook_event_name":"Stop","session_id":"probe","cwd":"."}' |
+  & "$HOME\.openpeon\hooks\peon-ping\peon.ps1"
+Get-Content "$HOME\.openpeon\.state.json" | ConvertFrom-Json |
+  Select-Object -Expand last_played                    # -> task.complete = sounds/JobsFinished.mp3
+```
+
+`last_played` is the only machine-checkable proof that audio dispatched; exit
+code 0 is not.
+
+Two upstream behaviours worth knowing before blaming this repo, both confirmed
+on macOS with peon 2.35.1:
+
+- **The overlay is suppressed while your terminal is focused** — the sound
+  plays, the banner doesn't. Switch to another window before the turn ends.
+- **`peon notifications test` is a no-op** — it runs `PEON_TEST=1`, which
+  disables the installer-layout fallback in peon's script resolver, so it
+  reports success without notifying. Test with a real unfocused turn instead.
+
 ## Verification status
 
 The template rendering, PowerShell parse, and the merge/prune behaviour were
