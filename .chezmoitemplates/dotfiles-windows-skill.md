@@ -37,12 +37,15 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 
 ## copilot-proxy
 - Module at `~/.config/powershell/modules/Copilot`. Commands: `copilot-proxy`
-  (`start`/`stop`/`restart`/`status`/`doctor`/`logs`/`shim`/`whoami`/`auth`),
+  (`start`/`stop`/`restart`/`status`/`doctor`/`logs`/`shim`/`whoami`/`auth`/`reinstall`),
   `copilot-run`, `claude-copilot`, `claude-copilot-once`, `copilot-here`,
-  `copilot-model`, `copilot-embed`, `semsearch`.
+  `copilot-model` (incl. `--auto`), `copilot-embed`, `semsearch`.
 - Needs `bun`. Token: `~/.local/share/copilot-api/github_token`. Ports 4141 (proxy) /
-  4142 (throttle shim). Default model `claude-opus-4-8[1m]`. `copilot-here` writes
-  only the gitignored `./.claude/settings.local.json`. Full guide: `docs/copilot-proxy.md`.
+  4142 (throttle shim). Default model `claude-opus-5[1m]`. `copilot-here` writes
+  only the gitignored `./.claude/settings.local.json`. The pinned copilot-api is
+  installed ONCE into `~/.local/share/copilot-api/pkg` (never `bunx` at launch);
+  `COPILOT_HTTP_PROXY` (auto|always|never|URL) controls whether Node fetches the
+  GitHub model catalog through the local proxy. Full guide: `docs/copilot-proxy.md`.
 
 ## Editors / terminal / tv
 - VSCode & Cursor settings + keybindings are deep-merged into `%APPDATA%\{Code,Cursor}\User`
