@@ -90,6 +90,7 @@ Pitfalls owned by this folder. Keep alphabetical.
 | Slug | Symptom keywords | Status |
 |---|---|---|
 | [`clickfix-defender-flags-cmd-irm-iex`](clickfix-defender-flags-cmd-irm-iex.md) | `Trojan:Win32/ClickFix.R!ml`, cmd `powershell -c "irm\|iex"` blocked, VirusTotal clean but Defender blocks | workaround documented |
+| [`herdr-keybind-failed-to-read-pane-protocol-mismatch`](herdr-keybind-failed-to-read-pane-protocol-mismatch.md) | `url-pick: failed to read pane <id>`, `protocol_mismatch`, `client protocol 17 is newer than server protocol 16`, keybind helpers silently no-op after `herdr update` | workaround documented |
 | [`herdr-update-asr-access-denied`](herdr-update-asr-access-denied.md) | `herdr update` / `--handoff`, `Program 'herdr.exe' failed to run: Access is denied`, ASR `Use advanced protection against ransomware` (`C1DB55AB`), `Move-Item ... used by another process` | workaround documented |
 | [`nvim-treesitter-no-c-compiler-despite-zig`](nvim-treesitter-no-c-compiler-despite-zig.md) | `No C compiler found`, `checkhealth nvim-treesitter`, `BrechtSanders.WinLabs.POSIX.UCRT`, zig installed but treesitter won't compile, `main` branch | fixed |
 | [`onedrive-kfm-profile-not-loaded`](onedrive-kfm-profile-not-loaded.md) | `is not recognized as a name of a cmdlet`, `OneDrive - <tenant>\Documents\PowerShell`, bare prompt / no starship | fixed |

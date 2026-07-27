@@ -54,14 +54,32 @@ if (-not $action) { Show-Usage }
 $pane = Resolve-HerdrPane -PaneId $paneArg
 if (-not $pane) { Write-Host 'review-mark: could not determine a pane id' -ForegroundColor Red; exit 1 }
 
+# NB: capture the output instead of `| Out-Null`. herdr reports failures as a JSON
+# error object (e.g. protocol_mismatch after `herdr update` left a stale server),
+# and discarding it made this print "review flag set" on a no-op — the pane then
+# closed too fast to notice anything was wrong.
+function Invoke-ReviewMetadata {
+    param([Parameter(ValueFromRemainingArguments)] [string[]] $Argument)
+    $raw = @(& herdr @Argument 2>&1)
+    $text = ($raw | ForEach-Object { [string]$_ }) -join "`n"
+    if (Assert-HerdrServerFresh $text) { return $false }
+    if ($LASTEXITCODE -ne 0 -or $text -match '"error"') {
+        Show-HerdrNotice "review-mark: herdr rejected the update — $text" 3
+        return $false
+    }
+    $true
+}
+
 function Set-ReviewFlag {
-    & herdr pane report-metadata $pane --source $SourceId --token "$Token=$status" | Out-Null
-    Write-Host "review flag set on $pane"
+    if (Invoke-ReviewMetadata pane report-metadata $pane --source $SourceId --token "$Token=$status") {
+        Write-Host "review flag set on $pane"
+    }
 }
 
 function Clear-ReviewFlag {
-    & herdr pane report-metadata $pane --source $SourceId --clear-token $Token | Out-Null
-    Write-Host "review flag cleared on $pane"
+    if (Invoke-ReviewMetadata pane report-metadata $pane --source $SourceId --clear-token $Token) {
+        Write-Host "review flag cleared on $pane"
+    }
 }
 
 switch ($action) {

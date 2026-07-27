@@ -33,14 +33,49 @@ function Test-HerdrPresent {
     $false
 }
 
+# herdr's CLI and the running server speak a VERSIONED protocol. After `herdr
+# update` the CLI is new but the already-running server is still old, and every
+# pane command fails with:
+#   {"error":{"code":"protocol_mismatch","message":"client protocol 17 is newer
+#    than server protocol 16; restart the Herdr server ..."}}
+# Without this check the scripts swallow that and report a generic "failed to
+# read pane <id>", which hides the real (trivial) fix. See
+# pitfalls/herdr-keybind-failed-to-read-pane-protocol-mismatch.md
+function Test-HerdrProtocolMismatch {
+    param([string] $Text)
+    if (-not $Text) { return $false }
+    ($Text -match 'protocol_mismatch') -or
+    ($Text -match 'client protocol \d+ is (newer|older) than server protocol \d+')
+}
+
+# Returns $true (and explains, once) when the server is stale. A command pane
+# closes the instant the script exits, so hold long enough to actually read it.
+$script:HerdrStaleServerWarned = $false
+function Assert-HerdrServerFresh {
+    param([string] $Text)
+    if (-not (Test-HerdrProtocolMismatch $Text)) { return $false }
+    if (-not $script:HerdrStaleServerWarned) {
+        $script:HerdrStaleServerWarned = $true
+        Write-Host 'herdr server is STALE — CLI and server protocol versions differ.' -ForegroundColor Red
+        Write-Host 'Cause: `herdr update` upgraded the CLI, but the running server is still the old build.' -ForegroundColor Yellow
+        Write-Host 'Fix: quit herdr and relaunch it. (Restarting the server EXITS pane processes.)' -ForegroundColor Yellow
+        Start-Sleep -Seconds 5
+    }
+    $true
+}
+
 # Run a herdr subcommand and parse its JSON. Returns $null on any failure so
 # callers can fall through instead of throwing inside a pane that is about to close.
 function Invoke-HerdrJson {
     param([Parameter(ValueFromRemainingArguments)] [string[]] $Argument)
     try {
-        $raw = & herdr @Argument 2>$null
+        # 2>&1 (not 2>$null) so a protocol_mismatch on either stream is seen.
+        # Contamination is harmless here: non-JSON just fails ConvertFrom-Json.
+        $raw = & herdr @Argument 2>&1
         if (-not $raw) { return $null }
-        return ($raw | ConvertFrom-Json -ErrorAction Stop)
+        $text = (@($raw) | ForEach-Object { [string]$_ }) -join "`n"
+        if (Assert-HerdrServerFresh $text) { return $null }
+        return ($text | ConvertFrom-Json -ErrorAction Stop)
     } catch { return $null }
 }
 
@@ -85,9 +120,14 @@ function Resolve-HerdrCwd {
 function Get-HerdrPaneText {
     param([string] $PaneId, [string] $Source = 'visible')
     try {
-        $out = & herdr pane read $PaneId --source $Source --format text 2>$null
-        if ($out -is [array]) { return ($out -join "`n") }
-        return [string]$out
+        $raw = @(& herdr pane read $PaneId --source $Source --format text 2>&1)
+        # Scan BOTH streams for a stale-server error before using the output...
+        $all = ($raw | ForEach-Object { [string]$_ }) -join "`n"
+        if (Assert-HerdrServerFresh $all) { return $null }
+        # ...but keep stderr OUT of the returned pane text (2>$null's old behaviour).
+        $clean = @($raw | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] })
+        if (-not $clean) { return $null }
+        return (($clean | ForEach-Object { [string]$_ }) -join "`n")
     } catch { return $null }
 }
 
