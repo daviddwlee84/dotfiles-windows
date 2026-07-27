@@ -46,10 +46,14 @@ function Invoke-HerdrJson {
 
 # Resolve the pane to act on: explicit id -> $HERDR_ACTIVE_PANE_ID (what a keybind
 # injects) -> $HERDR_PANE_ID (ambient, set inside a pane) -> `herdr pane current`.
+# WINDOWS QUIRK: herdr does NOT expand $VAR inside a [[keys.command]] string on the
+# Windows preview, so a keybind written as `... "$HERDR_ACTIVE_PANE_ID"` hands us the
+# LITERAL text "$HERDR_ACTIVE_PANE_ID". Skip any unexpanded $-placeholder so we fall
+# through to the env var herdr DID inject. See backlog/herdr-windows-port-verification.md #3.
 function Resolve-HerdrPane {
     param([string] $PaneId)
     foreach ($candidate in $PaneId, $env:HERDR_ACTIVE_PANE_ID, $env:HERDR_PANE_ID) {
-        if ($candidate) { return $candidate }
+        if ($candidate -and $candidate -notlike '$*') { return $candidate }
     }
     $j = Invoke-HerdrJson pane current
     if ($j) { return $j.result.pane.pane_id }
@@ -62,7 +66,7 @@ function Resolve-HerdrPane {
 # stale server.
 function Resolve-HerdrCwd {
     param([string] $Cwd, [string] $PaneId)
-    if ($Cwd -and (Test-Path -LiteralPath $Cwd)) { return $Cwd }
+    if ($Cwd -and $Cwd -notlike '$*' -and (Test-Path -LiteralPath $Cwd)) { return $Cwd }
     if ($env:HERDR_ACTIVE_PANE_CWD -and (Test-Path -LiteralPath $env:HERDR_ACTIVE_PANE_CWD)) {
         return $env:HERDR_ACTIVE_PANE_CWD
     }

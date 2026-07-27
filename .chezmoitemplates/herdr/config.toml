@@ -173,7 +173,7 @@ description = "btop system monitor (popup pane)"
 [[keys.command]]
 key = "prefix+C"
 type = "pane"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/new-tab-at-space-root.ps1" "$HERDR_ACTIVE_PANE_ID"'
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/new-tab-at-space-root.ps1"'
 description = "new tab at the workspace (space) root dir"
 
 # URL picker (tmux prefix+u analog — joshmedeski/tmux-fzf-url). Reads the focused
@@ -183,7 +183,7 @@ description = "new tab at the workspace (space) root dir"
 [[keys.command]]
 key = "prefix+u"
 type = "pane"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/url-pick.ps1" "$HERDR_ACTIVE_PANE_ID"'
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/url-pick.ps1"'
 description = "URL picker — open a URL from the pane (fzf)"
 
 [[keys.command]]
@@ -205,7 +205,7 @@ description = "Live agent panes (herdr-aware tv channel)"
 [[keys.command]]
 key = "prefix+m"
 type = "pane"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/review-mark.ps1" toggle "$HERDR_ACTIVE_PANE_ID"'
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/review-mark.ps1" toggle'
 description = "toggle review-pending flag (⭐) on the current pane"
 
 [[keys.command]]
@@ -222,25 +222,25 @@ description = "Review-pending inbox — flagged panes (herdr-aware tv channel)"
 [[keys.command]]
 key = "prefix+P"
 type = "pane"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-copy.ps1" process "$HERDR_ACTIVE_PANE_ID"'
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-copy.ps1" process'
 description = "copy pane process info"
 
 [[keys.command]]
 key = "prefix+D"
 type = "pane"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-copy.ps1" coord "$HERDR_ACTIVE_PANE_ID"'
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-copy.ps1" coord'
 description = "copy pane coordinate (session>space>tab>pane)"
 
 [[keys.command]]
 key = "prefix+V"
 type = "pane"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-copy.ps1" content "$HERDR_ACTIVE_PANE_ID" --source visible'
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-copy.ps1" content --source visible'
 description = "copy pane content (visible screen)"
 
 [[keys.command]]
 key = "prefix+S"
 type = "pane"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-copy.ps1" content "$HERDR_ACTIVE_PANE_ID" --source recent'
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-copy.ps1" content --source recent'
 description = "copy pane content (full scrollback)"
 
 # Copy a file PATH from the pane (extrakto-style). Extracts path-like tokens;
@@ -250,7 +250,7 @@ description = "copy pane content (full scrollback)"
 [[keys.command]]
 key = "prefix+p"
 type = "pane"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/path-pick.ps1" "$HERDR_ACTIVE_PANE_ID" --cwd "$HERDR_ACTIVE_PANE_CWD"'
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/path-pick.ps1"'
 description = "copy a file path from the pane (fzf, two-tier)"
 
 # --- herdr-plus plugin (sesh + tmuxp + popup-menu analog) ---
