@@ -24,6 +24,8 @@ shell config.
   Windows Terminal, Alacritty, Raycast, PowerToys, Steam.
 - **`copilot-proxy`** tool series, rewritten as a native PowerShell module — see
   [copilot-proxy](copilot-proxy.md).
+- **`translate`** — terminal translator (CLI + TUI), built from source and wired up
+  with tab-completion and a `tv` channel — see [translate](translate.md).
 
 ## Quick start
 

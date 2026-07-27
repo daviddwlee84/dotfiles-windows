@@ -71,3 +71,8 @@ Import-CachedInit -Name 'tv' -Exe 'tv' -Generate {
     if (-not $o.Trim()) { $o = tv init powershell 2>$null | Out-String }
     $o
 }
+
+# translate — cobra tab-completion for the terminal translator (opt-in
+# installTranslate; built by run_onchange_after_10_packages). The pwsh
+# counterpart of the parent repo's scripts/generate_completions.sh entry.
+Import-CachedInit -Name 'translate' -Exe 'translate' -Generate { translate completion powershell }

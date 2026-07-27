@@ -18,6 +18,7 @@
 #   installHerdr         = {{ .installHerdr }}
 #   installClink         = {{ .installClink }}
 #   installTry           = {{ .installTry }}
+#   installTranslate     = {{ .installTranslate }}
 #   useChineseMirror     = {{ .useChineseMirror }}
 #   managedMachine       = {{ .managedMachine }}
 
@@ -509,6 +510,49 @@ if (Have gem) {
 {{- end }}
     if ($LASTEXITCODE -ne 0) { Register-Failure 'gem:try-cli' }
 } else { Register-Failure 'gem:try-cli (ruby/gem unavailable)' }
+{{ end -}}
+
+{{ if .installTranslate -}}
+# translate -- terminal translator CLI+TUI (github.com/daviddwlee84/translate).
+# There is no scoop/winget manifest and no prebuilt Windows release, so it is
+# built from source with `go install` -- the same path the parent repo takes on
+# Linux (dot_ansible/roles/go_tools); macOS there uses the Homebrew tap.
+# GOBIN/GOPATH mirror that unix convention: the binary lands in ~/.local/bin
+# (already on PATH via profile.d/00_env.ps1) and the module cache in
+# ~/.local/share/go rather than recreating ~/go.
+#
+# It is pure Go (modernc.org/sqlite -- no cgo) and cross-compiles cleanly for
+# windows/amd64 and windows/arm64. The FIRST build is slow (several minutes: the
+# embedded swagger-ui bundle + sqlite); later applies no-op via the version check
+# below. Bump $translateVersion to upgrade -- editing it re-renders this script,
+# which is what re-fires the run_onchange. go.mod needs go >= 1.26.4; the default
+# GOTOOLCHAIN=auto fetches a newer toolchain if scoop's go is older.
+$translateVersion = 'v0.5.2'
+Scoop-Install @('go')   # self-contained: installExtraRuntimes may well be off
+if (Have go) {
+    $trBin  = Join-Path $HOME '.local\bin\translate.exe'
+    $trHave = ''
+    # `translate --version` prints "translate version v0.5.2 ..."; a module-proxy
+    # build carries no VCS metadata, so token 3 is exactly the module version. An
+    # absent/unparseable answer just falls through to a reinstall, which is cheap
+    # once the module cache is warm.
+    if (Test-Path -LiteralPath $trBin) {
+        try { $trHave = ((& $trBin --version 2>$null) -split '\s+')[2] } catch { $trHave = '' }
+    }
+    if ($trHave -eq $translateVersion) {
+        Info "translate $translateVersion already installed"
+    } else {
+        Info "go install translate@$translateVersion (first build takes several minutes)"
+        $env:GOBIN  = Join-Path $HOME '.local\bin'
+        $env:GOPATH = Join-Path $HOME '.local\share\go'
+        go install "github.com/daviddwlee84/translate@$translateVersion" 2>&1 | Out-Host
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $trBin)) {
+            Register-Failure "go:translate@$translateVersion"
+        }
+    }
+} else {
+    Register-Failure 'translate (needs go; enable Extra runtimes or run: scoop install go)'
+}
 {{ end -}}
 
 if ($script:Failures.Count -gt 0) {

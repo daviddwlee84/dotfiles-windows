@@ -62,3 +62,10 @@ AppData/Roaming/television/cable/herdr-*.toml
 {{ if not .installClink }}
 AppData/Local/clink/**
 {{ end }}
+
+# The translate history picker is only useful with the translate binary present
+# (opt-in installTranslate). Without the gate it would show up in `tv`'s channel
+# list and return nothing — same reasoning as the herdr-* channels above.
+{{ if not .installTranslate }}
+AppData/Roaming/television/cable/translate.toml
+{{ end }}

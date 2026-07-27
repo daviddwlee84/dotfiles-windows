@@ -42,6 +42,10 @@
     installHerdr         = {{ promptBoolOnce . "installHerdr" "Install herdr (native Windows terminal multiplexer, preview beta)" false }}
     installClink         = {{ promptBoolOnce . "installClink" "Install Clink + starship/zoxide/fzf for cmd.exe (DOS prompt)" false }}
     installTry           = {{ promptBoolOnce . "installTry" "Install try (Ruby ephemeral-workspace CLI, needs Ruby)" false }}
+    # translate has no scoop/winget manifest and no prebuilt Windows release, so
+    # it is built from source with `go install` (go is pulled in by the block
+    # itself). First apply on a fresh box therefore spends a few minutes here.
+    installTranslate     = {{ promptBoolOnce . "installTranslate" "Install translate (terminal translator CLI and TUI, built from source with Go)" $full }}
     useChineseMirror     = {{ promptBoolOnce . "useChineseMirror" "Use China (GFW) mirrors for pip/npm/cargo/go/node" false }}
     managedMachine       = {{ promptBoolOnce . "managedMachine" "Managed or corporate machine (skip org-policy-blocked apps like Tailscale and Grammarly)" false }}
     backupMode           = {{ promptChoiceOnce . "backupMode" "Back up existing files before apply (smart|full|off)" (list "smart" "full" "off") "smart" | quote }}

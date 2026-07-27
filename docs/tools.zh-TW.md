@@ -174,6 +174,7 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
 | herdr multiplexer | herdr，原生 Windows 終端多工器（**preview beta**）。沒有 scoop/winget manifest —— 透過 herdr.dev 的 `irm \| iex` 腳本安裝；設定受管於 `~/.config/herdr/config.toml`（以 pwsh 為預設 shell）。見 [rationale](rationale.zh-TW.md#wezterm-herdr-beta)。 |
 | Clink (cmd.exe) | [Clink](https://chrisant996.github.io/clink/)（scoop `main`）—— cmd.exe 的 Bash 風格行編輯，讓 **starship** + **zoxide** + **fzf** 也能用在 DOS 提示字元。沿用共用的 `starship.toml`；註冊使用者層級 cmd AutoRun、部署我們的 `starship.lua`，並把社群的 `clink-zoxide` / `clink-fzf` 橋接抓進 `%LocalAppData%\clink`。pwsh 仍是預設 —— 這是選用的次要 shell，只有 prompt + 導覽對等。見 [rationale](rationale.zh-TW.md#powershell-7-cmdexe-clink) 與 [Shell](shell.zh-TW.md#cmdexe-via-clink)。 |
 | try（暫時性 workspace） | [`try`](https://github.com/tobi/try)，透過 `gem install try-cli` 安裝（若無 ruby 會一併裝）。建立以日期命名的 `~/src/tries/YYYY-MM-DD-name` 試驗目錄 + 模糊選擇器；`tri <git-url>` 會 clone 進其中一個。pwsh 指令是 **`tri`**（`try` 是保留字 —— 裸打 `try` 無法 parse；`& try` 可用）。見 [Shell](shell.zh-TW.md#try)。 |
+| translate（workstation 預設開） | [`translate`](https://github.com/daviddwlee84/translate) —— 終端機翻譯工具（CLI + TUI），走 copilot-proxy / Ollama / Google，另有離線的 CC-CEDICT + ECDICT 辭典。它沒有 scoop/winget manifest，也沒有預先編譯的 Windows release，所以用 `go install` 從原始碼編進 `~\.local\bin`（go 由該區塊自己裝，不必開「Extra runtimes」）；**第一次編譯要好幾分鐘**。附帶 pwsh tab 補全與 `translate` tv channel。見 [translate](translate.zh-TW.md)。 |
 
 **China mirrors** 會把 pip / npm / cargo / go / node 的套件抓取導向 GFW 鏡像
 （清華 / npmmirror / goproxy.cn / rsproxy），安裝時與互動式 shell
@@ -192,6 +193,7 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
 | `scoop-apps` | 已安裝的 scoop apps → Enter 資訊、Ctrl+U 更新、Ctrl+X 移除 |
 | `apps` | 從開始功能表捷徑啟動應用程式 |
 | `channels` | 依描述瀏覽所有 tv channel → Enter 開啟選定的 channel |
+| `translate` | 翻譯歷史 → Enter 複製譯文、Ctrl+Y 複製原文、Ctrl+S 朗讀（選用的 `translate`） |
 
 ## 升級
 
@@ -200,4 +202,5 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
 ```powershell
 just upgrade-scoop     # scoop update *
 just upgrade-winget    # winget upgrade --all
+just upgrade-translate # go install …/translate@latest（選用工具，不含在 `just upgrade` 裡）
 ```

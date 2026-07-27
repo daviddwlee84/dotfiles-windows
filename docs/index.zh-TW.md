@@ -23,6 +23,8 @@
   Windows Terminal、Alacritty、Raycast、PowerToys、Steam。
 - **`copilot-proxy`** 工具系列，改寫為原生 PowerShell 模組 —— 見
   [copilot-proxy](copilot-proxy.md)。
+- **`translate`** —— 終端機翻譯工具（CLI + TUI），從原始碼編譯，並接上 tab 補全
+  與一個 `tv` channel —— 見 [translate](translate.zh-TW.md)。
 
 ## 快速開始
 

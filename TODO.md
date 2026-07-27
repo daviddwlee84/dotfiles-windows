@@ -28,6 +28,7 @@ Likely next batch — items you'd reach for if you sat down to work today.
 Worth doing, no rush.
 
 - [ ] **[M] Example medium item** — link to research if non-trivial. → [research](backlog/example-medium.md)
+- [ ] **[M] Ship prebuilt Windows binaries for `translate` and install it via scoop** — the tool currently builds from source (`go install …@v0.5.2`), which costs several minutes on a fresh `workstation` apply, drags in a Go toolchain, and leaves `just upgrade-translate` as the one upgrade path outside `just upgrade-scoop`. Needs GoReleaser + a release workflow in the `translate` repo (which has no `.github/` at all today) plus a `daviddwlee84/scoop-bucket` manifest; then this repo's block becomes a one-line `Scoop-Install`. → [research](backlog/translate-windows-distribution.md)
 - [ ] **[S] Verify the herdr port on a real Windows box** — the full keymap, six pwsh helper scripts, three tv channels and the herdr-plus config were ported from the parent repo on 2026-07-27 and validated as far as macOS allows (overlay merge + idempotency, TOML validity, regex parity with the unix pipelines, channel TSV against a stub `herdr`, the `installHerdr` gate). Nine behaviours can only be confirmed with herdr actually running on Windows — chiefly whether the preview build supports `[[keys.command]]` / `type = "popup"` at all, how it spawns the `pwsh -File` command strings, and whether `prefix+ctrl+N` survives ConPTY. → [research](backlog/herdr-windows-port-verification.md)
 
 ## P3

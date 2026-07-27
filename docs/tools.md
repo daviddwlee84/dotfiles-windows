@@ -186,6 +186,7 @@ Off by default; enable the matching init prompt:
 | herdr multiplexer | herdr, a native Windows terminal multiplexer (**preview beta**). No scoop/winget manifest — installs via herdr.dev's `irm \| iex` script; config managed at `~/.config/herdr/config.toml` (pwsh as the default shell). See [rationale](rationale.md#terminal-multiplexer-wezterm-stable-default-herdr-native-beta). |
 | Clink (cmd.exe) | [Clink](https://chrisant996.github.io/clink/) (scoop `main`) — Bash-style line editing for `cmd.exe`, so **starship** + **zoxide** + **fzf** work in the DOS prompt. Reuses the shared `starship.toml`; registers a per-user cmd AutoRun, deploys our `starship.lua`, and fetches the community `clink-zoxide` / `clink-fzf` bridges into `%LocalAppData%\clink`. pwsh stays the default — this is an opt-in secondary shell with prompt + nav parity only. See [rationale](rationale.md#powershell-7-default-cmdexe-optional-via-clink) & [Shell](shell.md#cmdexe-via-clink). |
 | try (ephemeral workspaces) | [`try`](https://github.com/tobi/try) via `gem install try-cli` (ruby installed if absent). Dated `~/src/tries/YYYY-MM-DD-name` trial dirs + a fuzzy selector; `tri <git-url>` clones into one. The pwsh command is **`tri`** (`try` is a reserved keyword — bareword `try` won't parse; `& try` works). See [Shell](shell.md#try). |
+| translate (on for workstation) | [`translate`](https://github.com/daviddwlee84/translate) — terminal translator (CLI + TUI) over copilot-proxy / Ollama / Google plus an offline CC-CEDICT + ECDICT dictionary. No scoop/winget manifest and no prebuilt Windows release, so it is built from source with `go install` (go is installed by the block itself, so *Extra runtimes* need not be on) into `~\.local\bin`; the **first build takes several minutes**. Ships pwsh tab-completion and the `translate` tv channel. See [translate](translate.md). |
 
 **China mirrors** routes pip / npm / cargo / go / node package fetches through GFW
 mirrors (Tsinghua / npmmirror / goproxy.cn / rsproxy), applied both at install time
@@ -204,6 +205,7 @@ Custom pickers under `%APPDATA%\television\cable\` (run `tv` to browse, or `tv <
 | `scoop-apps` | installed scoop apps → Enter info, Ctrl+U update, Ctrl+X uninstall |
 | `apps` | launch an app from Start Menu shortcuts |
 | `channels` | browse every tv channel by description → Enter opens the selected one |
+| `translate` | translation history → Enter copies the translation, Ctrl+Y the original, Ctrl+S speaks it (opt-in `translate`) |
 
 ## Upgrades
 
@@ -213,4 +215,5 @@ upgrades are explicit:
 ```powershell
 just upgrade-scoop     # scoop update *
 just upgrade-winget    # winget upgrade --all
+just upgrade-translate # go install …/translate@latest (opt-in tool; not in `just upgrade`)
 ```

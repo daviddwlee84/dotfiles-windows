@@ -57,11 +57,11 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 ## What's enabled on THIS machine
 - role: **{{ .role }}**
 - Coding agents: {{ .installCodingAgents }} · Agent sounds: {{ .agentSounds }} · SpecStory build (PR #191): {{ .installSpecstoryBuild }} · GUI apps: {{ .installWindowsApps }} · WSL2 (Docker backend): {{ .installWsl }} · WSL Ubuntu: {{ .installWslUbuntu }} · Utility apps: {{ .installUtilityApps }} · Gaming: {{ .installGamingApps }}
-- Extra runtimes: {{ .installExtraRuntimes }} · Media: {{ .installMediaTools }} · LLM: {{ .installLlmTools }} · Tunnel: {{ .installTunnelTools }} · IaC: {{ .installIacTools }} · OpenSSH: {{ .installSshServer }} · herdr: {{ .installHerdr }} · Clink(cmd): {{ .installClink }} · try: {{ .installTry }}
+- Extra runtimes: {{ .installExtraRuntimes }} · Media: {{ .installMediaTools }} · LLM: {{ .installLlmTools }} · Tunnel: {{ .installTunnelTools }} · IaC: {{ .installIacTools }} · OpenSSH: {{ .installSshServer }} · herdr: {{ .installHerdr }} · Clink(cmd): {{ .installClink }} · try: {{ .installTry }} · translate: {{ .installTranslate }}
 - China mirrors: {{ .useChineseMirror }} · Backup mode: {{ .backupMode }} · Vim mode: {{ .enableVimMode }} · Managed machine: {{ .managedMachine }}
 
 ## just recipes
-`just --list`: `apply`/`diff`/`update`, `upgrade-scoop`/`upgrade-winget`, `lint`/`test`,
+`just --list`: `apply`/`diff`/`update`, `upgrade-scoop`/`upgrade-winget`/`upgrade-translate`, `lint`/`test`,
 `docs-serve`/`docs-build`, `enable-sshd` (opt-in OpenSSH server, elevated),
 `enable-wsl` (WSL2 for Docker Desktop; self-elevating UAC prompt, reboot after),
 `enable-wsl-ubuntu` (WSL2 Ubuntu distro + cross-platform dotfiles; needs enable-wsl first),
@@ -82,5 +82,10 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   prompt parity for **prompt + navigation only** (no pwsh funcs/aliases/modules).
   `starship.lua` is chezmoi-managed at `%LocalAppData%\clink`; the zoxide/fzf Clink
   bridges are fetched from upstream at apply. pwsh stays the default shell.
+- **`translate`** (`installTranslate`, on for workstation) is the one tool built from
+  source: no scoop/winget manifest, so the packages script runs a version-pinned
+  `go install` into `~\.local\bin` (it installs `go` itself). First build takes
+  minutes; re-applies no-op via a `--version` check. Upgrade with
+  `just upgrade-translate`, not `upgrade-scoop`.
 - This skill body is shared: `dot_agents/skills/dotfiles-windows/` and
   `dot_claude/skills/dotfiles-windows/` both render `.chezmoitemplates/dotfiles-windows-skill.md`.

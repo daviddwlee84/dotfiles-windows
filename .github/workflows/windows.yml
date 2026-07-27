@@ -85,6 +85,11 @@ jobs:
             '--promptBool','Install herdr (native Windows terminal multiplexer, preview beta)=false',
             '--promptBool','Install Clink + starship/zoxide/fzf for cmd.exe (DOS prompt)=false',
             '--promptBool','Install try (Ruby ephemeral-workspace CLI, needs Ruby)=false',
+            # true (unlike the other install toggles) so the render+parse step
+            # exercises the go-install block and the apply step deploys the
+            # translate tv channel; `chezmoi apply --exclude scripts` means the
+            # multi-minute `go install` never actually runs in CI.
+            '--promptBool','Install translate (terminal translator CLI and TUI, built from source with Go)=true',
             '--promptBool','Use China (GFW) mirrors for pip/npm/cargo/go/node=false',
             '--promptBool','Managed or corporate machine (skip org-policy-blocked apps like Tailscale and Grammarly)=false',
             '--promptChoice','Back up existing files before apply (smart|full|off)=off',

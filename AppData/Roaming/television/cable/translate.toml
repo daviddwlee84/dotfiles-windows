@@ -1,0 +1,43 @@
+# translate — translation-history picker, backed by `translate history --tsv`.
+#
+# The TSV has 6 columns: 0 id · 1 timestamp · 2 pair · 3 engine · 4 source text
+# · 5 translation. The source command appends TWO more (6 = source, 7 =
+# translation) with every `'` doubled, because translations routinely contain an
+# apostrophe ("don't") and the actions below embed the text in a single-quoted
+# pwsh string — the raw columns would break the quoting. Columns 4/5 stay raw so
+# `display` shows the text as written.
+#
+# [char]9 = TAB, [char]39 = ' — spelled that way (like channels.toml's [char]34)
+# so nothing has to be escaped inside the `-Command "..."` string.
+
+[metadata]
+name = "translate"
+description = "Translation history: fuzzy search, copy or speak the result"
+
+[source]
+command = '''pwsh -NoProfile -Command "$t=[char]9; $q=[char]39; translate history --tsv --limit 500 | ForEach-Object { $f=$_ -split $t; if ($f.Count -ge 6) { ($f + ($f[4] -replace $q,($q+$q)) + ($f[5] -replace $q,($q+$q))) -join $t } }"'''
+display = '{split:\t:4}   —   {split:\t:5}'
+output = '{split:\t:5}'
+
+[preview]
+command = '''pwsh -NoProfile -Command "'{split:\t:2}   [{split:\t:3}]   {split:\t:1}'; ''; '{split:\t:6}'; ''; '{split:\t:7}'"'''
+
+[keybindings]
+enter = "actions:copy"
+ctrl-y = "actions:copy-source"
+ctrl-s = "actions:speak"
+
+[actions.copy]
+description = "Copy the translation to clipboard"
+command = '''pwsh -NoProfile -Command "Set-Clipboard -Value '{split:\t:7}'"'''
+mode = "fork"
+
+[actions.copy-source]
+description = "Copy the original text to clipboard"
+command = '''pwsh -NoProfile -Command "Set-Clipboard -Value '{split:\t:6}'"'''
+mode = "fork"
+
+[actions.speak]
+description = "Speak the translation (Windows SAPI, Google fallback)"
+command = '''pwsh -NoProfile -Command "translate speak '{split:\t:7}'"'''
+mode = "fork"

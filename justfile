@@ -35,6 +35,13 @@ upgrade-winget:
 # upgrade everything
 upgrade: upgrade-scoop upgrade-winget
 
+# Deliberately NOT part of `just upgrade`: on a box without installTranslate this
+# would install rather than upgrade. The pinned version in
+# .chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl is the install-time floor.
+# upgrade the go-installed translate CLI to the latest release (needs go)
+upgrade-translate:
+    $env:GOBIN = (Join-Path $HOME '.local\bin'); $env:GOPATH = (Join-Path $HOME '.local\share\go'); go install github.com/daviddwlee84/translate@latest
+
 # EXPERIMENTAL: build the SpecStory Windows CLI from the unmerged PR #191
 # (needs git + go) -> ~/.local/bin/specstory.exe. See
 # backlog/specstory-windows-native-cli.md. Run from the chezmoi source dir.
