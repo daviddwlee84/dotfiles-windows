@@ -43,6 +43,7 @@ plugins:
             Rationale: 設計取捨
             copilot-proxy: copilot-proxy
             translate: translate
+            Input method: 輸入法
             Multi-agent workflow: 多 Agent 工作流
 
 markdown_extensions:
@@ -65,5 +66,6 @@ nav:
   - Rationale: rationale.md
   - copilot-proxy: copilot-proxy.md
   - translate: translate.md
+  - Input method: input-method.md
   - Multi-agent workflow: claude-code-agents.md
   - Agent completion sounds: agent-sounds.md

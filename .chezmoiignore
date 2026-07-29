@@ -69,3 +69,11 @@ AppData/Local/clink/**
 {{ if not .installTranslate }}
 AppData/Roaming/television/cable/translate.toml
 {{ end }}
+
+# Rime user config is only deployed with the opt-in installInputMethod toggle.
+# Weasel reads %APPDATA%\Rime; the runtime files it writes as siblings there
+# (user.yaml, installation.yaml, build/, *.userdb/) are deliberately unmanaged —
+# only *.custom.yaml is source of truth. Same policy as the parent repo.
+{{ if not .installInputMethod }}
+AppData/Roaming/Rime/**
+{{ end }}

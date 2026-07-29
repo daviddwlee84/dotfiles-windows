@@ -175,6 +175,7 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
 | Clink (cmd.exe) | [Clink](https://chrisant996.github.io/clink/)（scoop `main`）—— cmd.exe 的 Bash 風格行編輯，讓 **starship** + **zoxide** + **fzf** 也能用在 DOS 提示字元。沿用共用的 `starship.toml`；註冊使用者層級 cmd AutoRun、部署我們的 `starship.lua`，並把社群的 `clink-zoxide` / `clink-fzf` 橋接抓進 `%LocalAppData%\clink`。pwsh 仍是預設 —— 這是選用的次要 shell，只有 prompt + 導覽對等。見 [rationale](rationale.zh-TW.md#powershell-7-cmdexe-clink) 與 [Shell](shell.zh-TW.md#cmdexe-via-clink)。 |
 | try（暫時性 workspace） | [`try`](https://github.com/tobi/try)，透過 `gem install try-cli` 安裝（若無 ruby 會一併裝）。建立以日期命名的 `~/src/tries/YYYY-MM-DD-name` 試驗目錄 + 模糊選擇器；`tri <git-url>` 會 clone 進其中一個。pwsh 指令是 **`tri`**（`try` 是保留字 —— 裸打 `try` 無法 parse；`& try` 可用）。見 [Shell](shell.zh-TW.md#try)。 |
 | translate（workstation 預設開） | [`translate`](https://github.com/daviddwlee84/translate) —— 終端機翻譯工具（CLI + TUI），走 copilot-proxy / Ollama / Google，另有離線的 CC-CEDICT + ECDICT 辭典。它沒有 scoop/winget manifest，也沒有預先編譯的 Windows release，所以用 `go install` 從原始碼編進 `~\.local\bin`（go 由該區塊自己裝，不必開「Extra runtimes」）；**第一次編譯要好幾分鐘**。附帶 pwsh tab 補全與 `translate` tv channel。見 [translate](translate.zh-TW.md)。 |
+| Rime 輸入法 | [小狼毫 / Weasel](https://github.com/rime/weasel)（`Rime.Weasel`），Windows 版 Rime，註冊為**繁體中文**。winget manifest 是 machine-scope NSIS，套用時會跳 **UAC**。`%APPDATA%\Rime` 下的 `*.custom.yaml` 由 chezmoi 納管，其中引擎層設定與 macOS/Linux repo（鼠鬚管 / ibus-rime）**逐位元組共用**。見 [輸入法](input-method.zh-TW.md)。 |
 
 **China mirrors** 會把 pip / npm / cargo / go / node 的套件抓取導向 GFW 鏡像
 （清華 / npmmirror / goproxy.cn / rsproxy），安裝時與互動式 shell

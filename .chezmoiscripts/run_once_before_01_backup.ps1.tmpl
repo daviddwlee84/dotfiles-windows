@@ -15,6 +15,13 @@ $targets = @(
     (Join-Path $env:APPDATA 'Code/User/settings.json'),
     (Join-Path $env:APPDATA 'Cursor/User/settings.json'),
     (Join-Path $HOME '.claude/settings.json')
+{{- if .installInputMethod }},
+    # Rime: only the hand-written *.custom.yaml. user.yaml / installation.yaml /
+    # build/ / *.userdb/ are runtime state we never manage, so never restore.
+    (Join-Path $env:APPDATA 'Rime/default.custom.yaml'),
+    (Join-Path $env:APPDATA 'Rime/luna_pinyin.custom.yaml'),
+    (Join-Path $env:APPDATA 'Rime/weasel.custom.yaml')
+{{- end }}
 )
 $existing = $targets | Where-Object { Test-Path $_ }
 if ($existing) {

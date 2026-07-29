@@ -1,0 +1,55 @@
+#Requires -Version 7
+{{ if .installInputMethod -}}
+# run_onchange_after_50_rime_deploy.ps1 — 重新部署 Rime after its config changes.
+#
+# Rime only picks up *.custom.yaml edits on a deploy, so this re-fires whenever
+# any managed YAML changes. The hashes below are what makes that happen: they
+# change the rendered script, which is what chezmoi's run_onchange keys on.
+#
+#   default.custom.yaml     {{ include ".chezmoitemplates/rime/default.custom.yaml" | sha256sum }}
+#   luna_pinyin.custom.yaml {{ include ".chezmoitemplates/rime/luna_pinyin.custom.yaml" | sha256sum }}
+#   weasel.custom.yaml      {{ include "AppData/Roaming/Rime/weasel.custom.yaml" | sha256sum }}
+#
+# Numbered 50 so it runs after 10_packages has had a chance to install Weasel.
+# Like every run-script here it must never abort the apply (invariant #2): a box
+# where Weasel isn't installed yet just warns and exits 0.
+
+$ErrorActionPreference = 'Continue'
+$PSNativeCommandUseErrorActionPreference = $false
+
+function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
+
+$dir = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Rime\Weasel' -Name InstallDir -ErrorAction SilentlyContinue).InstallDir
+if (-not $dir) {
+    Write-Warning 'Rime deploy skipped: Weasel is not installed (HKLM\SOFTWARE\Rime\Weasel missing).'
+    Write-Warning "Re-run 'just apply' after the Weasel install completes."
+    exit 0
+}
+
+# WeaselDeployer.exe /deploy is exactly what the tray menu's 重新部署 runs
+# (WeaselDeployer/WeaselDeployer.cpp). It takes a single argument and compares it
+# with wcscmp, so nothing else may be appended. It also holds an exclusive mutex
+# and returns 1 immediately if another deployer is already running.
+$deployer = Join-Path $dir 'WeaselDeployer.exe'
+if (-not (Test-Path -LiteralPath $deployer)) {
+    Write-Warning "Rime deploy skipped: $deployer not found."
+    exit 0
+}
+
+Info 'redeploying Rime (WeaselDeployer.exe /deploy)'
+try {
+    $p = Start-Process -FilePath $deployer -ArgumentList '/deploy' -Wait -PassThru
+    if ($p.ExitCode -ne 0) {
+        Write-Warning "WeaselDeployer /deploy exited $($p.ExitCode). If a deploy was already running this is harmless; otherwise redeploy from the tray icon (右鍵 → 重新部署)."
+    } else {
+        Info 'Rime deploy complete'
+    }
+} catch {
+    Write-Warning "Rime deploy error: $_"
+}
+
+exit 0
+{{ else -}}
+# installInputMethod is off — nothing to deploy.
+exit 0
+{{ end -}}

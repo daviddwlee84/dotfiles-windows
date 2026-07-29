@@ -30,6 +30,7 @@ Worth doing, no rush.
 - [ ] **[M] Example medium item** — link to research if non-trivial. → [research](backlog/example-medium.md)
 - [ ] **[M] Ship prebuilt Windows binaries for `translate` and install it via scoop** — the tool currently builds from source (`go install …@v0.5.2`), which costs several minutes on a fresh `workstation` apply, drags in a Go toolchain, and leaves `just upgrade-translate` as the one upgrade path outside `just upgrade-scoop`. Needs GoReleaser + a release workflow in the `translate` repo (which has no `.github/` at all today) plus a `daviddwlee84/scoop-bucket` manifest; then this repo's block becomes a one-line `Scoop-Install`. → [research](backlog/translate-windows-distribution.md)
 - [ ] **[S] Verify the herdr port on a real Windows box** — the full keymap, six pwsh helper scripts, three tv channels and the herdr-plus config were ported from the parent repo on 2026-07-27 and validated as far as macOS allows (overlay merge + idempotency, TOML validity, regex parity with the unix pipelines, channel TSV against a stub `herdr`, the `installHerdr` gate). Nine behaviours can only be confirmed with herdr actually running on Windows — chiefly whether the preview build supports `[[keys.command]]` / `type = "popup"` at all, how it spawns the `pwsh -File` command strings, and whether `prefix+ctrl+N` survives ConPTY. → [research](backlog/herdr-windows-port-verification.md)
+- [ ] **[S] Verify the Rime/Weasel port on a real Windows box** — CI can't cover IME registration. Check: UAC install registers 中文（繁體，台灣）not 简体; Ctrl+` lists all 5 schemas; bopomofo_tw outputs 臺灣字形; the Hack Nerd Font Mono + Microsoft JhengHei UI fallback chain renders; global_ascii shares 中/英 state while pwsh/VSCode stay ASCII; WeaselDeployer /deploy picks up an edit. → [research](backlog/rime-windows-port-verification.md)
 
 ## P3
 
@@ -37,6 +38,8 @@ Someday / nice-to-have.
 
 - [ ] **[S] Example deferred item** — low signal-to-effort, but easy.
 - [ ] **[S] Windows ssh-agent profile fragment** — parallel to the parent repo's `94_ssh_agent.zsh`. A `dot_config/powershell/profile.d/` fragment that ensures the OpenSSH Authentication Agent service is running (`Set-Service ssh-agent -StartupType Automatic`; `Start-Service`) and optionally detects Bitwarden desktop's `//./pipe/openssh-ssh-agent`. Config skeleton (`dot_ssh/`) already shipped; this only automates the agent side.
+- [ ] **[M] Extract the shared Rime config into its own repo** — Today .chezmoitemplates/rime/ is duplicated byte-for-byte in dotfiles and dotfiles-windows, kept in sync by hand + diff. A standalone rime-config repo pulled via .chezmoiexternal in both would remove the drift risk, at the cost of a third repo and a fetch on every apply. → [research](backlog/rime-shared-config.md)
+- [ ] **[S] Automate Rime redeploy on macOS and Linux** — Windows redeploys automatically via run_onchange_after_50_rime_deploy.ps1. The unix repo leaves it manual because Squirrel's --reload is unreliable and ibus restart interrupts the session — revisit if a safe non-disruptive trigger appears.
 
 ## P?
 

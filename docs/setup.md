@@ -95,6 +95,7 @@ PowerShell anyway, so a machine with *no* PowerShell couldn't use the repo.
 | Clink (cmd.exe) | off | starship + zoxide + fzf in `cmd.exe` via Clink (opt-in secondary shell) |
 | try (ephemeral workspaces) | off | Ruby CLI (`gem try-cli`): dated trial dirs + fuzzy selector; pwsh command is `tri` |
 | translate | on (workstation) | terminal translator CLI + TUI, built from source with `go install` (first build takes minutes) |
+| Rime input method (Weasel) | off | Traditional Chinese IME. Machine-scope installer — expect a UAC prompt; deploys the shared Rime `*.custom.yaml` to `%APPDATA%\Rime` |
 | China mirrors | off | pip / npm / cargo / go / node via GFW mirrors |
 | Managed machine | off | skip apps org policy usually blocks (Tailscale, Grammarly) |
 | Backup mode | `smart` | snapshot existing files before the first apply (`smart`/`full`/`off`) |

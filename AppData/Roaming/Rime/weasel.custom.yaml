@@ -1,0 +1,54 @@
+# Weasel (小狼毫) — WINDOWS-ONLY Rime config. Deployed to %APPDATA%\Rime.
+#
+# Everything here is frontend-specific and deliberately NOT shared with the
+# parent repo: `style` keys are Weasel's own, and `app_options` is keyed by
+# Windows EXE name where Squirrel keys by macOS bundle id. The portable
+# engine-level config lives in .chezmoitemplates/rime/ instead.
+#
+# Reference for the stock values this patches:
+#   https://github.com/rime/weasel/blob/master/output/data/weasel.yaml
+patch:
+  # Weasel comma-splits font_face into a real DirectWrite fallback chain
+  # (WeaselUI/DirectWriteResources.cpp), so latin/digits come from the repo-wide
+  # terminal font and CJK falls back to 微軟正黑體. Hack Nerd Font Mono has no
+  # CJK coverage on its own; Microsoft JhengHei UI ships with Windows.
+  style/font_face: "Hack Nerd Font Mono, Microsoft JhengHei UI"
+  style/label_font_face: "Hack Nerd Font Mono"
+  style/comment_font_face: "Hack Nerd Font Mono, Microsoft JhengHei UI"
+  style/font_point: 14
+  style/label_font_point: 14
+  style/comment_font_point: 14
+  # Stock scheme; other dark options are `starcraft`, `solarized_rock`,
+  # `psionics`, `ink`. Full list under preset_color_schemes in weasel.yaml.
+  style/color_scheme: dark_temple
+  style/inline_preedit: true
+  style/display_tray_icon: true
+
+  # One shared 中/英 state across every app instead of per-window. Squirrel
+  # cannot do this (rime/squirrel#201, #1054 both closed unmerged), so it is a
+  # Windows-only win and stays out of the shared config.
+  global_ascii: true
+
+  # ...except these, which start in ASCII on focus. app_options is applied when
+  # the client info is read, AFTER a new session inherits the global ASCII state
+  # (RimeWithWeasel/RimeWithWeasel.cpp: AddSession then _ReadClientInfo), so the
+  # per-app value wins for the apps listed here.
+  app_options:
+    pwsh.exe:
+      ascii_mode: true
+    powershell.exe:
+      ascii_mode: true
+    WindowsTerminal.exe:
+      ascii_mode: true
+    alacritty.exe:
+      ascii_mode: true
+    wezterm-gui.exe:
+      ascii_mode: true
+    herdr.exe:
+      ascii_mode: true
+    nvim.exe:
+      ascii_mode: true
+    Code.exe:
+      ascii_mode: true
+    Cursor.exe:
+      ascii_mode: true

@@ -26,6 +26,9 @@ shell config.
   [copilot-proxy](copilot-proxy.md).
 - **`translate`** — terminal translator (CLI + TUI), built from source and wired up
   with tab-completion and a `tv` channel — see [translate](translate.md).
+- **Rime input method** (Weasel/小狼毫) for Traditional Chinese, with the
+  engine-level config shared byte-for-byte with the macOS/Linux repo — see
+  [Input method](input-method.md).
 
 ## Quick start
 

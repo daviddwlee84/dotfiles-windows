@@ -19,6 +19,7 @@
 #   installClink         = {{ .installClink }}
 #   installTry           = {{ .installTry }}
 #   installTranslate     = {{ .installTranslate }}
+#   installInputMethod   = {{ .installInputMethod }}
 #   useChineseMirror     = {{ .useChineseMirror }}
 #   managedMachine       = {{ .managedMachine }}
 
@@ -152,6 +153,48 @@ function Install-Herdr {
     } catch {
         Write-Warning "herdr install error: $_"
         Register-Failure 'herdr'
+    }
+}
+
+# --- Rime / Weasel (小狼毫) — Traditional Chinese input method ---------------
+# Not routed through Winget-Install because two things need overriding:
+#
+#  1. The manifest is machine-scope NSIS, so `--scope user` can never work and
+#     the install always raises UAC (same class as installWsl / installSshServer).
+#  2. winget's silent switch for nullsoft is /S, and weasel's install.nsi maps a
+#     bare /S to `WeaselSetup.exe /s` = register the TSF service as SIMPLIFIED
+#     Chinese. Passing /T as well makes it use /t (Traditional) instead. Silent
+#     mode also skips the 安裝選項 dialog and auto-runs WeaselDeployer.exe /deploy.
+#
+# `winget list` can't be used for the installed check: the manifest's ProductCode
+# is "Weasel" but the ARP entry is the localized display name, so we read the
+# InstallDir the NSIS installer writes to HKLM instead — which is also how we
+# locate WeaselSetup.exe afterwards.
+function Install-Weasel {
+    $key = 'HKLM:\SOFTWARE\Rime\Weasel'
+    $dir = (Get-ItemProperty -Path $key -Name InstallDir -ErrorAction SilentlyContinue).InstallDir
+    if (-not $dir) {
+        if (-not (Have winget)) { Register-Failure 'winget:Rime.Weasel (winget unavailable)'; return }
+        Info 'winget install Rime.Weasel (machine scope — expect a UAC prompt)'
+        winget install --id Rime.Weasel -e --silent --custom '/T' `
+            --accept-source-agreements --accept-package-agreements 2>&1 | Out-Host
+        $dir = (Get-ItemProperty -Path $key -Name InstallDir -ErrorAction SilentlyContinue).InstallDir
+        if (-not $dir) { Register-Failure 'winget:Rime.Weasel'; return }
+    } else {
+        Info 'Weasel already installed'
+    }
+    # WeaselSetup's undocumented CLI (WeaselSetup/WeaselSetup.cpp). These two
+    # only write HKCU, so they need no elevation and are safe to re-run.
+    #   /lt          -> Weasel's own UI in 繁體中文
+    #   /toggleascii -> Ctrl+Space toggles ASCII rather than the whole IME,
+    #                   which is what makes global_ascii in weasel.custom.yaml
+    #                   behave like a single 中/英 switch.
+    $setup = Join-Path $dir 'WeaselSetup.exe'
+    if (Test-Path -LiteralPath $setup) {
+        & $setup /lt
+        & $setup /toggleascii
+    } else {
+        Register-Failure 'weasel (WeaselSetup.exe not found; UI language + Ctrl+Space unset)'
     }
 }
 
@@ -553,6 +596,13 @@ if (Have go) {
 } else {
     Register-Failure 'translate (needs go; enable Extra runtimes or run: scoop install go)'
 }
+{{ end -}}
+
+{{ if .installInputMethod -}}
+# Rime input method. The managed YAML under %APPDATA%\Rime is deployed by chezmoi
+# itself (gated in .chezmoiignore); 重新部署 happens in
+# run_onchange_after_50_rime_deploy.ps1 once the files are on disk.
+Install-Weasel
 {{ end -}}
 
 if ($script:Failures.Count -gt 0) {

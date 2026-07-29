@@ -25,6 +25,8 @@
   [copilot-proxy](copilot-proxy.md)。
 - **`translate`** —— 終端機翻譯工具（CLI + TUI），從原始碼編譯，並接上 tab 補全
   與一個 `tv` channel —— 見 [translate](translate.zh-TW.md)。
+- **Rime 輸入法**（小狼毫 / Weasel）繁體中文，引擎層設定與 macOS/Linux repo
+  逐位元組共用 —— 見 [輸入法](input-method.zh-TW.md)。
 
 ## 快速開始
 

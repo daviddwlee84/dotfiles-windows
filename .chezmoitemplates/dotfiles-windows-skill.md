@@ -57,7 +57,7 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 ## What's enabled on THIS machine
 - role: **{{ .role }}**
 - Coding agents: {{ .installCodingAgents }} · Agent sounds: {{ .agentSounds }} · SpecStory build (PR #191): {{ .installSpecstoryBuild }} · GUI apps: {{ .installWindowsApps }} · WSL2 (Docker backend): {{ .installWsl }} · WSL Ubuntu: {{ .installWslUbuntu }} · Utility apps: {{ .installUtilityApps }} · Gaming: {{ .installGamingApps }}
-- Extra runtimes: {{ .installExtraRuntimes }} · Media: {{ .installMediaTools }} · LLM: {{ .installLlmTools }} · Tunnel: {{ .installTunnelTools }} · IaC: {{ .installIacTools }} · OpenSSH: {{ .installSshServer }} · herdr: {{ .installHerdr }} · Clink(cmd): {{ .installClink }} · try: {{ .installTry }} · translate: {{ .installTranslate }}
+- Extra runtimes: {{ .installExtraRuntimes }} · Media: {{ .installMediaTools }} · LLM: {{ .installLlmTools }} · Tunnel: {{ .installTunnelTools }} · IaC: {{ .installIacTools }} · OpenSSH: {{ .installSshServer }} · herdr: {{ .installHerdr }} · Clink(cmd): {{ .installClink }} · try: {{ .installTry }} · translate: {{ .installTranslate }} · Rime/Weasel: {{ .installInputMethod }}
 - China mirrors: {{ .useChineseMirror }} · Backup mode: {{ .backupMode }} · Vim mode: {{ .enableVimMode }} · Managed machine: {{ .managedMachine }}
 
 ## just recipes
@@ -78,6 +78,14 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   is an opt-in (`installHerdr`) native-Windows multiplexer in preview beta —
   installed via herdr.dev's `irm|iex` script, config at `~/.config/herdr/config.toml`.
   Runtimes are native via scoop (node/bun/go/rust/ruby) + uv for Python — no mise on Windows.
+- **Rime input method** (opt-in `installInputMethod`): Weasel/小狼毫 via winget
+  `Rime.Weasel`. Machine-scope NSIS, so applying raises UAC; and a bare silent
+  install registers **简体** — `Install-Weasel` passes `--custom '/T'` for 繁體.
+  The engine-level YAML in `.chezmoitemplates/rime/` is **byte-identical to the
+  parent repo's** copy (Squirrel/ibus-rime); only `weasel.custom.yaml` is
+  Windows-specific. Edits need a redeploy, which
+  `run_onchange_after_50_rime_deploy.ps1` does via `WeaselDeployer.exe /deploy`.
+  See `docs/input-method.md`.
 - **cmd.exe** is opt-in via `installClink`: Clink + starship/zoxide/fzf give the DOS
   prompt parity for **prompt + navigation only** (no pwsh funcs/aliases/modules).
   `starship.lua` is chezmoi-managed at `%LocalAppData%\clink`; the zoxide/fzf Clink

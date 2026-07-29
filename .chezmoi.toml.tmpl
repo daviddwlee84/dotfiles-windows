@@ -46,6 +46,13 @@
     # it is built from source with `go install` (go is pulled in by the block
     # itself). First apply on a fresh box therefore spends a few minutes here.
     installTranslate     = {{ promptBoolOnce . "installTranslate" "Install translate (terminal translator CLI and TUI, built from source with Go)" $full }}
+    # Rime input method (Weasel / 小狼毫). Same key name as the parent repo's
+    # installInputMethod (Squirrel on macOS, ibus-rime on Linux) so the shared
+    # Rime YAML in .chezmoitemplates/rime/ is gated identically on both sides.
+    # winget's manifest is machine-scope NSIS, so applying prompts for UAC; and
+    # its silent path registers SIMPLIFIED Chinese unless the installer also
+    # gets /T (see Install-Weasel in the packages script).
+    installInputMethod   = {{ promptBoolOnce . "installInputMethod" "Install the Rime input method (Weasel) for Traditional Chinese (needs admin)" false }}
     useChineseMirror     = {{ promptBoolOnce . "useChineseMirror" "Use China (GFW) mirrors for pip/npm/cargo/go/node" false }}
     managedMachine       = {{ promptBoolOnce . "managedMachine" "Managed or corporate machine (skip org-policy-blocked apps like Tailscale and Grammarly)" false }}
     backupMode           = {{ promptChoiceOnce . "backupMode" "Back up existing files before apply (smart|full|off)" (list "smart" "full" "off") "smart" | quote }}
