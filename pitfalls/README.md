@@ -90,6 +90,7 @@ Pitfalls owned by this folder. Keep alphabetical.
 | Slug | Symptom keywords | Status |
 |---|---|---|
 | [`clickfix-defender-flags-cmd-irm-iex`](clickfix-defender-flags-cmd-irm-iex.md) | `Trojan:Win32/ClickFix.R!ml`, cmd `powershell -c "irm\|iex"` blocked, VirusTotal clean but Defender blocks | workaround documented |
+| [`git-add-fatal-crlf-would-be-replaced-by-lf`](git-add-fatal-crlf-would-be-replaced-by-lf.md) | `fatal: CRLF would be replaced by LF in .specstory/history/*.md`, `git add -A` stages nothing, `core.safecrlf` + `core.autocrlf=input`, `git ls-files --eol` shows `i/lf w/crlf` | workaround documented |
 | [`herdr-keybind-failed-to-read-pane-protocol-mismatch`](herdr-keybind-failed-to-read-pane-protocol-mismatch.md) | `url-pick: failed to read pane <id>`, `protocol_mismatch`, `client protocol 17 is newer than server protocol 16`, keybind helpers silently no-op after `herdr update` | workaround documented |
 | [`herdr-plus-action-does-not-support-platform-windows`](herdr-plus-action-does-not-support-platform-windows.md) | `custom command failed`, `cloudmanic.herdr-plus.quick-actions does not support the current platform (windows)`, plugin installed but prefix+y/prefix+O do nothing, clean `reload-config` | fixed |
 | [`herdr-update-asr-access-denied`](herdr-update-asr-access-denied.md) | `herdr update` / `--handoff`, `Program 'herdr.exe' failed to run: Access is denied`, ASR `Use advanced protection against ransomware` (`C1DB55AB`), `Move-Item ... used by another process` | workaround documented |
