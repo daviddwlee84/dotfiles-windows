@@ -1255,3 +1255,2220 @@ e88b98d docs(pitfalls): git add dies on mixed-EOL SpecStory transcripts
 5351411 fix(copilot): bootstrap internal npm authentication
 ```
 </details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:11:36Z)**_
+
+<think><details><summary>Thought Process</summary>
+The repository is synced with the main branch. I can now address the user's actual concerns: the token exposure happened because a prior debugging session ran `env | grep -i git`, which matched the `GITHUB_PERSONAL_ACCESS_TOKEN` environment variable—any command that dumps the environment would re-leak it. On rotation, their instinct is mostly correct, though there's some nuance around the ref update.
+
+The push was rejected so the commit never became public or indexed, but the objects were transmitted into GitHub's server-side quarantine where they were scanned—that's why the alert and unblock URL exist, and unreferenced objects eventually get garbage collected. The real exposure risk isn't the failed push itself; it's that the token sat in plaintext on disk and will keep leaking into future transcripts whenever the environment gets dumped.
+
+Rotating is cheap insurance but genuinely low-priority here. The higher-value fixes are more pressing: the pre-commit hook stack never actually ran locally because there's no `.git/hooks/pre-commit` file and no `core.hooksPath` configured, so GitHub's server-side push protection was the only gate that caught this. The fix is straightforward—run `pre-commit install`. I also noticed the gitleaks config allowlists `.specstory/history/.*\.md$`, which I saw referenced in the history files.
+
+Now I need to examine that allowlist block more carefully. If it's scoped to only allow specific example patterns within those agent artifact directories, that's fine. But if the allowlist is just listing paths without regex constraints, then gitleaks v8's OR semantics would allowlist the entire path wholesale—and there's actually a comment warning about exactly that at line 33. This matters because if a real PAT in a `.specstory/history` file would get allowlisted, then even installing pre-commit locally wouldn't have caught it. Let me check whether that's actually the case, and also look into the concurrent-session warning.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:11:36Z)**_
+
+In sync with `origin/main`, remote clean. Let me check one more thing — whether the local hook stack *would* have caught this, because that block has a documented footgun:
+
+_**Agent (claude-opus-5 2026-07-29 11:11:38Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Inspect gitleaks allowlist blocks
+
+`sed -n '14,60p' .gitleaks.toml`
+
+```text
+# Global allowlist: redaction sentinels + example-shape strings the agent
+# legitimately discusses in transcripts/plans. Uses the [[allowlists]]
+# array form (gitleaks v8 forbids mixing with the deprecated [allowlist]).
+[[allowlists]]
+  description = "Redaction sentinels + documentation-shape keys"
+  regexTarget = "line"
+  regexes = [
+    # Already-redacted sentinels emitted by redact_secrets.py.
+    '''\b[A-Za-z0-9_-]+_REDACTED(?:_[A-Z_]+)?\b''',
+    # Truncated "sk-proj-XXX..." example shapes used in prose.
+    '''sk-[a-zA-Z0-9]{3,8}\.\.\.''',
+  ]
+
+# Path-scoped allowlist: inside agent artifact dirs, tolerate explicit
+# example/demo markers without unlocking real leaks. Both the path AND a
+# regex must match, so a real `sk-ant-api03-<95 chars>AA` still fires.
+[[allowlists]]
+  description = "Example/demo keys inside agent transcripts and plan files"
+  # Both path and regex must match, otherwise any .md under these dirs
+  # gets allowlisted wholesale (gitleaks v8 defaults to OR semantics).
+  condition   = "AND"
+  paths = [
+    '''\.specstory/history/.*\.md$''',
+    '''\.claude/plans/.*\.md$''',
+    '''\.cursor/(plans|rules)/.*\.md$''',
+    '''\.opencode/plans/.*\.md$''',
+    '''\.specify/.*\.md$''',
+    '''\.codex/.*\.md$''',
+  ]
+  regexTarget = "line"
+  regexes = [
+    '''example[-_]?(key|token|secret)''',
+    '''\bREDACTED\b''',
+    '''sk-[a-zA-Z0-9]{3,8}\.\.\.''',
+    '''your[-_]?(api[-_]?)?key[-_]?here''',
+  ]
+
+# ---------------------------------------------------------------------------
+# Custom rules -- prefix-anchored modern API keys gitleaks default rules miss
+# or under-specify. Curated subset of the chezmoi config; rule IDs match so
+# overrides in the user's chezmoi version remain compatible.
+# ---------------------------------------------------------------------------
+
+[[rules]]
+  id          = "openai-project-key"
+  description = "OpenAI project-scoped API key (sk-proj-...)"
+  regex       = '''\bsk-proj-[A-Za-z0-9_-]{80,}\b'''
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:11:48Z)**_
+
+<think><details><summary>Thought Process</summary>
+The allowlist is set up correctly with AND logic, so it would catch a real PAT without the example marker. The issue was just that pre-commit never ran in this clone since it wasn't installed. I could verify gitleaks would catch it by installing pre-commit and testing, though I should probably just move forward with offering the solution rather than extending further.
+
+Actually, let me check if the config already has GitHub PAT coverage — I need to see if there's a specific github_pat rule or if the default gitleaks ruleset handles it. The grep earlier only showed 'github' in comments and URLs, so I should look at whether the extend section uses default rules.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:11:50Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check gitleaks default rule inheritance and availability
+
+`echo "=== does config keep gitleaks' DEFAULT rules (which include github-fine-grained-pat)? ==="; grep -n -A4 -i 'extend\|useDefault' .gitleaks.toml | head -20; echo; echo "=== any custom github rule? ==="; grep -n -i 'id *= *"github' .gitleaks.toml || echo "(none custom - relies on defaults)"; echo; echo "=== gitleaks available? ==="; command -v gitleaks && gitleaks version || echo "gitleaks NOT on PATH"`
+
+```text
+=== does config keep gitleaks' DEFAULT rules (which include github-fine-grained-pat)? ===
+11:[extend]
+12:useDefault = true
+13-
+14-# Global allowlist: redaction sentinels + example-shape strings the agent
+15-# legitimately discusses in transcripts/plans. Uses the [[allowlists]]
+16-# array form (gitleaks v8 forbids mixing with the deprecated [allowlist]).
+
+=== any custom github rule? ===
+(none custom - relies on defaults)
+
+=== gitleaks available? ===
+gitleaks NOT on PATH
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:12:14Z)**_
+
+<think><details><summary>Thought Process</summary>
+So the real issue is that gitleaks was never actually running—there's no pre-commit hook installed, no `core.hooksPath` configured, and gitleaks isn't even on the system PATH. The config itself was fine; the allowlist with `condition = "AND"` would've worked correctly if the tool had actually executed.
+
+Now I'm organizing the response: the token's been redacted and the remote is clean, it leaked through an `env | grep` command earlier, and I need to clarify the rotation logic—it's mostly right but with one nuance. I should offer to help set up the missing pieces (`pre-commit install` and gitleaks installation) rather than doing it unasked, flag that a concurrent session modified things afterward which is a real hazard, and note that the local reflog still holds the secret for about 90 days. On rotation itself, I'll recommend it but frame it as low urgency given GitHub's server-side protection caught it.
+
+For the technical accuracy: the push did transmit the pack to GitHub and it was processed into quarantine before the pre-receive hook rejected it—push protection runs as a pre-receive check, so quarantined objects get discarded when the ref fails, but the secret-scanning alert record persists. I'll state this with appropriate confidence and keep the whole response in markdown with headers, tight and organized.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:12:20Z)**_
+
+Done — and the investigation turned up something more important than the leak itself.
+
+## Status
+
+`main` is in sync with `origin/main`, and the remote is clean: line 1727 reads `GITHUB_PERSONAL_ACCESS_TOKEN=[REDACTED_GITHUB_PAT]`. A full-ref PAT scan of `origin/main` returns nothing. The original leaked commit `d912fb1` is on no remote ref. Redaction was done in binary mode, so the mixed-EOL bytes that `d912fb1`'s own pitfall doc is about were preserved.
+
+## Why it was in the chat
+
+A prior session (10:32Z) was debugging a rebase and ran:
+
+```
+env | grep -i git
+```
+
+`grep -i git` matches `GITHUB_PERSONAL_ACCESS_TOKEN`. Your token lives in an environment variable, so **any** agent that dumps the environment re-leaks it. This wasn't a one-off mistake — it's a standing trap.
+
+## Do you need to rotate?
+
+Your reasoning is mostly right, with one correction. Push protection runs as a *pre-receive* check: your output shows `Writing objects: 100%` and `remote: Resolving deltas: 100%`, so the pack did reach GitHub and was unpacked into quarantine before the ref update was rejected. Those objects are unreferenced and get GC'd, but the secret-scanning alert record persists — that's what the unblock URL points at. So it never became public, browsable, forkable, or indexed. The blast radius really is small.
+
+My recommendation: **rotate, but it's low-urgency.** The reason isn't the failed push — it's that the raw token sat in a plaintext file on disk, and the env var will keep feeding it into future transcripts.
+
+## The actual finding: your local defenses never ran
+
+This repo has `.gitleaks.toml` and `.pre-commit-config.yaml`, and both are *correctly written*:
+
+- `[extend] useDefault = true` → gitleaks' built-in `github-fine-grained-pat` rule was active
+- the `.specstory/history/` allowlist uses `condition = "AND"`, so it would **not** have suppressed a real PAT
+
+But none of it executed:
+
+- no `.git/hooks/pre-commit`, no `core.hooksPath` → `pre-commit install` was never run in this clone
+- `gitleaks` isn't on `PATH` at all, so the `gitleaks-system` hook couldn't run either
+
+GitHub's server-side check was the *only* gate between that token and a public repo. The skill flags this exact failure mode: `pre-commit install` is per-clone, and a repo with config but no installed hook has zero protection.
+
+## Also worth knowing
+
+**A concurrent process amended the commit while I was working.** My amend produced `d7772c7`; the reflog's newest entry is a *second* `commit (amend)` producing `e88b98d`, which is what reached the remote. You likely have another agent session or terminal on this repo — worth closing, since two agents rebasing the same branch is how the mixed-EOL mess started.
+
+Minor: `d912fb1` still holds the secret as a dangling object in your local store for ~90 days of reflog. Local-only, purgeable with `git reflog expire --expire-unreachable=now --all && git gc --prune=now`.
+
+## Want me to close the gaps?
+
+1. Install gitleaks + run `pre-commit install` so the stack actually fires
+2. Get the PAT out of a plain env var (that `scripts/setup-internal-npm.ps1` that just landed is adjacent to this problem)
+3. Write `pitfalls/env-dump-leaks-github-pat-into-specstory-transcript.md` per your repo convention — this qualifies
+
+Say which and I'll do it.
+
+---
+
+_**User (2026-07-29 11:14:56Z)**_
+
+<command-message>agent-history-hygiene</command-message>
+<command-name>/agent-history-hygiene</command-name>
+<command-args>我好像不小心上傳了 總之幫忙看看是否有任何leak?  然後嘗試close the gap
+（我們的git 是不是能預設config是default to rebase instead of merge？）
+然後pitfall寫一下
+
+另外看看現在 setup internal npm `just setup-internal-npm` 到底能不能解決我們npm相關Packages被block的問題</command-args>
+
+_**User (2026-07-29 11:14:56Z)**_
+
+Base directory for this skill: C:\Users\hanruzhou\.claude\skills\agent-history-hygiene
+
+# agent-history-hygiene
+
+Keep agent chat transcripts and plan files committed together with the
+code they produced, without leaking secrets. Pairs with the
+`redact-agent-secrets` + `gitleaks` pre-commit hooks the skill installs.
+
+Three surfaces, separated by purpose:
+
+| Surface                          | Question it answers                                          |
+|----------------------------------|--------------------------------------------------------------|
+| `find-session.sh`                | "Which transcript / plan file is *my* current session?"      |
+| `stage-agent-artifacts.sh`       | "Which agent files belong in the next commit?"               |
+| `bootstrap-project.sh`           | "How do I get pre-commit + gitleaks + redactor into a repo?" |
+| `scan-staged.sh`                 | "Is there a leaked secret in what I'm about to commit?"      |
+| `references/remediation.md`      | "I already pushed a secret — now what?"                      |
+
+## Core invariants
+
+1. **Agent transcripts and plan files are committed alongside the diff
+   that produced them.** Never add them to `.gitignore`. An agent that
+   drops these from a commit has broken the user's review trail.
+2. **Rotate at the provider before any git rewrite.** The only act
+   that revokes a leaked credential is rotation. History rewriting
+   scrubs bytes on one clone and leaves them on every other.
+3. **`git push --force` against a shared branch is never the fix for a
+   leak.** At best it's useless; at worst it destroys teammate work and
+   silently re-introduces the secret when someone merges their old
+   history back.
+
+## When to use this skill
+
+Use it when the user (or you) surface any of:
+
+- "Commit my chat" / "save the specstory session" / "include the plan
+  file in this commit" / "把 plan 跟 specstory 一起 commit 進去".
+- You see dirty `.specstory/history/*.md`, `.claude/plans/*.md`,
+  `.cursor/plans/*.md`, or any other configured agent artifact during
+  `git status` and you're about to commit a feature.
+- "Scrub this transcript" / "redact my key" / "gitleaks flagged my
+  chat history".
+- "Set up pre-commit for this repo" / "I'm starting a new project — how
+  do I get the hook stack?" / "bootstrap secret scanning here".
+- "I pushed a `.env`" / "a secret went to main" / "do I need to force
+  push?" — the agent must steer to `references/remediation.md` and
+  stop the user from force-pushing reflexively.
+
+## When NOT to use
+
+- The user explicitly wants agent transcripts **excluded** from the
+  repo. Respect that; suggest a one-liner `.gitignore` addition and
+  skip this skill entirely.
+- The leak is already on a shared `main`/release branch. Do **not**
+  offer to rewrite history — jump to `references/remediation.md` §5.
+- The project genuinely has no agent session (no `.specstory/`, no
+  `.claude/plans/`, etc.). Nothing to stage.
+- Single-file, single-commit hygiene that the agent handles without any
+  script (e.g., adding a missing trailing newline).
+
+## Integration with existing infrastructure
+
+This skill sits **on top of** any chezmoi-managed stack the user
+already has. It does not duplicate:
+
+- **chezmoi's global `core.hooksPath`** (`~/.config/git/hooks/pre-commit`)
+  — that wrapper runs the repo's `.pre-commit-config.yaml` and then
+  optionally `gitleaks git --staged`. The skill bootstraps the repo-level
+  config the wrapper expects to find.
+- **chezmoi's `.gitleaks.toml`** — the user's config already carries
+  curated rules for common API keys (OpenAI, Anthropic, Supabase,
+  Linear, WakaTime, Cursor, HuggingFace, Notion, Tailscale, Clash /
+  V2Ray tokens). The skill's `assets/gitleaks.toml.template` ships the
+  same rule IDs so `.gitleaksignore` / allowlist tweaks stay portable.
+- **chezmoi's `scripts/redact_secrets.py`** — remains the upstream
+  source of truth. The skill bundles a copy so non-chezmoi users get
+  protection; sync procedure in
+  [`references/pre-commit-redaction-stack.md`](references/pre-commit-redaction-stack.md).
+
+What this skill **adds**:
+
+- Agent-facing discipline (this `SKILL.md` + `references/remediation.md`).
+- A single-command project bootstrap (`bootstrap-project.sh`) for repos
+  without chezmoi or where the user wants the stack in one go.
+- Session-discovery heuristics (`find-session.sh`) for the "find my
+  current transcript among many" problem.
+- An exit-code wrapper (`scan-staged.sh`) agents can branch on before
+  committing.
+
+## Workflow A: commit-time hygiene
+
+Default flow when the agent is about to commit feature changes plus
+chat/plan artifacts.
+
+```bash
+# 1. Make sure the agent knows which session is "ours" — mostly
+#    relevant when multiple Claude/SpecStory sessions run in the repo.
+bash skills/local/agent-history-hygiene/scripts/find-session.sh
+
+# 2. Stage code the usual way, then auto-add agent artifacts.
+git add path/to/feature/file.ts
+bash skills/local/agent-history-hygiene/scripts/stage-agent-artifacts.sh
+# Use --session-only if you want ONLY the current SpecStory + newest plan;
+# default stages every dirty *.md in every configured agent dir.
+
+# 3. Belt-and-suspenders secret scan before commit. Exit 0 = clean.
+bash skills/local/agent-history-hygiene/scripts/scan-staged.sh || {
+  # Exit 10/20: leaks found. Jump to references/remediation.md.
+  echo "Leaks detected — see references/remediation.md before committing." >&2
+  exit 1
+}
+
+# 4. Commit. pre-commit (installed by bootstrap) runs redact-agent-secrets
+#    then gitleaks again as a catch-all.
+git commit -m "feat: ..."
+```
+
+## Workflow B: bootstrap a new project
+
+For repos that don't yet have `.pre-commit-config.yaml` / `.gitleaks.toml`
+installed. Runs once per repo.
+
+```bash
+cd /path/to/new/project
+bash skills/local/agent-history-hygiene/scripts/bootstrap-project.sh \
+  --install-hook            # optional: auto-stage on every commit
+
+# Verify: shake out any existing issues in the working tree.
+pre-commit run --all-files
+```
+
+What `bootstrap-project.sh` does:
+
+1. Drops `.pre-commit-config.yaml` + `.gitleaks.toml` into the repo
+   (skips if already present unless `--force`).
+2. Writes `scripts/redact_secrets.py` (bundled copy; use
+   `--from-chezmoi` to symlink the chezmoi source so fixes propagate).
+3. Runs `pre-commit install` (or `uvx pre-commit@4 install` if
+   pre-commit isn't on `PATH`).
+4. Audits `.gitignore` / `.git/info/exclude` for patterns that would
+   silently hide an agent artifact dir — warns without editing.
+5. Checks `~/.claude/settings.json` for `plansDirectory`; prints the
+   one-line patch if missing.
+6. With `--install-hook`: writes a `prepare-commit-msg` hook that calls
+   `stage-agent-artifacts.sh --session-only --allow-empty` so every
+   `git commit` auto-attaches the current session file.
+
+## Workflow C: post-leak remediation
+
+When `scan-staged.sh` reports exit `10`/`20`, or the user says "I
+committed / pushed a secret":
+
+1. **STOP** the user from running `git push --force` reflexively.
+2. Read `references/remediation.md` end-to-end.
+3. Walk the user through **step 1 (rotate)** regardless of blast
+   radius. Only after rotation does the question of scrubbing history
+   become worth discussing.
+4. Use the decision tree in the runbook to pick the right git action.
+
+## Gotchas
+
+- **`plansDirectory` project-level sometimes ignored.** Claude Code
+  issue [#19537](https://github.com/anthropics/claude-code/issues/19537)
+  reports project-level `plansDirectory` being ignored in some
+  versions. After running a `/plan`, verify the file actually landed
+  where you expected before relying on `stage-agent-artifacts.sh`
+  picking it up. User-level config (`~/.claude/settings.json` with
+  `"plansDirectory": "./.claude/plans"`) is the recommended default.
+- **`gitleaks protect` is deprecated.** Since v8.19.0 use
+  `gitleaks git --staged --redact` (pre-commit) and
+  `gitleaks dir <path>` (working directory). The older commands still
+  work but emit a deprecation notice. This skill uses the modern
+  syntax everywhere.
+- **`pre-commit install` is per-clone.** Each teammate must run
+  `pre-commit install` in their own clone for hooks to fire. CI cannot
+  be trusted as the single gate — it's second-chance, not last-chance.
+- **Transcript files can be huge.** A long SpecStory session can exceed
+  2 MB. The template bumps `check-added-large-files` to `--maxkb=2048`
+  to avoid false positives, but a very long session can still overflow.
+  If you hit the limit, rotate sessions (`specstory run claude`
+  creates a fresh file) instead of raising the cap further.
+- **Session-UUID divergence between SpecStory CLI and VS Code
+  extension.** The extension autosaves into `.specstory/history/`
+  continuously; the CLI (`specstory run claude`) creates one file per
+  invocation. If both are active you can end up with two transcripts
+  for what feels like "one session" — mtime-newest wins in
+  `find-session.sh`.
+- **Global `core.hooksPath` means bare repos aren't protected.** The
+  chezmoi setup's global hook runs `.pre-commit-config.yaml` IF it
+  exists — so a repo without `.pre-commit-config.yaml` has no
+  protection. Run `bootstrap-project.sh` before the first commit with
+  agent artifacts, not after.
+- **Active SpecStory writer can defeat the redact loop.** The standard
+  `git add → git commit → pre-commit auto-fixes → re-stage → re-commit`
+  flow assumes the file is **quiescent** during the commit. SpecStory's
+  `specstory_*_watch` daemon tails the agent transcript continuously,
+  so if the chat captured `ps -axo args`-style output that contained an
+  unrelated daemon's secret in argv (e.g. SpecStory's own
+  `--cloud-token …` flag), every diagnostic command (`grep`, `sed -n
+  '<line>p'`, `cat | head | tail`) prints the secret again, SpecStory
+  appends it to the transcript, and the redact-then-restage cycle
+  never converges. Symptom: pre-commit says "Successfully redacted N
+  file(s)" but `gitleaks-system` immediately fails on the same line,
+  re-running `git add && git commit` doesn't help, and `grep -c
+  '<secret-prefix>' file` shows the count *increasing* over commit
+  attempts. **Workaround**: a single atomic
+  `python3 -c "<in-place re.sub>" && git add <file> && git commit -m
+  "..."` pipeline so the index is frozen before any new specstory write
+  lands. **Don't** print, grep, or diff the secret line during the
+  recovery — every print echoes back into the transcript. Diagnose with
+  `lsof <file>` (looking for `specstory_*` writers) instead. See
+  `pitfalls/redact-secrets-loop-with-active-specstory-writer.md` in
+  upstream chezmoi for the full debugging trail.
+
+## Available scripts
+
+- **`scripts/find-session.sh [--format=specstory|claude|both] [--json]`**
+  Discover the current agent session files for `$PWD`. TSV default,
+  `--json` for structured callers. Never exits non-zero (always 0,
+  empty fields signal absence).
+
+- **`scripts/stage-agent-artifacts.sh [--session-only] [--include-all-plans] [--dry-run] [--allow-empty]`**
+  `git add` the right agent artifacts before the next commit.
+  `--session-only` stages only the current SpecStory + newest plan;
+  default stages every dirty `*.md` in every configured artifact dir.
+  Refuses to run if there are no code changes (prevents "commit just
+  transcript"); override with `--allow-empty`.
+
+- **`scripts/scan-staged.sh [--redact] [--verbose]`**
+  Run `gitleaks git --staged` with agent-friendly exit codes
+  (0 clean / 10 redacted / 20 leaks / 30 gitleaks missing). JSON lines
+  on stdout, prose diagnostics on stderr.
+
+- **`scripts/bootstrap-project.sh [--from-chezmoi] [--install-hook] [--force] [--dry-run]`**
+  Install `.pre-commit-config.yaml` + `.gitleaks.toml` + the redactor
+  into the current repo, then run `pre-commit install`. Audits
+  `.gitignore` and `~/.claude/settings.json` for misconfigurations
+  (warns, never silently edits).
+
+## Bundled assets
+
+- `assets/artifact-dirs.txt` — the canonical list of agent artifact
+  directories (SpecStory, Claude plans, Cursor plans + rules, OpenCode
+  plans, Spec-kit, Codex). Consumed by `stage-agent-artifacts.sh` and
+  by `bootstrap-project.sh` when rendering the pre-commit `files:`
+  regex.
+- `assets/pre-commit-config.yaml.template` — minimal
+  `.pre-commit-config.yaml` with `redact-agent-secrets` + gitleaks +
+  standard hygiene hooks.
+- `assets/gitleaks.toml.template` — portable subset of the chezmoi
+  `.gitleaks.toml` with custom rule IDs + a path-scoped allowlist for
+  agent artifact dirs.
+- `assets/redact_secrets.py` — bundled copy of chezmoi's
+  `scripts/redact_secrets.py`. Chezmoi version is upstream; sync doc
+  in `references/pre-commit-redaction-stack.md`.
+
+## Reference files
+
+- [`references/transcript-session-discovery.md`](references/transcript-session-discovery.md)
+  — SpecStory / Claude session layouts and the `$PWD → slug` algorithm.
+  Read when `find-session.sh` returns empty or ambiguous results.
+- [`references/pre-commit-redaction-stack.md`](references/pre-commit-redaction-stack.md)
+  — three-layer defense (redact → gitleaks → `scan-staged.sh`),
+  allowlist design, sync procedure for the bundled redactor. Read
+  when tuning rules or debugging unexpected pre-commit failures.
+- [`references/remediation.md`](references/remediation.md) —
+  rotate-first runbook for "I committed / pushed a secret". Read
+  **before** any `git filter-repo` / `git push --force` action.
+
+## Tests
+
+The skill ships with a three-level test suite under
+[`tests/`](tests/README.md). Run from repo root:
+
+```bash
+make test-skill
+```
+
+- `test_redact_secrets.py` — pytest for pure redactor functions.
+- `test_gitleaks_corpus.py` — golden-corpus fixtures staged in tmp git
+  repos, asserting real-key shapes fire and example shapes are
+  allowlisted only inside configured artifact dirs.
+- `test_scan_staged.sh` — exit-code contract for
+  `scripts/scan-staged.sh` (0 / 20 / 30 / 2).
+
+The corpus + shell tests skip gracefully when `gitleaks` isn't on
+`PATH`. See [`tests/README.md`](tests/README.md) for what each
+regression the suite locks in.
+
+## Related skills
+
+- [`project-knowledge-harness`](../project-knowledge-harness/SKILL.md)
+  — complementary memory harness (TODO.md + backlog/ + pitfalls/) that
+  references `.claude/plans/` as "ephemeral agent scratchpads". This
+  skill fills the gap: those scratchpads belong in git, not ignored.
+
+
+ARGUMENTS: 我好像不小心上傳了 總之幫忙看看是否有任何leak?  然後嘗試close the gap
+（我們的git 是不是能預設config是default to rebase instead of merge？）
+然後pitfall寫一下
+
+另外看看現在 setup internal npm `just setup-internal-npm` 到底能不能解決我們npm相關Packages被block的問題
+
+---
+
+_**Agent (claude-opus-5 2026-07-29 11:15:14Z)**_
+
+<think><details><summary>Thought Process</summary>
+I need to tackle several security and workflow issues here. First, I'll do a comprehensive scan of the entire git history to confirm whether any secrets actually got leaked, then set up preventative measures like pre-commit hooks and gitleaks. I should also adjust the git configuration to default to rebasing and document the pitfalls we've encountered. There's also a question about whether the internal npm setup script can resolve our package blocking issues, so I'll investigate that in parallel with the leak scan. I'm going to create a set of tasks first, then run them in parallel with bash commands. I'll start by attempting to install gitleaks via scoop, though I should be ready to hand off if that's blocked by system restrictions.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:15:14Z)**_
+
+四件事,我一個一個來。先建 task 追蹤:
+
+_**Agent (claude-opus-5 2026-07-29 11:15:15Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskCreate"><details>
+<summary>Tool use: **TaskCreate**</summary>
+Scan entire git history (all refs, all blobs) + remote for any leaked secret, not just the GitHub PAT already redacted. Confirm nothing else reached origin.
+
+```text
+Task #1 created successfully: Full-history leak scan
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:15:17Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskCreate"><details>
+<summary>Tool use: **TaskCreate**</summary>
+Repo has .gitleaks.toml and .pre-commit-config.yaml but no .git/hooks/pre-commit, no core.hooksPath, and gitleaks not on PATH. Install gitleaks and run pre-commit install so the stack actually fires.
+
+```text
+Task #2 created successfully: Close the gap: install gitleaks + pre-commit hook
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:15:18Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskCreate"><details>
+<summary>Tool use: **TaskCreate**</summary>
+Set pull.rebase so pulls rebase instead of merge, avoiding the "Merge branch 'main' of ..." commits. Decide global vs repo and whether it belongs in chezmoi-managed gitconfig.
+
+```text
+Task #3 created successfully: Configure git to default to rebase on pull
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:15:20Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskCreate"><details>
+<summary>Tool use: **TaskCreate**</summary>
+Write pitfalls/<slug>.md per repo convention: env | grep -i git dumps GITHUB_PERSONAL_ACCESS_TOKEN into SpecStory transcript, GitHub push protection blocks the push. Title by symptom.
+
+```text
+Task #4 created successfully: Write pitfall doc for env-dump PAT leak
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:15:21Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskCreate"><details>
+<summary>Tool use: **TaskCreate**</summary>
+Review scripts/setup-internal-npm.ps1 and the justfile target that just landed in 5351411. Determine whether it actually solves the blocked npm packages problem.
+
+```text
+Task #5 created successfully: Assess just setup-internal-npm
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:15:28Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'll install gitleaks using scoop to close the gap and enable a full scan. Since I'm in Git Bash, I need to check if scoop works through its shim, so I'm going to try running `scoop install gitleaks` while also reviewing the setup-internal-npm.ps1 file and justfile in parallel, plus checking the git config.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:15:30Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskUpdate"><details>
+<summary>Tool use: **TaskUpdate**</summary>
+
+```text
+Updated task #2 status
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:15:57Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Install gitleaks via scoop
+
+`scoop install gitleaks 2>&1 | tail -15`
+
+```text
+ * 0703b037ebc9 lunatranslator: Update to version 10.16.1.9              extras       2 days ago
+ * e53ec9a5f331 gtoolkit: Update to version 1.1.532                      extras       2 days ago
+ * 2348c6738017 geogebra: Update to version 6.0.927.1                    extras       2 days ago
+ * d94f68242082 appium-inspector: Update to version 2026.7.1             extras       2 days ago
+ * ff920e96dbc2 treesheets: Update to version 3282                       extras       2 days ago
+ * 224315bf20be opencode-desktop: Update to version 1.18.7               extras       2 days ago
+ * c9159e452b65 jackett: Update to version 0.24.2277                     extras       2 days ago
+Scoop was updated successfully!
+Installing 'gitleaks' (8.30.1) [64bit] from 'main' bucket
+Downloading https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_windows_x64.zip (8.0 MB)...
+Checking hash of gitleaks_8.30.1_windows_x64.zip ... ok.
+Extracting gitleaks_8.30.1_windows_x64.zip ... done.
+Linking ~\scoop\apps\gitleaks\current => ~\scoop\apps\gitleaks\8.30.1
+Creating shim for 'gitleaks'.
+'gitleaks' (8.30.1) was installed successfully!
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:15:58Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./\scripts\setup-internal-npm.ps1`
+
+```text
+1	#Requires -Version 7
+2	[CmdletBinding()]
+3	param(
+4	    [string]$Registry = 'https://pkgs.dev.azure.com/O365Exchange/_packaging/O365Infra_NPM/npm/registry/',
+5	    [string]$ProviderRegistry = 'https://pkgs.dev.azure.com/artifacts-public/23934c1b-a3b5-4b70-9dd3-d1bef4cc72a0/_packaging/AzureArtifacts/npm/registry/'
+6	)
+7	
+8	$ErrorActionPreference = 'Stop'
+9	function Info($Message) { Write-Host "==> $Message" -ForegroundColor Cyan }
+10	
+11	$npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
+12	if (-not $npm) {
+13	    throw 'npm.cmd not found. Install Node first (scoop install nodejs-lts), open a new PowerShell, then retry.'
+14	}
+15	
+16	$provider = Get-Command artifacts-npm-credprovider -ErrorAction SilentlyContinue
+17	$npmRoot = (& $npm.Source root --global).Trim()
+18	$nativeProvider = Join-Path $npmRoot '@microsoft\artifacts-npm-credprovider\node_modules\@microsoft\artifacts-credprovider-wrapper\bin\CredentialProvider.Microsoft.exe'
+19	if (-not $provider -or -not (Test-Path $nativeProvider)) {
+20	    Info 'installing the Azure Artifacts npm credential provider'
+21	    & $npm.Source install --global '@microsoft/artifacts-npm-credprovider' `
+22	        --registry $ProviderRegistry --foreground-scripts --loglevel=notice
+23	    if ($LASTEXITCODE -ne 0) { throw 'Credential-provider npm installation failed.' }
+24	    $provider = Get-Command artifacts-npm-credprovider -ErrorAction SilentlyContinue
+25	    if (-not $provider -or -not (Test-Path $nativeProvider)) {
+26	        throw 'The credential provider was installed but its command or native helper is missing.'
+27	    }
+28	} else {
+29	    Info 'Azure Artifacts npm credential provider is already installed'
+30	}
+31	
+32	$npmrc = Join-Path $HOME '.npmrc'
+33	$lines = if (Test-Path $npmrc) { @(Get-Content $npmrc) } else { @() }
+34	$registryLine = "registry=$Registry"
+35	$lines = @($lines | Where-Object { $_ -notmatch '^\s*(registry|always-auth)\s*=' })
+36	$lines += $registryLine, 'always-auth=true'
+37	$lines | Set-Content -LiteralPath $npmrc -Encoding utf8
+38	
+39	Info 'authenticating the internal npm feed'
+40	& $provider.Source --config-file $npmrc --verbosity minimal
+41	if ($LASTEXITCODE -ne 0) { throw 'Azure Artifacts npm authentication failed.' }
+42	
+43	$localProfile = Join-Path $HOME '.config\powershell\local.ps1'
+44	New-Item -ItemType Directory -Force -Path (Split-Path $localProfile) | Out-Null
+45	$assignment = "`$env:npm_config_registry = '$Registry'"
+46	$localLines = if (Test-Path $localProfile) { @(Get-Content $localProfile) } else { @() }
+47	$localLines = @($localLines | Where-Object { $_ -notmatch '^\s*\$env:npm_config_registry\s*=' })
+48	$localLines += $assignment
+49	$localLines | Set-Content -LiteralPath $localProfile -Encoding utf8
+50	$env:npm_config_registry = $Registry
+51	
+52	Info 'deploying and reloading the Copilot module'
+53	$moduleTarget = Join-Path $HOME '.config\powershell\modules\Copilot\Copilot.psm1'
+54	$moduleSource = Join-Path $PSScriptRoot '..\dot_config\powershell\modules\Copilot\Copilot.psm1'
+55	if (-not (Test-Path $moduleSource)) { throw "Copilot module source not found: $moduleSource" }
+56	New-Item -ItemType Directory -Force -Path (Split-Path $moduleTarget) | Out-Null
+57	Copy-Item -LiteralPath $moduleSource -Destination $moduleTarget -Force
+58	Import-Module (Join-Path (Split-Path $moduleTarget) 'Copilot.psd1') -Force
+59	
+60	Info 'verifying the internal feed'
+61	& $npm.Source view '@jeffreycao/copilot-api@1.13.14' version --fetch-timeout=30000 --fetch-retries=1
+62	if ($LASTEXITCODE -ne 0) { throw 'The internal feed is configured but the Copilot package cannot be resolved.' }
+63	
+64	Write-Host "`nInternal npm authentication is ready. Open a new PowerShell (or run: reload), then run: copilot-proxy reinstall" -ForegroundColor Green
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:16:01Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check git rebase config and justfile target
+
+`echo "=== pull/rebase config (all scopes) ==="; git config --show-origin --get-all pull.rebase; git config --show-origin --get-all pull.ff; git config --show-origin --get-all rebase.autoStash; echo "(empty = unset)"; echo; echo "=== chezmoi-managed gitconfig? ==="; ls -d dot_gitconfig* private_dot_gitconfig* dot_config/git 2>/dev/null || echo "no gitconfig in chezmoi source"; echo; echo "=== justfile target ==="; grep -n -A8 'setup-internal-npm' justfile`
+
+```text
+=== pull/rebase config (all scopes) ===
+file:C:/Program Files/Git/etc/gitconfig	false
+file:C:/Users/hanruzhou/.gitconfig	true
+(empty = unset)
+
+=== chezmoi-managed gitconfig? ===
+no gitconfig in chezmoi source
+
+=== justfile target ===
+53:setup-internal-npm:
+54:    pwsh -NoProfile -File ./scripts/setup-internal-npm.ps1
+55-
+56-# enable the OpenSSH server (sshd) — run from an ELEVATED pwsh (opt-in; opens TCP 22)
+57-enable-sshd:
+58-    pwsh -NoProfile -File ./scripts/enable-sshd.ps1
+59-
+60-# install WSL2 (Docker Desktop backend) — pops one UAC prompt; reboot required after
+61-enable-wsl:
+62-    pwsh -NoProfile -File ./scripts/enable-wsl.ps1
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:16:25Z)**_
+
+<think><details><summary>Thought Process</summary>
+Gitleaks is now installed. I'm checking the git configuration and finding that `pull.rebase` is already set to `true` in the user's gitconfig, which overrides the system setting. That explains why `git pull --ff-only` failed with the rebase error. But I'm puzzled about that merge commit from earlier—if rebasing is enabled, where did that merge come from?
+
+Looking at the reflog, I see `pull --no-edit (pick)` which suggests rebase operations, but the merge commit itself might have been created on a different machine or via an explicit `git pull --no-rebase` command. The real issue is that this `pull.rebase` setting only exists on this machine and isn't tracked in chezmoi, so it won't be reproducible across the user's systems. That's worth noting as a gap in the dotfiles setup.
+
+Now I'm checking what other rebase-related settings are configured and what might be missing, like `rebase.autoStash`. Given the huge transcript files in this repo, the gitleaks scan could take a while, so I'll set a generous timeout and run it in the background. Since I'm scanning with `--all` to check all refs, I won't catch the old dangling commit d912fb1 (which only exists in reflog), but that's actually what I want—I'm checking what could have been uploaded, which means only reachable refs matter. Let me kick off the full history scan and simultaneously verify that pre-commit is available.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:16:25Z)**_
+
+`gitleaks` 8.30.1 installed. Two findings already:
+
+- **`pull.rebase` is already `true`** in `~/.gitconfig` (that's why `git pull --ff-only` refused earlier — it went down the rebase path)
+- **`~/.gitconfig` is not chezmoi-managed at all** — so that setting only exists on this machine
+
+Now the full-history scan plus checking `pre-commit`:
+
+_**Agent (claude-opus-5 2026-07-29 11:16:28Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskUpdate"><details>
+<summary>Tool use: **TaskUpdate**</summary>
+
+```text
+Updated task #1 status
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:16:34Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Scan entire git history with gitleaks
+
+`cd "C:/Users/hanruzhou/.local/share/chezmoi" && gitleaks git --no-banner -c .gitleaks.toml --log-opts="--all" --redact 2>&1 | tail -40; echo "EXIT=${PIPESTATUS[0]}"`
+
+```text
+7:16PM INF **113 commits scanned.
+7:16PM INF **scanned ~16760365 bytes (16.76 MB) in 1.99s
+7:16PM INF **no leaks found
+EXIT=0
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:16:39Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check pre-commit availability
+
+`echo "=== pre-commit on PATH? ==="; command -v pre-commit && pre-commit --version || echo "NOT on PATH"; echo; echo "=== uv/uvx? ==="; command -v uvx || echo "no uvx"; echo; echo "=== python ==="; command -v python && python --version`
+
+```text
+=== pre-commit on PATH? ===
+/c/Python/Python39/Scripts/pre-commit
+pre-commit 4.3.0
+
+=== uv/uvx? ===
+/c/Python/Python39/Scripts/uvx
+
+=== python ===
+/c/Python/Python39/python
+Python 3.9.5
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:17:17Z)**_
+
+<think><details><summary>Thought Process</summary>
+The scan came back clean — nothing leaked to the remote, just the PAT that push protection caught and we redacted. Let me verify that `--all` actually covers all refs including origin/main... yes, it does include heads, remotes, and tags, so the scan was comprehensive.
+
+One thing to confirm: gitleaks in git mode scans diffs by default, so if a secret was introduced in any commit, it would show up in the patch. Since we scanned all commits, that covers it. The allowlist is also set up correctly — it requires both path and regex to match, and it's catching the redacted sentinels and obfuscated patterns, so real secrets would still trigger.
+
+I should also scan the working directory directly with `gitleaks dir .` to check for any uncommitted files like the live transcript. Then I'll install pre-commit 4.3.0 and test that the hook works properly.
+
+The tricky part is verifying the hook without accidentally modifying files — running `--all-files` on a repo with 16MB of transcripts could create unwanted changes. I think the safest approach is to install the hook, confirm the `.git/hooks/pre-commit` file exists, and then test gitleaks separately using stdin mode with a fake secret to verify it actually catches things. I need to be careful here—if I put a fake PAT string in the transcript, gitleaks might flag it on future commits, which would be annoying. The allowlist in `.specstory/history/*.md` should handle this, but I need to check what patterns it actually matches.
+
+If I include "example_token" on the same line as the test PAT, the allowlist would catch it since it matches against the full line. But that defeats the purpose of testing gitleaks via stdin, since the allowlist would suppress the detection there too.
+
+I could run the test in a temporary directory outside the repo to avoid the transcript recording the raw string, though that has its own complications.
+
+Actually, the simplest approach is to re-scan an old leaked commit that's still in the local object store — like d912fb1 — with gitleaks. If it flags the real secret from that commit, that proves the stack would have caught it, and I'm using an actual test fixture rather than introducing a new fake secret into the transcript.
+
+I'll run gitleaks against just that commit's diff with the redact flag to ensure the secret doesn't get printed, then follow up with pre-commit install and a gitleaks scan of the working tree.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:17:17Z)**_
+
+Full history: **113 commits, 16.76 MB, no leaks found.** So nothing actually got uploaded. Now installing the hook and proving it would have caught the real thing — using the dangling `d912fb1` as the test fixture (`--redact` so nothing prints):
+
+_**Agent (claude-opus-5 2026-07-29 11:17:22Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Install pre-commit hook into this clone
+
+`cd "C:/Users/hanruzhou/.local/share/chezmoi" && pre-commit install 2>&1 | tail -3; echo; echo "=== hook file now present? ==="; ls -l .git/hooks/pre-commit 2>/dev/null | sed 's/  */ /g'`
+
+```text
+pre-commit installed at .git\hooks\pre-commit
+
+=== hook file now present? ===
+-rwxr-xr-x 1 FAREAST+hanruzhou 4096 644 7月 29 19:17 .git/hooks/pre-commit
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:17:25Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Verify gitleaks config detects the original leak
+
+`cd "C:/Users/hanruzhou/.local/share/chezmoi" && echo "=== PROOF: would the stack have caught the real leak in d912fb1? ==="; gitleaks git --no-banner -c .gitleaks.toml --log-opts="d912fb1~1..d912fb1" --redact 2>&1 | tail -20; echo "EXIT=${PIPESTATUS[0]} (1 = leak detected, as desired)"`
+
+```text
+=== PROOF: would the stack have caught the real leak in d912fb1? ===
+7:17PM INF **1 commits scanned.
+7:17PM INF **scanned ~109771 bytes (109.77 KB) in 299ms
+7:17PM WRN **leaks found: 1
+EXIT=1 (1 = leak detected, as desired)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:17:46Z)**_
+
+<think><details><summary>Thought Process</summary>
+The gitleaks config is working correctly—it caught the leak in that commit. Now that `pre-commit install` has set up the hook, I need to verify the working tree is clean and run a quick end-to-end test. I'm also concerned about whether the hook might fail on commits due to mixed line endings or the redaction loop, so I'll run `gitleaks dir . --redact` on the working tree to check for issues.
+
+For the git config side: `pull.rebase` is already true, but `rebase.autoStash` is missing—that would've prevented the "unstaged changes" error I hit earlier. The real gaps are that `~/.gitconfig` isn't managed by chezmoi and autoStash isn't set. I should try setting it globally, though there's a slight risk with the concurrent SpecStory writer that autostash could conflict during a rebase. But the quality-of-life improvement is worth it. The user's actual question was already answered—rebase is already the default—so I should clarify that and point out what's actually missing.
+
+Now I'm running a gitleaks scan on the working tree and checking the Copilot.psm1 changes, then moving to assess the npm setup. For task 5, the key issue is whether `setup-internal-npm` solves the blocked npm packages problem. The script redirects all npm traffic through the internal Azure Artifacts feed, which should proxy public packages if upstream is enabled. But that means the AI agent packages installed by `run_onchange` would also come through the internal feed, which could be a problem if they're not mirrored there.
+
+The real gap I'm spotting: the verification only checks that `@jeffreycao/copilot-api@1.13.14` resolves, not whether public packages still work. If the internal feed doesn't have upstream enabled, this script could break all other npm installs. I need to check the current `~/.npmrc` and test whether a public package actually resolves through the configured registry to confirm this.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:17:48Z)**_
+
+Proven: gitleaks **does** flag `d912fb1` with this repo's own config (exit 1). So the config was always correct — it simply never ran. `pre-commit install` has now closed that.
+
+Now the npm question, plus a working-tree scan:
+
+_**Agent (claude-opus-5 2026-07-29 11:17:49Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskUpdate"><details>
+<summary>Tool use: **TaskUpdate**</summary>
+
+```text
+Updated task #2 status
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:17:53Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Scan working tree for secrets
+
+`cd "C:/Users/hanruzhou/.local/share/chezmoi" && gitleaks dir . --no-banner -c .gitleaks.toml --redact 2>&1 | tail -8; echo "EXIT=${PIPESTATUS[0]}"`
+
+```text
+7:17PM INF **scanned ~1178488 bytes (1.18 MB) in 130ms
+7:17PM INF **no leaks found
+EXIT=0
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:17:58Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Inspect npm registry config and Copilot module change
+
+`echo "=== current ~/.npmrc (values masked) ==="; if [ -f "$HOME/.npmrc" ]; then sed -E 's/(_authToken|_password|:_auth)=.*/\1=***MASKED***/' "$HOME/.npmrc"; else echo "(no ~/.npmrc)"; fi; echo; echo "=== effective registry ==="; npm config get registry 2>/dev/null; echo; echo "=== npm_config_registry env ==="; echo "${npm_config_registry:-(unset)}"; echo; echo "=== what did 5351411 change in Copilot.psm1? ==="; git show 5351411 --stat --oneline | head; git show 5351411 -- dot_config/powershell/modules/Copilot/Copilot.psm1 | tail -20`
+
+```text
+=== current ~/.npmrc (values masked) ===
+﻿//o365exchange.pkgs.visualstudio.com/_packaging/Enzyme/npm/:username=VssSessionToken
+//o365exchange.pkgs.visualstudio.com/_packaging/Enzyme/npm/:_password=***MASKED***
+//o365exchange.pkgs.visualstudio.com/_packaging/Enzyme/npm/:email=not-used@example.com
+registry=https://packagefeedproxy.microsoft.io/npm/
+
+=== effective registry ===
+https://packagefeedproxy.microsoft.io/npm/
+
+=== npm_config_registry env ===
+(unset)
+
+=== what did 5351411 change in Copilot.psm1? ===
+5351411 fix(copilot): bootstrap internal npm authentication
+ dot_config/powershell/modules/Copilot/Copilot.psm1 |  1 +
+ justfile                                           |  5 ++
+ scripts/setup-internal-npm.ps1                     | 64 ++++++++++++++++++++++
+ 3 files changed, 70 insertions(+)
+commit 5351411c6b69008f0df38d6514a70329bc24831d
+Author: Hanru Zhou <hanruzhou@microsoft.com>
+Date:   Wed Jul 29 19:05:11 2026 +0800
+
+    fix(copilot): bootstrap internal npm authentication
+
+diff --git a/dot_config/powershell/modules/Copilot/Copilot.psm1 b/dot_config/powershell/modules/Copilot/Copilot.psm1
+index 10b7794..5caa5e7 100644
+--- a/dot_config/powershell/modules/Copilot/Copilot.psm1
++++ b/dot_config/powershell/modules/Copilot/Copilot.psm1
+@@ -157,6 +157,7 @@ function script:Invoke-CopilotPkgInstallTry {
+     $installer = if ($npm) {
+         @{ File = $npm.Source; Args = @('install', '--no-save', '--no-audit', '--no-fund', (Get-CopilotPkg)) }
+     } else {
++        Write-Warning 'copilot-proxy: npm.cmd not found; falling back to Bun (authenticated Azure Artifacts feeds require npm).'
+         @{ File = 'bun'; Args = @('add', (Get-CopilotPkg), '--no-summary') }
+     }
+     $saved = @{}
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:18:20Z)**_
+
+<think><details><summary>Thought Process</summary>
+The working tree is clean. Now I'm looking at the npm configuration issue—there's a real conflict here. My current `~/.npmrc` points to Microsoft's package feed with specific authentication credentials, but the script would strip those registry settings and replace them with a different registry URL.
+
+This is destructive because the existing `packagefeedproxy.microsoft.io` registry is Microsoft's public npm proxy that unblocks packages on the corporate network. Swapping it for `O365Infra_NPM` could break access to public packages unless that feed has upstream connectivity. Plus, the authentication credentials in my config are tied to a different feed entirely, so the credential provider would need to handle the new registry URL—there's a mismatch that could cause authentication failures.
+
+The verification step only checks if the internal copilot package resolves, but never validates that public packages still work. If the new registry lacks upstream access, any public npm dependencies the repo needs would fail to install. There's also the issue that `always-auth=true` is deprecated in npm 9+, and the script writes the registry override to an environment variable in `local.ps1`, which makes it permanent but invisible to normal `npm config` commands—a debugging nightmare. Finally, the existing `.npmrc` file has a UTF-8 BOM, and the script writes without one using PowerShell's default UTF-8 encoding, which could cause encoding inconsistencies. I should test whether the current registry already resolves the copilot package and whether the O365Infra_NPM feed is reachable, using the `--registry` flag to avoid modifying the config. I'll need to account for potential timeouts on corporate feeds and authentication requirements — if the proposed registry returns a 401 without credentials, that's useful information too.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:18:23Z)**_
+
+Working tree clean too. Now the npm question — testing empirically rather than guessing, because your **current** `~/.npmrc` already points somewhere else:
+
+_**Agent (claude-opus-5 2026-07-29 11:18:24Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskUpdate"><details>
+<summary>Tool use: **TaskUpdate**</summary>
+
+```text
+Updated task #1 status
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:18:24Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskUpdate"><details>
+<summary>Tool use: **TaskUpdate**</summary>
+
+```text
+Updated task #5 status
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:18:30Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Test current registry for internal and public packages
+
+`cd /tmp && echo "=== A) copilot pkg via CURRENT registry (packagefeedproxy) ==="; npm view '@jeffreycao/copilot-api@1.13.14' version --fetch-timeout=30000 --fetch-retries=1 2>&1 | tail -5; echo "EXIT=$?"; echo; echo "=== B) PUBLIC pkg via CURRENT registry ==="; npm view '@anthropic-ai/claude-code' version --fetch-timeout=30000 --fetch-retries=1 2>&1 | tail -5; echo "EXIT=$?"`
+
+```text
+=== A) copilot pkg via CURRENT registry (packagefeedproxy) ===
+1.13.14
+EXIT=0
+
+=== B) PUBLIC pkg via CURRENT registry ===
+2.1.217
+EXIT=0
+Shell cwd was reset to C:\Users\hanruzhou\.local\share\chezmoi
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:18:43Z)**_
+
+<think><details><summary>Thought Process</summary>
+The current npm registry at packagefeedproxy is already handling both the internal package and the public one correctly, so running the setup command would actually be redundant and potentially problematic.
+
+Let me test whether the proposed O365Infra_NPM registry would work for both packages to give you a complete picture of what would happen if we switched to it.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:18:43Z)**_
+
+Decisive result. Your **current** registry already resolves both:
+
+- `@jeffreycao/copilot-api@1.13.14` → **1.13.14** ✓ (the internal package)
+- `@anthropic-ai/claude-code` → **2.1.217** ✓ (public package)
+
+Now testing the registry the script would switch you *to*:
+
+_**Agent (claude-opus-5 2026-07-29 11:18:49Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Test proposed O365Infra_NPM registry for both packages
+
+`R='https://pkgs.dev.azure.com/O365Exchange/_packaging/O365Infra_NPM/npm/registry/'; cd /tmp; echo "=== C) copilot pkg via PROPOSED registry (O365Infra_NPM) ==="; npm view '@jeffreycao/copilot-api@1.13.14' version --registry "$R" --fetch-timeout=25000 --fetch-retries=0 2>&1 | grep -E 'ERR|^[0-9]+\.' | head -4; echo "---"; echo "=== D) PUBLIC pkg via PROPOSED registry ==="; npm view '@anthropic-ai/claude-code' version --registry "$R" --fetch-timeout=25000 --fetch-retries=0 2>&1 | grep -E 'ERR|^[0-9]+\.' | head -4`
+
+```text
+=== C) copilot pkg via PROPOSED registry (O365Infra_NPM) ===
+---
+=== D) PUBLIC pkg via PROPOSED registry ===
+Shell cwd was reset to C:\Users\hanruzhou\.local\share\chezmoi
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:18:57Z)**_
+
+<think><details><summary>Thought Process</summary>
+The grep commands came back empty, which is strange. Let me capture the full output to see what's actually being returned—it might have timed out or the output went somewhere unexpected.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:18:57Z)**_
+
+Empty output from both — need the raw response:
+
+_**Agent (claude-opus-5 2026-07-29 11:19:02Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Get raw output for proposed registry test
+
+`R='https://pkgs.dev.azure.com/O365Exchange/_packaging/O365Infra_NPM/npm/registry/'; cd /tmp; echo "=== C) copilot via PROPOSED registry (raw) ==="; npm view '@jeffreycao/copilot-api@1.13.14' version --registry "$R" --fetch-timeout=25000 --fetch-retries=0 >/tmp/c.out 2>/tmp/c.err; echo "exit=$?"; echo "--stdout--"; head -c 400 /tmp/c.out; echo "--stderr--"; head -c 700 /tmp/c.err`
+
+```text
+=== C) copilot via PROPOSED registry (raw) ===
+exit=1
+--stdout--
+--stderr--
+npm error code E401
+npm error Unable to authenticate, your authentication token seems to be invalid.
+npm error To correct this please try logging in again with:
+npm error   npm login
+npm error A complete log of this run can be found in: Q:\.tools\.npm\_logs\2026-07-29T11_19_00_658Z-debug-0.log
+Shell cwd was reset to C:\Users\hanruzhou\.local\share\chezmoi
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:19:32Z)**_
+
+<think><details><summary>Thought Process</summary>
+The registry test confirms it's returning an authentication error as expected—that's the whole point of running the credential provider. But looking at the actual problem, the current setup already works fine since the existing registry is handling both the internal copilot package and public dependencies without issues.
+
+The script would actually make things worse: it strips out the working registry configuration with no fallback, replaces it with one that's currently unauthenticated, and only verifies the internal package works—never checking if public packages like the npm AI agents can still resolve. Worse still, it bakes an environment variable override into the persistent config, which would shadow any `.npmrc` settings going forward.
+
+But stepping back, the real issue might be different. The commit message mentions fixing copilot-proxy authentication, and the Copilot module change adds a fallback from npm to Bun when npm.cmd isn't found. The actual problem could be that Bun doesn't support authenticated Azure Artifacts feeds at all—so the script was probably an attempt to work around that by forcing npm instead.
+
+Let me verify whether npm.cmd is actually on the PATH so I can confirm whether the Bun fallback would even trigger, then I'll check the git config settings and wrap up my findings. The user wants me to close the gap on the pre-commit issue, which is done. Now I need to check the npm.cmd validation and write up the pitfall documentation — let me first look at the existing pitfalls directory to understand the format and structure before creating a new entry.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:19:32Z)**_
+
+Confirmed: the proposed registry returns **E401** with your current credentials. Let me check one more thing — the Copilot.psm1 change hints at the *actual* root cause:
+
+_**Agent (claude-opus-5 2026-07-29 11:19:37Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check npm.cmd discoverability from pwsh
+
+`echo "=== is npm.cmd findable (the Bun-fallback trigger)? ==="; pwsh -NoProfile -c "\$n = Get-Command npm.cmd -ErrorAction SilentlyContinue; if (\$n) { 'npm.cmd FOUND: ' + \$n.Source } else { 'npm.cmd NOT FOUND -> Copilot falls back to Bun' }" 2>&1 | tail -3; echo; echo "=== bun present? ==="; command -v bun >/dev/null && echo "bun on PATH" || echo "no bun"`
+
+```text
+=== is npm.cmd findable (the Bun-fallback trigger)? ===
+npm.cmd FOUND: C:\Program Files\nodejs\npm.cmd
+
+=== bun present? ===
+bun on PATH
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:19:38Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Read pitfalls directory and template
+
+`cd "C:/Users/hanruzhou/.local/share/chezmoi" && ls pitfalls/ && echo "=== README template ===" && sed -n '1,60p' pitfalls/README.md`
+
+```text
+clickfix-defender-flags-cmd-irm-iex.md
+ctrl-r-shows-bck-i-search-not-fzf.md
+function-shadowed-by-builtin-alias-and-case-insensitive.md
+git-add-fatal-crlf-would-be-replaced-by-lf.md
+hashtable-added-to-hashtable-if-expression-array-unwrap.md
+herdr-keybind-failed-to-read-pane-protocol-mismatch.md
+herdr-plus-action-does-not-support-platform-windows.md
+herdr-update-asr-access-denied.md
+nvim-treesitter-no-c-compiler-despite-zig.md
+onedrive-kfm-profile-not-loaded.md
+pester-test-name-angle-brackets-command-not-found.md
+README.md
+scoop-local-changes-overwritten-by-merge.md
+shift-enter-submits-instead-of-newline-claude-code.md
+try-cli-pwsh-support-emits-posix.md
+weasel-silent-install-registers-simplified-chinese.md
+wsl-install-no-action-reboot-required.md
+wsl-loginctl-enable-linger-no-systemd.md
+wsl-ubuntu-oobe-and-wsl-l-encoding.md
+=== README template ===
+# Pitfalls
+
+Past traps we've stepped on. **Symptoms-first** knowledge base — when a
+problem recurs (on a new machine, after an upgrade, with a new tool combo),
+grepping the symptom here lands you on the root cause and workaround in
+seconds, instead of re-debugging from scratch.
+
+This folder is excluded from <DEPLOYMENT/PACKAGING MECHANISM, e.g. chezmoi via
+.chezmoiignore.tmpl, Python via MANIFEST.in, npm via .npmignore> — it is repo
+metadata for maintainers, not user-facing config to deploy.
+
+## Pitfalls vs the rest
+
+| Surface | Time direction | Question it answers | Access pattern |
+|---|---|---|---|
+| `docs/<tool>.md` | Present | "How does this tool work / how do I configure it?" | Read top to bottom |
+| `pitfalls/<slug>.md` | **Past** | **"I see error X — has this happened before?"** | **Grep symptoms** |
+| `backlog/<slug>.md` | Future | "We thought about doing Y — what was the analysis?" | Index in `TODO.md` |
+| `AGENTS.md` Hard invariants | Present | "What rules MUST agents follow?" | Read top to bottom |
+
+A pitfall **graduates** to a Hard invariant when the trap is serious enough
+that you can't rely on memory or grep — typically when (a) it recurs across
+machines, (b) it silently corrupts state, or (c) the workaround is non-obvious
+and easy to undo by accident. When graduating, leave a `pitfalls/<slug>.md`
+as historical record and link to it from the new invariant.
+
+## When to add a pitfall doc
+
+Add `pitfalls/<slug>.md` when you've spent more than ~15 minutes on something
+that wasn't googleable, AND any of:
+
+- The symptom is non-obvious from the root cause (silent state, weird side
+  effect, behaviour change without error)
+- The fix is "do nothing different but in a specific order"
+- The same trap could be hit by a new agent / new machine / new contributor
+- An upstream bug exists with no ETA — workaround needs to outlive memory
+- A specific tool version is required (or forbidden) and failure at the
+  wrong version is silent / confusing
+
+## When NOT to add a pitfall doc
+
+- Trivially googleable (next person solves in 30 seconds)
+- Already covered in `docs/<tool>.md` — cross-link from this README's
+  "Cross-referenced pitfalls" table below instead of duplicating
+- Already a Hard invariant (cross-link only)
+- One-off transient (network glitch, machine-specific config rot)
+
+## File template
+
+See [`pitfall-doc.md.template`] in the
+[`project-knowledge-harness` skill](https://github.com/daviddwlee84/agent-skills/tree/main/skills/local/project-knowledge-harness)
+for the per-doc template.
+
+Key sections (different from `backlog/` template — symptom-first, not
+context-first):
+
+```markdown
+# <Title describing the SYMPTOM, not the root cause>
+
+**Symptoms** (grep this section): <verbatim error messages, observable behaviour>
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:19:46Z)**_
+
+<think><details><summary>Thought Process</summary>
+Let me check the existing pitfall format to match the style, then figure out what's happening here. npm.cmd is actually present on this system, so the Bun fallback wasn't the culprit—npm resolves the package fine, which means `setup-internal-npm` shouldn't be necessary. Though it's possible the issue occurred on a different machine where npm.cmd wasn't available.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:19:47Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./\pitfalls\git-add-fatal-crlf-would-be-replaced-by-lf.md`
+
+```text
+1	# `git add` dies with "fatal: CRLF would be replaced by LF" on a SpecStory transcript
+2	
+3	**Symptoms** (grep this section): `git add -A` / `git add .specstory` aborts with
+4	`fatal: CRLF would be replaced by LF in .specstory/history/<session>.md`.
+5	Nothing is staged — the whole `git add` fails, not just that one file, so a
+6	routine "commit my chat" turns into a hard stop. The file was written by the
+7	SpecStory extension, never hand-edited. Other transcripts in the same folder
+8	commit fine, which makes it look file-specific / random.
+9	Also seen mid-rebase, where it compounds with `git rebase --continue` refusing
+10	to proceed while the extension keeps writing to `.specstory/`.
+11	**First seen**: 2026-07
+12	**Affects**: Git for Windows with `core.autocrlf=input` (global, set by this
+13	repo's `bootstrap.ps1`) **and** `core.safecrlf=true` (the Git for Windows
+14	*system* default at `C:/Program Files/Git/etc/gitconfig`). Any generated file
+15	with mixed line endings; in practice `.specstory/history/*.md`.
+16	**Status**: workaround documented — repo-local `core.safecrlf=false`.
+17	
+18	## Symptom
+19	
+20	```
+21	Administrator in chezmoi on  main [!?⇕⇡4⇣2] via  v3.9.5 took 14s
+22	❯ git add -A
+23	fatal: CRLF would be replaced by LF in .specstory/history/2026-07-29_09-56-55Z-help-me-solve-the.md
+24	```
+25	
+26	The tell that it's a line-ending issue and not corruption — the file is
+27	**mixed**, a handful of CRLF among mostly-LF:
+28	
+29	```powershell
+30	$b = [IO.File]::ReadAllBytes('.specstory/history/<session>.md')
+31	$crlf = 0; for ($i = 1; $i -lt $b.Length; $i++) { if ($b[$i] -eq 10 -and $b[$i-1] -eq 13) { $crlf++ } }
+32	"CRLF=$crlf totalLF=$(($b | Where-Object { $_ -eq 10 }).Count)"
+33	# CRLF=12 totalLF=1769
+34	```
+35	
+36	## Root cause
+37	
+38	Two settings from **different config scopes** combine into a fatal error:
+39	
+40	| Scope | Setting | Effect |
+41	|---|---|---|
+42	| global (`~/.gitconfig`, set by `bootstrap.ps1`) | `core.autocrlf=input` | normalize CRLF→LF **on commit** |
+43	| system (`C:/Program Files/Git/etc/gitconfig`) | `core.safecrlf=true` | make that normalization **fatal** if any CR would be lost |
+44	
+45	`core.autocrlf=input` is deliberate here — it's the fix for
+46	[`scoop-local-changes-overwritten-by-merge`](scoop-local-changes-overwritten-by-merge.md),
+47	where the Git-for-Windows default `autocrlf=true` renormalized scoop's LF bucket
+48	manifests to CRLF and wedged every `scoop update`. `safecrlf=true` then upgrades
+49	"I normalized this file" from a silent no-op into `fatal:`, and `git add` is
+50	all-or-nothing, so **one** mixed file blocks the entire staging operation.
+51	
+52	Why only *some* transcripts trip it — `git ls-files --eol` tells the story:
+53	
+54	```
+55	i/lf    w/crlf  attr/    .specstory/history/2026-07-11_00-08-14Z-herdr.md
+56	i/-text w/-text attr/    .specstory/history/2026-07-27_07-04-27Z-administrator-in-chezmoi-on.md
+57	i/lf    w/lf    attr/    .specstory/history/2026-07-27_18-11-39Z-hi.md
+58	```
+59	
+60	- `i/-text` — git sniffed the blob as **binary** (transcripts full of terminal
+61	  escape sequences / control bytes) and skips conversion entirely. These never
+62	  trip the check.
+63	- `i/lf w/crlf` — already-committed text transcripts, LF in the index, CRLF in
+64	  the worktree. **18 tracked files are in this state.** They look clean only
+65	  because `git diff` normalizes silently; they'd fail `git add` too the moment
+66	  they changed.
+67	
+68	So the failing file isn't special. It's just the first text-detected transcript
+69	with mixed endings that happened to be *new*. The SpecStory extension emits LF
+70	for its own markdown but pastes terminal output verbatim, so whether any given
+71	session ends up mixed, pure-LF, or binary-detected is luck.
+72	
+73	## Workaround
+74	
+75	Disable the fatal check **for this repo only** (leaves the system-wide safety
+76	net intact for every other repo):
+77	
+78	```powershell
+79	git config --local core.safecrlf false
+80	git add -A     # now succeeds
+81	```
+82	
+83	Verify the override landed in the right scope:
+84	
+85	```powershell
+86	git config --show-origin --get-all core.safecrlf
+87	# file:C:/Program Files/Git/etc/gitconfig  true
+88	# file:.git/config                         false
+89	```
+90	
+91	### Rejected alternative: `.gitattributes`
+92	
+93	A scratch-repo test (mixed file, `autocrlf=input` + `safecrlf=true`) shows what
+94	actually silences it:
+95	
+96	| `.gitattributes` | Result |
+97	|---|---|
+98	| *(none)* | `fatal: CRLF would be replaced by LF` |
+99	| `text eol=lf` | `fatal: CRLF would be replaced by LF` — **does not help** |
+100	| `-text` | staged OK |
+101	
+102	So the only attribute that works is `.specstory/** -text`, marking the whole
+103	folder binary. That flips those 18 `i/lf w/crlf` files to "modified" and forces
+104	a one-time churn commit re-injecting CRs into ~3 MB of transcripts — and gives
+105	up diffs on them forever. Not worth it: these are generated agent transcripts
+106	where a lost CR is meaningless, and keeping LF-normalized blobs matches what's
+107	already committed.
+108	
+109	### If it bites mid-rebase
+110	
+111	`git rebase --continue` also refuses to run while the working tree has unstaged
+112	changes — and the SpecStory extension writes to `.specstory/` *live*, so it
+113	dirties the tree under you. The error is misleading (`You must edit all merge
+114	conflicts` even when `git ls-files -u` is empty). Stash just those paths:
+115	
+116	```powershell
+117	git stash push -m "wip specstory" -- .specstory/history/<session>.md .specstory/statistics.json
+118	git rebase --continue
+119	git stash pop   # statistics.json may conflict; keep the newer superset, validate with python -c "import json;json.load(open('.specstory/statistics.json'))"
+120	```
+121	
+122	## Prevention
+123	
+124	Nothing to bake in — but note the fix is **machine-local and unversioned**
+125	(`.git/config` is not tracked), so a fresh clone of this repo on another box
+126	will hit the same `fatal:` the first time SpecStory writes a mixed transcript.
+127	Re-run the one-liner there.
+128	
+129	Do **not** "fix" it by setting `core.autocrlf=true` or `false` globally —
+130	`input` is load-bearing for scoop (see Related).
+131	
+132	## Related
+133	
+134	- [`scoop-local-changes-overwritten-by-merge`](scoop-local-changes-overwritten-by-merge.md)
+135	  — why `core.autocrlf=input` is set globally in the first place.
+136	- `.agents/skills/agent-history-hygiene/SKILL.md` — the "commit transcripts
+137	  alongside the diff" workflow this blocks; run its
+138	  `assets/redact_secrets.py` scan before committing transcripts.
+139	- [gitattributes docs — `text` / `eol`](https://git-scm.com/docs/gitattributes#_text)
+140	  and [`core.safecrlf`](https://git-scm.com/docs/git-config#Documentation/git-config.txt-coresafecrlf).
+141
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:20:05Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm weighing whether to manage ~/.gitconfig through chezmoi using the parent repo's `modify_dot_gitconfig.tmpl` overlay, but there's a tension here—the project's invariant says to avoid `modify_` interpreters on Windows in favor of a `run_onchange` PowerShell merger, yet the herdr config.toml already uses `modify_config.toml.ps1.tmpl`, so there's precedent for `modify_` in this setup.
+
+The real concern is that ~/.gitconfig holds sensitive data like user identity, credential helpers, and potentially corporate-specific rules with embedded tokens, so I need to fetch the parent's template and review the current config before deciding whether this is safe to version control or if it should stay as a machine-local setting per the bootstrap pitfall.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:20:05Z)**_
+
+Good question — and directly relevant, since that CRLF pitfall literally ends with *"the fix is machine-local and unversioned."* Let me look at both sides:
+
+_**Agent (claude-opus-5 2026-07-29 11:20:16Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="WebFetch"><details>
+<summary>Tool use: **WebFetch**</summary>
+ `https://raw.githubusercontent.com/daviddwlee84/dotfiles/main/modify_dot_gitconfig.tmpl`
+
+```text
+This is a shell (bash) chezmoi modify_ script. It reads the current target from stdin, emits a chezmoi-managed ~/.gitconfig baseline, then preserves any [credential "<...>"] sections from the existing ~/.gitconfig and appends them.
+
+Exact short excerpts (<=125 chars) from the file:
+- "set -euo pipefail"
+- "# modify_ script: render chezmoi-managed baseline gitconfig"
+- "/^\\[credential \"/ { keep=1; print; next }"
+
+How it merges (behavior summary):
+- Reads the current live file into a variable via stdin.
+- Prints a fixed baseline gitconfig template (the chezmoi-managed content).
+- Uses awk to extract any credential sections whose headers match [credential "<URL>"] plus their indented/key-value body, strips leading/trailing blank lines, and, if any were found, prints them after the baseline. The gh-injected absolute path in credential blocks is preserved verbatim by the awk extraction.
+
+Git configuration keys and sections the baseline sets (explicit entries in the template):
+- [user]: email, name
+- [http]: postBuffer = 524288000
+- [filter "lfs"]: clean, smudge, process, required
+- [init]: defaultBranch = main
+- [core]: hooksPath = ~/.config/git/hooks
+- [pull]: rebase = true
+- [rebase]: autoStash = true (and conditionally pager = delta if delta exists)
+- [interactive]: diffFilter = delta --color-only (conditional on delta)
+- [delta]: navigate = true, side-by-side = true (emitted only when delta is found)
+- [include]: path = ~/.gitconfig.local
+
+Notes:
+- The script intentionally only preserves [credential "<...>"] blocks from the live file; all other live-file content is replaced by the baseline.
+- Per-machine overrides such as safe.directory, credential, http.proxy are expected to live in ~/.gitconfig.local (included via [include]).
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:20:18Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Show current gitconfig with sensitive values masked
+
+`echo "=== ~/.gitconfig (token-ish values masked) ==="; sed -E 's/(password|token|helper|url)\s*=\s*.*/\1 = ***MASKED***/I' "$HOME/.gitconfig"`
+
+```text
+=== ~/.gitconfig (token-ish values masked) ===
+[user]
+	name = hanruzhou
+	email = hanruzhou+odspmdb@microsoft.com
+[filter "lfs"]
+	process = git-lfs filter-process
+	required = true
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+[otel "trace2"]
+	historyOn = true
+[credential "azrepos:org/onedrive"]
+	username = hanruzhou@microsoft.com
+[credential "azrepos:org/o365exchange"]
+	username = hanruzhou@microsoft.com
+	azureAuthority = https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47
+[credential "azrepos:org/msfast"]
+	username = hanruzhou@microsoft.com
+[credential "azrepos:org/office"]
+	username = hanruzhou@microsoft.com
+	azureAuthority = https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47
+[credential "azrepos:org/O365Exchange"]
+	azureAuthority = https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47
+	username = hanruzhou@microsoft.com
+[core]
+	autocrlf = input
+[pull]
+	rebase = true
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:21:26Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm seeing the full context now on the gitconfig setup. The parent's `modify_dot_gitconfig.tmpl` is a bash script, but there's a Windows compatibility issue — the repo's CLAUDE.md notes that `modify_` interpreter selection is unreliable on Windows. However, herdr works around this by using a PowerShell version with the proper interpreter configured in `.chezmoi.toml.tmpl`, whereas a bash script would need bash available on Windows.
+
+The critical issue is that the parent's script preserves only `[credential "..."]` blocks while replacing everything else. On this machine, that would keep the 5 azrepos credential blocks but **delete** the `[otel "trace2"] historyOn = true` setting and `[core] autocrlf = input` — and that autocrlf setting is load-bearing according to the scoop pitfall documentation. Losing it would break every `scoop update`. The parent's baseline doesn't even set `core.autocrlf`, so a naive port would silently remove this critical configuration.
+
+Additionally, the parent sets `core.hooksPath = ~/.config/git/hooks` globally, which ties into the pre-commit wrapper mentioned in the skill, but there's a question about whether setting this globally is the right approach. I need to port this to PowerShell as a template file, making sure `core.autocrlf = input` stays in the baseline since it's critical for scoop, while keeping repo-local `core.safecrlf=false` separate. The key constraint is that `core.hooksPath` should only be set if the actual hook file gets deployed by this repo — otherwise it'll silently break the pre-commit hook I just installed. I also need to preserve the credential blocks that the parent's awk already handles.
+
+The user email here is corp-specific and already prompted during init via `.chezmoi.toml.tmpl`, so I can reference those template variables directly. This is substantial work with real landmines, so per the convention it belongs in TODO.md and the backlog for proper evaluation rather than implementing it now. I'll answer the gitconfig question with a "yes, but backlog it with these three risks," then move on to writing the pitfall doc and wrapping up the remaining tasks.
+
+For the pitfall documentation, I'm creating an entry titled around the symptom itself — the GitHub push protection rejection — with the slug `push-protection-blocks-pat-in-specstory-transcript.md`. The core issue is that running `env | grep -i git` during agent debugging leaked the `GITHUB_PERSONAL_ACCESS_TOKEN` into a SpecStory transcript, which GitHub's push protection then caught and blocked. I'll structure this following the house template with symptoms, root cause, and contributing factors.
+
+The workaround involves using binary-mode redaction and amending the commit atomically without printing the secret. Prevention requires installing pre-commit hooks on clone, getting gitleaks on PATH via scoop, and removing the PAT from environment variables entirely. I need to be careful when writing the documentation — since the pitfalls directory isn't in the gitleaks allowlist, I'll use a placeholder format for the token string rather than a real example to avoid triggering the scanner on the pitfall doc itself.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:21:26Z)**_
+
+Now I have everything. Writing the pitfall doc first:
+
+_**Agent (claude-opus-5 2026-07-29 11:21:28Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="TaskUpdate"><details>
+<summary>Tool use: **TaskUpdate**</summary>
+
+```text
+Updated task #4 status
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:21:29Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```md
+# `git push` rejected by GitHub push protection — a PAT leaked via `env` in an agent transcript
+
+**Symptoms** (grep this section): `git push` fails with
+`remote: error: GH013: Repository rule violations found for refs/heads/main`,
+`GITHUB PUSH PROTECTION`, `Push cannot contain secrets`, and a
+`—— GitHub Personal Access Token ——` block naming
+`.specstory/history/<session>.md:<line>`. The push writes objects
+successfully (`Writing objects: 100%`, `remote: Resolving deltas: 100%`) and
+*then* the ref update is rejected, so it looks like the push "almost worked".
+Nothing in the diff was hand-written — the offending line is inside a
+generated agent transcript, which makes it look like SpecStory invented a
+secret out of nowhere.
+**First seen**: 2026-07-29
+**Affects**: any repo where a coding agent runs an environment dump and a
+transcript recorder (SpecStory / Cursor / Claude Code) commits the output.
+Requires `GITHUB_PERSONAL_ACCESS_TOKEN` (or similar) to be exported in the
+shell environment.
+**Status**: workaround documented; local hook stack now installed
+(`pre-commit install` + `scoop install gitleaks`).
+
+## Symptom
+
+\```
+remote: - GITHUB PUSH PROTECTION
+remote:   —————————————————————————————————————————
+remote:     Resolve the following violations before pushing again
+remote:
+remote:     - Push cannot contain secrets
+remote:
+remote:       —— GitHub Personal Access Token ——————————————————————
+remote:        locations:
+remote:          - commit: d912fb13fa95bd15ad37e3770f8552b51e00f036
+remote:            path: .specstory/history/2026-07-29_09-56-55Z-help-me-solve-the.md:1727
+\```
+
+## Root cause
+
+An earlier agent turn was debugging a stuck rebase and ran a routine
+environment dump:
+
+\```bash
+env | grep -i git
+\```
+
+`grep -i git` matches far more than `GIT_*` — it also matches
+**`GITHUB_PERSONAL_ACCESS_TOKEN`**, which is exported in this shell. The
+token's full value was printed to stdout, SpecStory captured the tool output
+verbatim into the session transcript, and the transcript was committed
+alongside the feature diff (which is the *correct* default — see
+`agent-history-hygiene`). The resulting line was:
+
+\```
+GITHUB_PERSONAL_ACCESS_TOKEN=github_pat_<82 more chars>
+\```
+
+Two things make this easy to walk into:
+
+1. **The dump command looks harmless.** `env | grep -i git` reads as "show me
+   git-related env vars", not "print my credentials". The same trap applies to
+   `printenv`, `set`, `Get-ChildItem Env:`, and `docker inspect`.
+2. **The secret lives in an environment variable**, so it is not a one-off
+   mistake — *every* future transcript that dumps the environment re-leaks it.
+
+### Why the local hook stack didn't catch it
+
+This repo already ships `.gitleaks.toml` and `.pre-commit-config.yaml`, and
+both are correct:
+
+- `[extend] useDefault = true` keeps gitleaks' built-in
+  `github-fine-grained-pat` rule active.
+- The `.specstory/history/` allowlist uses `condition = "AND"`, so it only
+  tolerates lines that *also* match an example/demo marker. A real PAT still
+  fires.
+
+Verified after the fact against the offending commit:
+
+\```bash
+gitleaks git -c .gitleaks.toml --log-opts="d912fb1~1..d912fb1" --redact
+# WRN leaks found: 1      (exit 1)
+\```
+
+The config was never the problem. **Nothing was executing it:**
+
+\```bash
+ls .git/hooks/pre-commit    # No such file — `pre-commit install` never run in this clone
+git config core.hooksPath   # (unset)
+command -v gitleaks         # not on PATH
+\```
+
+`pre-commit install` is **per-clone** — cloning a repo that contains
+`.pre-commit-config.yaml` does *not* activate it. So GitHub's server-side
+push protection was the only gate between the token and a public repo.
+
+## Workaround
+
+The leaked commit was HEAD and unpushed (`git branch -r --contains <sha>`
+empty), so this is the cheap `amend` case from the `agent-history-hygiene`
+remediation runbook. Two constraints make the naive fix wrong:
+
+1. **Never print the secret while recovering.** The SpecStory writer is live;
+   every `grep` / `sed -n '<line>p'` / `cat` of that line appends it to the
+   *current* transcript, so the redact-then-restage loop never converges.
+   Redact blind, verify only after the sentinel is in place.
+2. **Redact in binary mode.** These transcripts are the mixed-EOL files from
+   [`git-add-fatal-crlf-would-be-replaced-by-lf`](git-add-fatal-crlf-would-be-replaced-by-lf.md).
+   Python text-mode I/O silently normalizes newlines and rewrites the whole
+   file.
+
+One atomic pipeline, so the index is frozen before the next transcript write:
+
+\```bash
+python -c "
+import re, pathlib
+p = pathlib.Path('.specstory/history/<session>.md')
+b = p.read_bytes()                       # bytes, NOT text — preserves mixed EOL
+pat = re.compile(rb'\bgithub_pat_[A-Za-z0-9_]{60,}')
+n = len(pat.findall(b))
+assert n == 1, 'expected 1 hit, got %d' % n
+p.write_bytes(pat.sub(b'[REDACTED_GITHUB_PAT]', b))
+" && git add .specstory/history/<session>.md && git commit --amend --no-edit
+\```
+
+`[REDACTED_GITHUB_PAT]` is deliberate: it matches the global
+`\b[A-Za-z0-9_-]+_REDACTED(?:_[A-Z_]+)?\b` … actually it matches the
+`\bREDACTED\b` allowlist regex, so gitleaks stays quiet without weakening any
+rule.
+
+Then verify — history *and* working tree:
+
+\```bash
+gitleaks git -c .gitleaks.toml --log-opts="--all" --redact   # INF no leaks found
+gitleaks dir . -c .gitleaks.toml --redact                    # INF no leaks found
+\```
+
+### On rotation
+
+The ref update was rejected, so the commit never became public, browsable,
+forkable, or indexed. But the pack **was** transferred and unpacked into
+GitHub's quarantine before the pre-receive check ran — that is how the alert
+and its unblock URL exist. Those objects are unreferenced and get GC'd.
+
+Rotation is therefore lower-urgency than a true public leak, but not zero: the
+raw token sat in a plaintext file on disk, and the environment variable will
+keep re-leaking it. Rotate at <https://github.com/settings/personal-access-tokens>.
+
+Note the old commit survives locally as a dangling object for ~90 days of
+reflog. Purge with
+`git reflog expire --expire-unreachable=now --all && git gc --prune=now`.
+
+## Prevention
+
+1. **Activate the hook stack in every clone** — this is the actual fix:
+
+   \```bash
+   scoop install gitleaks     # the `gitleaks-system` hook needs it on PATH
+   pre-commit install         # per-clone; cloning the config does NOT arm it
+   \```
+
+2. **Don't dump the whole environment.** Ask for the specific variables:
+
+   \```bash
+   env | grep -E '^GIT_(DIR|WORK_TREE|EDITOR|SEQUENCE_EDITOR)='   # not `grep -i git`
+   \```
+
+3. **Get the PAT out of a plain environment variable.** A credential helper
+   (`git credential-manager`, already used here for the `azrepos:*` entries)
+   keeps it out of every child process's environment.
+
+## Related
+
+- [`git-add-fatal-crlf-would-be-replaced-by-lf`](git-add-fatal-crlf-would-be-replaced-by-lf.md)
+  — same transcript file; why the redaction must be byte-level.
+- `.agents/skills/agent-history-hygiene/references/remediation.md` — the
+  rotate-first runbook and the pushed/unpushed decision tree.
+- [GitHub docs — working with push protection from the command line](https://docs.github.com/code-security/secret-scanning/working-with-secret-scanning-and-push-protection/working-with-push-protection-from-the-command-line)
+
+```
+
+```text
+File created successfully at: C:\Users\hanruzhou\.local\share\chezmoi\pitfalls\push-protection-blocks-pat-leaked-by-env-dump.md (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:21:48Z)**_
+
+<think><details><summary>Thought Process</summary>
+I need to clarify which allowlist regex actually matches `[REDACTED_GITHUB_PAT]` — my previous explanation was imprecise, so let me check the global pattern against this specific token to get it right.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:21:48Z)**_
+
+One sentence in that doc is wrong — let me verify the claim rather than leave it. Does the sentinel actually match an allowlist, or does it just not match any rule?
+
+_**Agent (claude-opus-5 2026-07-29 11:21:51Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Verify which pattern the sentinel actually matches
+
+```bash
+python -c "
+import re
+s='[REDACTED_GITHUB_PAT]'
+tests={
+ 'global _REDACTED regex': r'\b[A-Za-z0-9_-]+_REDACTED(?:_[A-Z_]+)?\b',
+ 'specstory \\\\bREDACTED\\\\b regex': r'\bREDACTED\b',
+ 'gitleaks github-fine-grained-pat rule': r'github_pat_\w{82}',
+}
+for name,p in tests.items():
+    print(('MATCH  ' if re.search(p,s) else 'no match'), '<-', name)
+"
+```
+
+```text
+no match <- global _REDACTED regex
+no match <- specstory REDACTED regex
+no match <- gitleaks github-fine-grained-pat rule
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:21:58Z)**_
+
+<think><details><summary>Thought Process</summary>
+The sentinel doesn't match the allowlist or any rule because it's not shaped like a secret. My earlier explanation was flawed on both counts. The regex `\bREDACTED\b` fails to match because underscore counts as a word character, which is an important detail to preserve—it signals that future maintainers shouldn't assume the allowlist will catch everything.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:21:59Z)**_
+
+Both allowlist claims were wrong (`_` is a word character, so `\bREDACTED\b` doesn't match inside `REDACTED_GITHUB_PAT`). Fixing:
+
+_**Agent (claude-opus-5 2026-07-29 11:22:04Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file C:\Users\hanruzhou\.local\share\chezmoi\pitfalls\push-protection-blocks-pat-leaked-by-env-dump.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:22:15Z)**_
+
+<think><details><summary>Thought Process</summary>
+I need to add a TODO entry with a backlog document for the gitconfig management question since it's a real design decision with multiple options and significant effort involved. Let me check the add-todo script and its usage, then create the backlog doc. For task 3 about rebase config, the answer is already true—rebase.autoStash is the missing piece that's in the parent's baseline.
+
+I'll run the add-todo.sh script with the backlog flag, setting the title to port the parent repo's modify_dot_gitconfig template to PowerShell, marking it P2 priority with medium effort. The description covers preserving core.autocrlf=input and Azure Repos credential blocks while handling the core.hooksPath conflict with per-clone pre-commit installs. Since this is a bash script on Windows, I'll invoke it via bash.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:22:15Z)**_
+
+Now recording the `~/.gitconfig` question per the repo's backlog convention — it's a real design decision with landmines, not a one-liner:
+
+_**Agent (claude-opus-5 2026-07-29 11:22:18Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check add-todo.sh usage
+
+`cd "C:/Users/hanruzhou/.local/share/chezmoi" && ls scripts/add-todo.sh && bash scripts/add-todo.sh --help 2>&1 | head -25`
+
+```text
+Exit code 2
+ls: cannot access 'scripts/add-todo.sh': No such file or directory
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:22:25Z)**_
+
+<think><details><summary>Thought Process</summary>
+I need to check what files are actually in the scripts directory and verify if TODO.md is present.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:22:27Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Inspect scripts, TODO.md and backlog structure
+
+`cd "C:/Users/hanruzhou/.local/share/chezmoi" && echo "=== scripts/ ==="; ls scripts/; echo; echo "=== TODO.md / backlog present? ==="; ls TODO.md 2>/dev/null; ls backlog/ 2>/dev/null | head; echo; echo "=== TODO.md lane format sample ==="; grep -n -m2 -A4 '^## P' TODO.md 2>/dev/null | head -20`
+
+```text
+=== scripts/ ===
+bootstrap-wsl-dotfiles.ps1
+build-specstory.ps1
+enable-sshd.ps1
+enable-wsl.ps1
+enable-wsl-ubuntu.ps1
+install-fonts-machine-wide.ps1
+semsearch.py
+setup-internal-npm.ps1
+
+=== TODO.md / backlog present? ===
+TODO.md
+align-windows-backup-with-unix-run-before-unified-dir.md
+auto-resume-wsl-docker-after-reboot.md
+herdr-windows-port-verification.md
+inbox.md
+README.md
+rime-shared-config.md
+rime-windows-port-verification.md
+specstory-windows-native-cli.md
+translate-windows-distribution.md
+windows-arm64-managed-machine-rough-edges.md
+
+=== TODO.md lane format sample ===
+20:## P1
+21-
+22-Likely next batch — items you'd reach for if you sat down to work today.
+23-
+24-- [ ] **[S] Example small item** — short description with file paths if helpful.
+--
+26:## P2
+27-
+28-Worth doing, no rush.
+29-
+30-- [ ] **[M] Example medium item** — link to research if non-trivial. → [research](backlog/example-medium.md)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:22:39Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm noticing that the helper scripts mentioned in CLAUDE.md don't actually exist in the scripts directory — there's a documentation gap here. Since those tools aren't available, I'll fall back to directly editing TODO.md as documented, though I should flag that the validator referenced in CLAUDE.md is also missing.
+
+Now I need to read through TODO.md to find the right place for this entry.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:22:39Z)**_
+
+The helper scripts CLAUDE.md documents (`add-todo.sh`, `todo-kanban.sh`, `promote-todo.sh`) **don't exist** in `scripts/` — documentation drift worth flagging. Falling back to method 3 (direct edit):
+
+_**Agent (claude-opus-5 2026-07-29 11:22:41Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./\TODO.md`
+
+```text
+1	# TODO
+2	
+3	Long-term backlog for dotfiles-windows. See AGENTS.md
+4	for the maintenance workflow that agents should follow.
+5	
+6	> **For agents**: when the user surfaces an idea explicitly **not** being
+7	> implemented this session (signals: "maybe later", "nice to have",
+8	> "工程量太大需要再評估", "先記下來"), add it here with priority + effort tags.
+9	> Do not create new `ROADMAP.md` / `IDEAS.md` / `BACKLOG.md` files —
+10	> `TODO.md` is the single backlog index. Long-form research goes in
+11	> [`backlog/<slug>.md`](backlog/).
+12	
+13	<!-- Use the exact section order: P1, P2, P3, P?, Done.
+14	     The bundled scripts/todo-kanban.sh validator only inspects top-level
+15	     `- [ ]` and `- ✅` items inside these sections. Prose paragraphs,
+16	     blockquotes, indented sub-bullets, HTML comments, and `---` rules are
+17	     ignored — feel free to add inline guidance like this without breaking
+18	     machine readability. -->
+19	
+20	## P1
+21	
+22	Likely next batch — items you'd reach for if you sat down to work today.
+23	
+24	- [ ] **[S] Example small item** — short description with file paths if helpful.
+25	
+26	## P2
+27	
+28	Worth doing, no rush.
+29	
+30	- [ ] **[M] Example medium item** — link to research if non-trivial. → [research](backlog/example-medium.md)
+31	- [ ] **[M] Ship prebuilt Windows binaries for `translate` and install it via scoop** — the tool currently builds from source (`go install …@v0.5.2`), which costs several minutes on a fresh `workstation` apply, drags in a Go toolchain, and leaves `just upgrade-translate` as the one upgrade path outside `just upgrade-scoop`. Needs GoReleaser + a release workflow in the `translate` repo (which has no `.github/` at all today) plus a `daviddwlee84/scoop-bucket` manifest; then this repo's block becomes a one-line `Scoop-Install`. → [research](backlog/translate-windows-distribution.md)
+32	- [ ] **[S] Verify the herdr port on a real Windows box** — the full keymap, six pwsh helper scripts, three tv channels and the herdr-plus config were ported from the parent repo on 2026-07-27 and validated as far as macOS allows (overlay merge + idempotency, TOML validity, regex parity with the unix pipelines, channel TSV against a stub `herdr`, the `installHerdr` gate). Nine behaviours can only be confirmed with herdr actually running on Windows — chiefly whether the preview build supports `[[keys.command]]` / `type = "popup"` at all, how it spawns the `pwsh -File` command strings, and whether `prefix+ctrl+N` survives ConPTY. → [research](backlog/herdr-windows-port-verification.md)
+33	- [ ] **[S] Verify the Rime/Weasel port on a real Windows box** — CI can't cover IME registration. Check: UAC install registers 中文（繁體，台灣）not 简体; Ctrl+` lists all 5 schemas; bopomofo_tw outputs 臺灣字形; the Hack Nerd Font Mono + Microsoft JhengHei UI fallback chain renders; global_ascii shares 中/英 state while pwsh/VSCode stay ASCII; WeaselDeployer /deploy picks up an edit. → [research](backlog/rime-windows-port-verification.md)
+34	
+35	## P3
+36	
+37	Someday / nice-to-have.
+38	
+39	- [ ] **[S] Example deferred item** — low signal-to-effort, but easy.
+40	- [ ] **[S] Windows ssh-agent profile fragment** — parallel to the parent repo's `94_ssh_agent.zsh`. A `dot_config/powershell/profile.d/` fragment that ensures the OpenSSH Authentication Agent service is running (`Set-Service ssh-agent -StartupType Automatic`; `Start-Service`) and optionally detects Bitwarden desktop's `//./pipe/openssh-ssh-agent`. Config skeleton (`dot_ssh/`) already shipped; this only automates the agent side.
+41	- [ ] **[M] Extract the shared Rime config into its own repo** — Today .chezmoitemplates/rime/ is duplicated byte-for-byte in dotfiles and dotfiles-windows, kept in sync by hand + diff. A standalone rime-config repo pulled via .chezmoiexternal in both would remove the drift risk, at the cost of a third repo and a fetch on every apply. → [research](backlog/rime-shared-config.md)
+42	- [ ] **[S] Automate Rime redeploy on macOS and Linux** — Windows redeploys automatically via run_onchange_after_50_rime_deploy.ps1. The unix repo leaves it manual because Squirrel's --reload is unreliable and ibus restart interrupts the session — revisit if a safe non-disruptive trigger appears.
+43	
+44	## P?
+45	
+46	Needs a spike before committing to a real priority. Tag as `[?/Effort]`.
+47	
+48	- [ ] **[?/L] Example evaluation item** — what spike would answer the question? → [research](backlog/example-evaluation.md)
+49	- [ ] **[?/S] Align Windows backup with Unix: run_before + unified dir** — Windows backup is run_once_before_ (first-apply only) with a fixed allowlist; Unix is run_before_ (every apply) using chezmoi status smart-selection. Also unify backup dir naming (~/.dotfiles-backup vs ~/.dotfiles_backup). → [research](backlog/align-windows-backup-with-unix-run-before-unified-dir.md)
+50	- [ ] **[?/M] SpecStory Windows-native CLI (track PR #191)** — no npm/native-Windows release; Windows CLI support sits in unmerged getspecstory PR #191 (mergeable=false). Experimental build wired: `installSpecstoryBuild` init toggle (inline build at apply time) + `just specstory-build`. Revisit when the PR merges/releases → switch to the official install. → [research](backlog/specstory-windows-native-cli.md)
+51	- [ ] **[?/L] Windows-on-ARM64 + managed-machine rough edges** — nvim-treesitter arch mismatch (arm64 zig vs amd64-emulated nvim), mason download blocks, per-user font registration, Defender PUA blocks. Decide on an all-arm64 vs all-amd64 Neovim toolchain. → [research](backlog/windows-arm64-managed-machine-rough-edges.md)
+52	- [ ] **[?/M] Auto-resume WSL/Docker setup after the required reboot** — `installWsl` self-elevates and runs `wsl --install`, but the mandatory reboot is manual and nothing resumes afterward (WSL2 backend verification + Docker Desktop first-run happen only once the user reboots + relaunches). Spike: a `RunOnce` registry key / scheduled task to finish post-reboot vs. just documenting the manual reboot. → [research](backlog/auto-resume-wsl-docker-after-reboot.md)
+53	- [ ] **[?/M] WSL: systemd-enabled `ubuntu_server` vs. a dedicated no-systemd WSL profile** — the provisioned Ubuntu now boots systemd so the cross-platform `docker` role's rootless `loginctl enable-linger` works (`scripts/enable-wsl-ubuntu.ps1` → `[boot] systemd=true`). Alternatives: a WSL-tuned profile in `daviddwlee84/dotfiles` that skips systemd-only roles (Docker Desktop's WSL integration may already cover `docker`), and/or making the docker role `failed_when: false`. Decide the WSL provisioning shape. → [research](backlog/wsl-systemd-vs-wsl-profile.md)
+54	
+55	## Done
+56	
+57	Recently shipped. When implementing an active item, in the same commit run:
+58	
+59	```
+60	scripts/promote-todo.sh --title "<substring>" --summary "<one-line shipped summary>"
+61	```
+62	
+63	This moves the entry here using the dated `Done` syntax and re-validates.
+64	
+65	- ✅ [2026-04-23] [P1/M] Example shipped item — one-line summary of what landed and where.
+66	- ✅ [2026-07-11] [P3/S] Windows Terminal full CSI-u parity (Ctrl+/, Ctrl+digits) — added `ctrl+/` (0x1f) and `ctrl+0..9` (ESC[48+d;5u) sendInput actions to `run_onchange_after_30_windows_terminal.ps1`, matching wezterm/alacritty; `ctrl+0` overrides WT's default resetFontSize.
+67	- ✅ [2026-07-11] [P?/L] Setup WSL Ubuntu + auto-install dotfiles (unattended, opt-in) — `installWslUbuntu` toggle: `scripts/enable-wsl-ubuntu.ps1` registers `Ubuntu-24.04` with no OOBE (user via `wsl -u root`, passwordless sudo, wsl.conf default), then the default `headless` mode runs a frozen-from-Windows `chezmoi init --apply daviddwlee84` (name/email/profile seeded). `wslUbuntuBootstrap` = headless/interactive/none; `just enable-wsl-ubuntu`. → [research](backlog/wsl-ubuntu-auto-dotfiles.md)
+68	
+69	<!-- Prune older entries into CHANGELOG.md once prior-year items appear here
+70	     or this section grows past ~20 entries. -->
+71
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:22:49Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm adding a TODO entry and backlog doc for gitconfig management as a P2 [M] priority item. Let me start by writing the backlog doc first, then I'll add the corresponding TODO line. I need to check the format of an existing backlog doc to match the style — looking at something like rime-shared-config.md to see how the header and structure should look.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:22:51Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check backlog doc header format
+
+`cd "C:/Users/hanruzhou/.local/share/chezmoi" && sed -n '1,28p' backlog/rime-shared-config.md`
+
+```text
+# Extract the shared Rime config into its own repo
+
+**Status**: P3
+**Effort**: M
+**Related**: `TODO.md` · `.chezmoitemplates/rime/` · `docs/input-method.md` ·
+`AppData/Roaming/Rime/` · parent repo `docs/input_methods/README.md`
+
+## Context
+
+2026-07-29, while porting Rime to Windows (Weasel/小狼毫). The user asked whether
+any config could be **shared** with the Unix side (Squirrel on macOS, ibus-rime on
+Linux). It can — but the mechanism chosen this round duplicates the shared files
+in both repos rather than giving them a single home.
+
+## Investigation
+
+Established during the port (all source-verified, so it doesn't need redoing):
+
+- **The schema sets are identical.** Weasel builds its bundled data from plum's
+  `:preset` package set (`rime/weasel@master:build.bat:295` →
+  `plum/preset-packages.conf` = `bopomofo cangjie essay luna-pinyin prelude quick
+  stroke terra-pinyin`). That is the same set Squirrel ships — confirmed against
+  the built schemas already in `~/Library/Rime/build/` on the Mac. So one
+  `schema_list` resolves identically on all three platforms with no downloads.
+- **The portable/non-portable line is sharp.** `default.custom.yaml` and
+  `<schema>.custom.yaml` are engine-level and fully portable.
+  `weasel.custom.yaml` / `squirrel.custom.yaml` are not: `app_options` keys on the
+  EXE name on Windows and on the bundle id on macOS, and `style/` is Weasel-only.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:23:39Z)**_
+
+<think><details><summary>Thought Process</summary>
+I need to document the gitconfig backlog, focusing on three key issues. The main challenge is that the parent script uses bash, but it needs to be converted to PowerShell as `modify_dot_gitconfig.ps1.tmpl` since the `[interpreters.ps1] = pwsh` configuration is what enables the `modify_` mechanism to work—though there's a known reliability issue with interpreter selection that I need to account for.
+
+The second landmine is that the parent baseline sets `core.hooksPath = ~/.config/git/hooks`, which overrides per-repo `.git/hooks/`, so applying it here would silently break the `pre-commit install` hook we just set up unless we also deploy the parent's wrapper to `~/.config/git/hooks/pre-commit`. The third issue is that the parent script has no `core.autocrlf` setting and would strip everything except credential blocks, which means we'd lose the `core.autocrlf = input` that's critical for the scoop setup.
+
+There are also minor concerns like the `[otel "trace2"] historyOn = true` setting that would get dropped, but the wins are solid: we get `pull.rebase=true` and `rebase.autoStash=true` baked in, plus the `[include] path = ~/.gitconfig.local` escape hatch for machine-specific config. The identity setup is already handled by the init prompt.
+
+Now I need to decide between three approaches: fully porting the modify_ overlay, using a minimal `git config --global` script to manage just the keys we care about, or leaving it unmanaged with documentation. Let me document the trade-offs and write this up, then add a P2 TODO and move on to the npm assessment and rebase validation.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:23:43Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```md
+# Manage `~/.gitconfig` via a `modify_` overlay
+
+**Status**: P2
+**Effort**: M
+**Related**: `TODO.md` · parent repo `modify_dot_gitconfig.tmpl` ·
+`pitfalls/git-add-fatal-crlf-would-be-replaced-by-lf.md` ·
+`pitfalls/scoop-local-changes-overwritten-by-merge.md` ·
+`pitfalls/push-protection-blocks-pat-leaked-by-env-dump.md` ·
+`dot_config/herdr/modify_config.toml.ps1.tmpl` (the `modify_` precedent)
+
+## Context
+
+2026-07-29, after a GitHub PAT leaked into a SpecStory transcript and push
+protection rejected the push. Two things surfaced during cleanup:
+
+1. `~/.gitconfig` is **not managed by chezmoi at all** on this repo — there is
+   no `dot_gitconfig*` / `private_dot_gitconfig*` in the source tree. Every
+   git setting on this box was applied by hand or by `bootstrap.ps1`, so none
+   of it is reproducible on a fresh machine.
+2. The CRLF pitfall already ends with *"the fix is machine-local and
+   unversioned … a fresh clone on another box will hit the same `fatal:`"* —
+   i.e. this gap has already bitten once.
+
+The parent repo solves this with
+[`modify_dot_gitconfig.tmpl`](https://github.com/daviddwlee84/dotfiles/blob/main/modify_dot_gitconfig.tmpl):
+a `modify_` script that emits a chezmoi-managed baseline and preserves any
+live `[credential "<url>"]` blocks via `awk`.
+
+## Investigation
+
+### Current live state on this machine
+
+\```ini
+[user]   name = hanruzhou ; email = hanruzhou+odspmdb@microsoft.com
+[filter "lfs"]  process/required/clean/smudge
+[otel "trace2"] historyOn = true
+[credential "azrepos:org/onedrive"]     username = …@microsoft.com
+[credential "azrepos:org/o365exchange"] username + azureAuthority = …/72f988bf-…
+[credential "azrepos:org/msfast"]       username = …
+[credential "azrepos:org/office"]       username + azureAuthority
+[credential "azrepos:org/O365Exchange"] username + azureAuthority
+[core]   autocrlf = input
+[pull]   rebase   = true
+\```
+
+`pull.rebase = true` is **already set**, so the "default to rebase instead of
+merge" question is answered — it just isn't reproducible.
+
+### What the parent's baseline sets
+
+`[user]` · `[http] postBuffer` · `[filter "lfs"]` · `[init] defaultBranch=main`
+· `[core] hooksPath=~/.config/git/hooks` · `[pull] rebase=true` ·
+`[rebase] autoStash=true` · delta blocks (conditional) ·
+`[include] path=~/.gitconfig.local`.
+
+Merge semantics: **the baseline replaces everything except `[credential "…"]`
+blocks.** That is the crux of the three landmines below.
+
+### Landmine 1 — it's a bash script
+
+The parent's file is `set -euo pipefail` bash. `AGENTS.md` invariant 5 says
+`modify_` interpreter selection is unreliable on Windows — but that's about
+*extensionless* scripts. `dot_config/herdr/modify_config.toml.ps1.tmpl` proves
+the `.ps1` form works, because `.chezmoi.toml.tmpl` sets
+`[interpreters.ps1] = pwsh`. So the port must be rewritten as
+`modify_dot_gitconfig.ps1.tmpl`, not copied.
+
+### Landmine 2 — `core.hooksPath` would silently disarm pre-commit
+
+The baseline sets `core.hooksPath = ~/.config/git/hooks`. Git honours
+`core.hooksPath` **instead of** `.git/hooks/`, so setting it globally
+immediately stops the per-clone hook that `pre-commit install` writes — the
+exact hook armed on 2026-07-29 to close the PAT-leak gap.
+
+The parent gets away with it because it *also* deploys a
+`~/.config/git/hooks/pre-commit` wrapper that re-dispatches to the repo's
+`.pre-commit-config.yaml`. **This repo ships no such wrapper.** Porting
+`hooksPath` without the wrapper turns every repo's hooks off, silently, with
+no error — the failure mode is "secrets stop being scanned and nobody
+notices". Either port the wrapper too, or drop the key.
+
+### Landmine 3 — `core.autocrlf = input` is load-bearing and absent from the baseline
+
+The parent baseline has no `core.autocrlf`, and the merge drops every
+non-credential key. Applying it verbatim would **delete `core.autocrlf =
+input`**, which exists specifically to stop
+[`scoop-local-changes-overwritten-by-merge`](../pitfalls/scoop-local-changes-overwritten-by-merge.md)
+(the Git-for-Windows default `autocrlf=true` renormalizes scoop's LF bucket
+manifests to CRLF and wedges every `scoop update`). It must be added to the
+Windows baseline explicitly.
+
+Same class, lower stakes: `[otel "trace2"]` would also be dropped, since only
+`[credential …]` blocks are preserved.
+
+## Options
+
+| Option | Pros | Cons |
+|---|---|---|
+| **A. Full `modify_dot_gitconfig.ps1.tmpl` port** | Parity with parent; one file owns git config; `[include] ~/.gitconfig.local` gives a corp escape hatch | Must rewrite bash→pwsh, must re-add `autocrlf`, must resolve `hooksPath`; destructive merge risks dropping unknown corp keys on managed machines |
+| **B. Minimal `run_onchange` that sets only chosen keys** | Non-destructive (`git config --global <k> <v>` touches nothing else); no awk/merge logic; safe on corp boxes | Config is spread across a script rather than a readable file; drifts from parent's shape; can't *remove* a bad key |
+| **C. Leave unmanaged, document in `docs/`** | Zero risk | The gap stays; next fresh box repeats the CRLF pitfall |
+
+Leaning **B** for the first pass — the value here is reproducing ~4 keys
+(`autocrlf`, `pull.rebase`, `rebase.autoStash`, `init.defaultBranch`), and B
+gets that without any chance of eating the five `azrepos:` credential blocks
+that corp auth depends on. Revisit A once a `~/.config/git/hooks/pre-commit`
+wrapper exists.
+
+## Open questions
+
+- Does `bootstrap.ps1` already set some of these? It set `autocrlf=input` per
+  the CRLF pitfall — check for overlap before adding a second writer.
+- Should `rebase.autoStash = true` be on given the live SpecStory writer
+  constantly dirties the tree? It would have avoided the
+  `cannot pull with rebase: You have unstaged changes` hit on 2026-07-29, but
+  autostash pop can conflict on `.specstory/statistics.json`.
+- Init already prompts for git name/email; reuse those rather than
+  re-prompting.
+
+```
+
+```text
+File created successfully at: C:\Users\hanruzhou\.local\share\chezmoi\backlog\manage-gitconfig-via-chezmoi.md (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:23:50Z)**_
+
+<think><details><summary>Thought Process</summary>
+I need to add the TODO.md P2 entry, and I'm also double-checking whether bootstrap.ps1 actually sets autocrlf. Looking back at the repo structure, I don't see dot_config/git/hooks existing — the earlier directory listing showed no gitconfig files in the chezmoi source under dot_config/git.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:23:58Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file C:\Users\hanruzhou\.local\share\chezmoi\TODO.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:24:07Z)**_
+
+<think><details><summary>Thought Process</summary>
+I need to verify a few things: whether bootstrap.ps1 actually sets autocrlf, confirm there's no git hooks wrapper in the source, and check if the pitfalls README has an index that needs updating. Let me look at both the backlog claim and the documentation structure, then review the new pitfall doc to make sure everything's consistent.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:24:10Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check pitfalls README index and verify backlog claims
+
+`cd "C:/Users/hanruzhou/.local/share/chezmoi" && echo "=== does pitfalls/README.md have an index to update? ==="; grep -n -i 'cross-referenc\|^| \[\|^- \[' pitfalls/README.md | head -20; echo; echo "=== does bootstrap.ps1 set autocrlf? ==="; grep -rn 'autocrlf\|safecrlf\|hooksPath' --include=*.ps1 --include=*.tmpl . | grep -v '^./pitfalls\|^./backlog' | head; echo; echo "=== is there a git hooks wrapper in source? ==="; ls dot_config/git 2>/dev/null || echo "no dot_config/git -> landmine 2 confirmed"`
+
+```text
+=== does pitfalls/README.md have an index to update? ===
+44:  "Cross-referenced pitfalls" table below instead of duplicating
+92:| [`clickfix-defender-flags-cmd-irm-iex`](clickfix-defender-flags-cmd-irm-iex.md) | `Trojan:Win32/ClickFix.R!ml`, cmd `powershell -c "irm\|iex"` blocked, VirusTotal clean but Defender blocks | workaround documented |
+93:| [`git-add-fatal-crlf-would-be-replaced-by-lf`](git-add-fatal-crlf-would-be-replaced-by-lf.md) | `fatal: CRLF would be replaced by LF in .specstory/history/*.md`, `git add -A` stages nothing, `core.safecrlf` + `core.autocrlf=input`, `git ls-files --eol` shows `i/lf w/crlf` | workaround documented |
+94:| [`herdr-keybind-failed-to-read-pane-protocol-mismatch`](herdr-keybind-failed-to-read-pane-protocol-mismatch.md) | `url-pick: failed to read pane <id>`, `protocol_mismatch`, `client protocol 17 is newer than server protocol 16`, keybind helpers silently no-op after `herdr update` | workaround documented |
+95:| [`herdr-plus-action-does-not-support-platform-windows`](herdr-plus-action-does-not-support-platform-windows.md) | `custom command failed`, `cloudmanic.herdr-plus.quick-actions does not support the current platform (windows)`, plugin installed but prefix+y/prefix+O do nothing, clean `reload-config` | fixed |
+96:| [`herdr-update-asr-access-denied`](herdr-update-asr-access-denied.md) | `herdr update` / `--handoff`, `Program 'herdr.exe' failed to run: Access is denied`, ASR `Use advanced protection against ransomware` (`C1DB55AB`), `Move-Item ... used by another process` | workaround documented |
+97:| [`nvim-treesitter-no-c-compiler-despite-zig`](nvim-treesitter-no-c-compiler-despite-zig.md) | `No C compiler found`, `checkhealth nvim-treesitter`, `BrechtSanders.WinLabs.POSIX.UCRT`, zig installed but treesitter won't compile, `main` branch | fixed |
+98:| [`onedrive-kfm-profile-not-loaded`](onedrive-kfm-profile-not-loaded.md) | `is not recognized as a name of a cmdlet`, `OneDrive - <tenant>\Documents\PowerShell`, bare prompt / no starship | fixed |
+99:| [`pester-test-name-angle-brackets-command-not-found`](pester-test-name-angle-brackets-command-not-found.md) | `The term '$-' is not recognized`, `at <ScriptBlock>, <No file>:1`, `BeforeAll \ AfterAll failed`, whole Pester file fails, empty `ErrorRecord`, file parses clean | fixed |
+100:| [`scoop-local-changes-overwritten-by-merge`](scoop-local-changes-overwritten-by-merge.md) | `Your local changes to the following files would be overwritten by merge`, `bucket/*.json`, `Updating Buckets...`, scoop update/bootstrap stalls, CRLF | fixed |
+101:| [`wsl-loginctl-enable-linger-no-systemd`](wsl-loginctl-enable-linger-no-systemd.md) | `loginctl enable-linger`, `System has not been booted with systemd as init system (PID 1)`, `Failed to connect to bus: Host is down`, WSL docker role, ansible exit status 2 | fixed |
+102:| [`wsl-install-no-action-reboot-required`](wsl-install-no-action-reboot-required.md) | `No action was taken as a system reboot is required.`, `The requested operation requires elevation.`, Docker Desktop "WSL 2 is not installed" | workaround documented |
+103:| [`wsl-ubuntu-oobe-and-wsl-l-encoding`](wsl-ubuntu-oobe-and-wsl-l-encoding.md) | `Enter new UNIX username`, `wsl -l` mojibake, `wsl.conf` default user ignored, `$'\r': command not found` | workaround documented |
+105:## Cross-referenced pitfalls (still in their original homes)
+
+=== does bootstrap.ps1 set autocrlf? ===
+./bootstrap.ps1:109:#     core.autocrlf=true, which rewrites scoop's LF manifests to CRLF; the whole
+./bootstrap.ps1:112:#     overwritten by merge". Install git, set autocrlf=input (only if unset/true,
+./bootstrap.ps1:121:    $autocrlf = git config --global core.autocrlf 2>$null
+./bootstrap.ps1:122:    if ([string]::IsNullOrWhiteSpace($autocrlf) -or $autocrlf -eq 'true') {
+./bootstrap.ps1:123:        Info "git core.autocrlf was '$autocrlf' -> setting 'input' (prevents scoop bucket CRLF churn)"
+./bootstrap.ps1:124:        git config --global core.autocrlf input
+
+=== is there a git hooks wrapper in source? ===
+no dot_config/git -> landmine 2 confirmed
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:24:23Z)**_
+
+<think><details><summary>Thought Process</summary>
+I've confirmed the key details: the bootstrap script does set autocrlf to input on line 121-124, so there's already a writer in place. The dot_config/git directory doesn't exist, which confirms that's a gap. And I need to add my pitfall entry to the index table in pitfalls/README.md, keeping it in alphabetical order.
+
+Now I'll insert the new pitfall between the pester and scoop entries, update the backlog to reflect the confirmed facts, and then run through the new hook to test everything end-to-end.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:24:23Z)**_
+
+All three backlog claims verified — including that `bootstrap.ps1:121` already writes `autocrlf`. Updating the backlog from open question to confirmed fact, and adding the pitfall to the README index:
+
+_**Agent (claude-opus-5 2026-07-29 11:24:27Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file C:\Users\hanruzhou\.local\share\chezmoi\backlog\manage-gitconfig-via-chezmoi.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:24:38Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file C:\Users\hanruzhou\.local\share\chezmoi\pitfalls\README.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:24:54Z)**_
+
+<think><details><summary>Thought Process</summary>
+I'm ready to commit these changes, which will also serve as a test of the pre-commit hook I just installed. I need to stage the documentation files and the TODO update, but I'm hesitant about committing the session transcript right now since it's still being actively written.
+
+There's also a potential issue with mixed line endings when staging — the repo has `core.safecrlf=false` set locally to handle this, so I should verify that's configured before attempting the add. I'll proceed with staging and committing, though I won't push without confirming that's what you want, since this is a repo-modifying action.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:24:54Z)**_
+
+Now committing — which doubles as the end-to-end test of the hook I just installed:
+
+_**Agent (claude-opus-5 2026-07-29 11:24:56Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check safecrlf and stage the docs
+
+`cd "C:/Users/hanruzhou/.local/share/chezmoi" && echo "=== safecrlf workaround in place for this clone? ==="; git config --show-origin --get-all core.safecrlf; echo "---"; git add pitfalls/push-protection-blocks-pat-leaked-by-env-dump.md pitfalls/README.md TODO.md backlog/manage-gitconfig-via-chezmoi.md 2>&1 && echo "STAGED OK"; git status --short`
+
+```text
+=== safecrlf workaround in place for this clone? ===
+file:C:/Program Files/Git/etc/gitconfig	true
+file:.git/config	false
+---
+STAGED OK
+ M .specstory/history/2026-07-29_11-03-07Z-administrator-in-chezmoi-on.md
+ M .specstory/statistics.json
+M  TODO.md
+A  backlog/manage-gitconfig-via-chezmoi.md
+M  pitfalls/README.md
+A  pitfalls/push-protection-blocks-pat-leaked-by-env-dump.md
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-07-29 11:25:15Z)**_
+
+<think><details><summary>Thought Process</summary>
+I've got `safecrlf=false` configured locally from the previous workaround, which is good. The `backlog/` directory is excluded from deployment via `.chezmoiignore` but still tracked in git as repo metadata. For the specstory transcript, the agent-history-hygiene rule says transcripts should be committed alongside the diffs that produced them, so I should include it—though there's a timing issue since it's being written continuously.
+
+I'll stage both the transcript and the modified `statistics.json` file (which follows the pattern from earlier commits like d912fb1) and commit them together. The pre-commit hook will run gitleaks on the staged content as a good validation step. I'm writing a commit message following the repo convention with the `docs(pitfalls):` prefix and adding the `Co-Authored-By` trailer as instructed.
+</details></think>
+
+_**Agent (claude-opus-5 2026-07-29 11:25:15Z)**_
+
+`core.safecrlf=false` is already set in this clone (from the earlier pitfall), so staging worked. Adding the transcript per the skill's invariant #1 and committing:
+
+_**Agent (claude-opus-5 2026-07-29 11:25:15Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit docs through the newly installed hook
+
+```bash
+cd "C:/Users/hanruzhou/.local/share/chezmoi" && git add .specstory/history/2026-07-29_11-03-07Z-administrator-in-chezmoi-on.md .specstory/statistics.json && git commit -F - <<'EOF' 2>&1 | tail -30
+docs(pitfalls): PAT leaked via `env | grep -i git`; arm the local hook stack
+
+An agent debugging a rebase ran `env | grep -i git`, which also matches
+GITHUB_PERSONAL_ACCESS_TOKEN. SpecStory captured the value into the session
+transcript and GitHub push protection (GH013) rejected the push.
+
+The repo's .gitleaks.toml and .pre-commit-config.yaml were already correct --
+`gitleaks git --log-opts="d912fb1~1..d912fb1"` flags the commit -- but nothing
+executed them: no .git/hooks/pre-commit, no core.hooksPath, gitleaks not on
+PATH. `pre-commit install` is per-clone, so server-side push protection was
+the only gate. Installed gitleaks 8.30.1 + ran `pre-commit install`.
+
+Full-history scan after redaction: 113 commits / 16.76 MB, no leaks found.
+
+Also records the unmanaged ~/.gitconfig gap: core.autocrlf=input and
+pull.rebase=true exist only on this machine. Porting the parent's
+modify_dot_gitconfig.tmpl has three landmines (bash vs pwsh, core.hooksPath
+disarming the per-clone hook, and its destructive merge dropping the
+load-bearing autocrlf), so it goes to the backlog rather than being rushed.
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+EOF
+```
+</details></tool-use>
