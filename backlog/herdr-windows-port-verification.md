@@ -81,13 +81,19 @@ Everything below was exercised from macOS with chezmoi + pwsh 7.4 + uv:
    than revived as tiled `pane`s, per user preference (dead is acceptable until a
    Windows preview ships `popup`). Note: `type = "shell"` is NOT a substitute — it
    runs detached in the background. Restore path documented inline in the config.
-3. **How herdr spawns a `command` string on Windows.** The config passes
-   `pwsh -NoProfile -File "<abs path>" "$HERDR_ACTIVE_PANE_ID"`. Two unknowns:
-   whether herdr expands `$HERDR_ACTIVE_PANE_ID` in the string (it does on
-   unix), and which shell — if any — splits the arguments. Paths are baked
-   absolute at render time *precisely because* `pwsh -File` does not expand `~`
-   (verified), but if herdr hands the string to `cmd.exe` the embedded double
-   quotes may need rework.
+3. **How herdr spawns a `command` string on Windows.** **CONFIRMED (2026-07):**
+   the Windows preview does **NOT** expand `$VAR` inside a `[[keys.command]]`
+   string — a binding written `... "$HERDR_ACTIVE_PANE_ID"` hands the script the
+   LITERAL text, which surfaced as `url-pick: failed to read pane
+   $HERDR_ACTIVE_PANE_ID` (and the same on prefix+m / prefix+p / prefix+P/D/V/S /
+   prefix+C — every helper that took a pane id). Fixed two ways: (a) stripped all
+   `"$HERDR_ACTIVE_PANE_ID"` / `"$HERDR_ACTIVE_PANE_CWD"` args from the command
+   strings so the scripts rely on the env vars herdr DOES inject; (b) hardened
+   `Resolve-HerdrPane` / `Resolve-HerdrCwd` in `_common.ps1` to skip any
+   unexpanded `$*` placeholder. `Resolve-HerdrCwd` already self-healed via
+   `Test-Path`, which is why only pane-id bindings errored. Still open: whether
+   herdr ever hands the string to `cmd.exe` (embedded double quotes) — untested,
+   but the current bindings carry no inner quotes after the arg strip.
 4. **`prefix+ctrl+1..9` / `prefix+alt+1..9`.** The unix config uses ctrl/alt
    because under the kitty keyboard protocol `shift+1` still carries the
    printable `!`. ConPTY may behave differently — if ctrl+digit does not reach

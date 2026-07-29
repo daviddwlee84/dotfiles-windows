@@ -156,6 +156,38 @@ function Install-Herdr {
     }
 }
 
+# herdr-plus — third-party herdr plugin backing the prefix+y (Quick Actions) and
+# prefix+O (Projects) keybinds, plus the copy-pane Quick Actions this repo deploys
+# to ~/.config/herdr/plugins/config/cloudmanic.herdr-plus/. We ship that CONFIG and
+# those KEYBINDS, so not installing the plugin leaves both keys silently dead —
+# hence installing it here rather than leaving it to the user.
+#
+# Requires go: the plugin's Windows build command is `go build -o bin/herdr-plus.exe .`
+# (its sh-based build is skipped on Windows). go is gated behind installExtraRuntimes,
+# so SKIP with an actionable message rather than failing when it is absent.
+# `-y` accepts the interactive "Install this plugin? [y/N]" prompt.
+# NB: the keybinds must target the `-windows` action ids — herdr-plus scopes
+# `quick-actions`/`projects` to linux+macos. See
+# pitfalls/herdr-plus-action-does-not-support-platform-windows.md
+function Install-HerdrPlus {
+    if (-not (Have herdr)) { return }   # herdr install failed/skipped; nothing to add to
+    $installed = $false
+    try { $installed = ((herdr plugin list 2>&1) -join "`n") -match 'cloudmanic\.herdr-plus' } catch { $installed = $false }
+    if ($installed) { Info 'herdr-plus plugin already installed'; return }
+    if (-not (Have go)) {
+        Info 'herdr-plus: skipped — needs go to build on Windows (scoop install go, or enable Extra runtimes)'
+        return
+    }
+    Info 'herdr plugin install cloudmanic/herdr-plus (backs prefix+y / prefix+O)'
+    try {
+        herdr plugin install -y cloudmanic/herdr-plus 2>&1 | Out-Host
+        if ($LASTEXITCODE -ne 0) { Register-Failure 'herdr-plus' }
+    } catch {
+        Write-Warning "herdr-plus install error: $_"
+        Register-Failure 'herdr-plus'
+    }
+}
+
 # --- Rime / Weasel (小狼毫) — Traditional Chinese input method ---------------
 # Not routed through Winget-Install because two things need overriding:
 #
@@ -506,6 +538,7 @@ if (Have az) {
 
 {{ if .installHerdr -}}
 Install-Herdr
+Install-HerdrPlus
 {{ end -}}
 
 {{ if .installClink -}}

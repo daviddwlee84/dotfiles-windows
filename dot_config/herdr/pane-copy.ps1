@@ -31,7 +31,8 @@ param([Parameter(ValueFromRemainingArguments)] [string[]] $Argument)
 . (Join-Path $PSScriptRoot '_common.ps1')
 
 function Show-Usage {
-    Write-Host 'usage: pane-copy.ps1 process|coord|content [PANE_ID] [--source visible|recent]'
+    # Held: without a pause a bad arg shape looks identical to a dead keybind.
+    Show-HerdrNotice 'usage: pane-copy.ps1 process|coord|content [PANE_ID] [--source visible|recent]' 3
     exit 64
 }
 
