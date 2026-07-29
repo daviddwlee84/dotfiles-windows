@@ -17,6 +17,24 @@
       "markdown_size_bytes": 322357,
       "provider": "claude-code",
       "last_updated": "2026-07-27T18:04:27Z"
+    },
+    "c95b4c95-92e2-428b-b5e8-aacd6753e315": {
+      "user_message_count": 4,
+      "agent_message_count": 2,
+      "start_timestamp": "2026-07-10T23:54:36.862Z",
+      "end_timestamp": "2026-07-10T23:57:10.658Z",
+      "markdown_size_bytes": 17956,
+      "provider": "claude-code",
+      "last_updated": "2026-07-28T08:16:11Z"
+    },
+    "ef251122-56e5-4879-b50a-f0ac55c0cc1b": {
+      "user_message_count": 2,
+      "agent_message_count": 2,
+      "start_timestamp": "2026-07-11T06:44:06.656Z",
+      "end_timestamp": "2026-07-11T06:49:15.191Z",
+      "markdown_size_bytes": 906,
+      "provider": "claude-code",
+      "last_updated": "2026-07-28T08:16:11Z"
     }
   }
 }
