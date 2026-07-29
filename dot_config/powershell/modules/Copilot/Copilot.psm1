@@ -136,9 +136,10 @@ function script:Test-CopilotPkgReady {
     Test-CopilotPkgPresent
 }
 
-# One `bun add` attempt in -Dir, bounded by -BudgetSeconds. -NoProxy strips the
-# proxy env for the child. Returns $true only when the package is actually present
-# afterwards.
+# One package-install attempt in -Dir, bounded by -BudgetSeconds. npm is preferred
+# because it supports Azure Artifacts' credential-provider token in ~/.npmrc;
+# Bun does not. -NoProxy strips the proxy env for the child. Returns $true only
+# when the package is actually present afterwards.
 #
 # Success is judged from the FILESYSTEM, not $p.ExitCode: a Start-Process -PassThru
 # object reports ExitCode 0 even for a child that exited non-zero (verified — the
@@ -152,23 +153,29 @@ function script:Invoke-CopilotPkgInstallTry {
     param([string] $Dir, [switch] $NoProxy, [int] $BudgetSeconds)
 
     $proxyVars = 'ALL_PROXY', 'all_proxy', 'HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY', 'https_proxy'
+    $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    $installer = if ($npm) {
+        @{ File = $npm.Source; Args = @('install', '--no-save', '--no-audit', '--no-fund', (Get-CopilotPkg)) }
+    } else {
+        @{ File = 'bun'; Args = @('add', (Get-CopilotPkg), '--no-summary') }
+    }
     $saved = @{}
     if ($NoProxy) {
         foreach ($v in $proxyVars) { $saved[$v] = [Environment]::GetEnvironmentVariable($v); Remove-Item "env:$v" -ErrorAction SilentlyContinue }
     }
     try {
-        $p = Start-Process -FilePath 'bun' -ArgumentList @('add', (Get-CopilotPkg), '--no-summary') `
+        $p = Start-Process -FilePath $installer.File -ArgumentList $installer.Args `
             -WorkingDirectory $Dir -PassThru -NoNewWindow -ErrorAction Stop
         if ($p.WaitForExit($BudgetSeconds * 1000)) { return (Test-CopilotPkgPresent) }
         Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-        # The subshell's child is the one actually holding the cache lock.
+        # The subshell's child is the one actually holding the install lock.
         $name = [regex]::Escape((Get-CopilotPkgName))
-        Get-CimInstance Win32_Process -Filter "Name = 'bun.exe'" -ErrorAction SilentlyContinue |
-            Where-Object { $_.CommandLine -match '\badd\b' -and $_.CommandLine -match $name } |
+        Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -in 'bun.exe', 'node.exe' -and $_.CommandLine -match '\b(add|install)\b' -and $_.CommandLine -match $name } |
             ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
         return $false
     } catch {
-        Write-Error "copilot-proxy: could not launch 'bun add' ($_)"; return $false
+        Write-Error "copilot-proxy: could not launch package installer ($_)"; return $false
     } finally {
         if ($NoProxy) {
             foreach ($v in $proxyVars) { if ($null -ne $saved[$v]) { Set-Item "env:$v" $saved[$v] } }

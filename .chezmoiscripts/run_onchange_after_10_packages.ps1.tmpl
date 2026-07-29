@@ -36,7 +36,7 @@ try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catc
 # China (GFW) mirrors for install-time package fetches.
 $env:PIP_INDEX_URL = 'https://pypi.tuna.tsinghua.edu.cn/simple'
 $env:UV_DEFAULT_INDEX = 'https://pypi.tuna.tsinghua.edu.cn/simple'
-$env:npm_config_registry = 'https://registry.npmmirror.com'
+if (-not $env:npm_config_registry) { $env:npm_config_registry = 'https://registry.npmmirror.com' }
 $env:GOPROXY = 'https://goproxy.cn,direct'
 $env:MISE_NODE_MIRROR_URL = 'https://npmmirror.com/mirrors/node/'
 {{ end }}
