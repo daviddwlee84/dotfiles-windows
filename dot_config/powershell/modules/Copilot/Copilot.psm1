@@ -157,6 +157,7 @@ function script:Invoke-CopilotPkgInstallTry {
     $installer = if ($npm) {
         @{ File = $npm.Source; Args = @('install', '--no-save', '--no-audit', '--no-fund', (Get-CopilotPkg)) }
     } else {
+        Write-Warning 'copilot-proxy: npm.cmd not found; falling back to Bun (authenticated Azure Artifacts feeds require npm).'
         @{ File = 'bun'; Args = @('add', (Get-CopilotPkg), '--no-summary') }
     }
     $saved = @{}
