@@ -1,7 +1,14 @@
 # Manage `~/.gitconfig` via a `modify_` overlay
 
-**Status**: P2
+**Status**: shipped 2026-07-29
 **Effort**: M
+**Outcome**: Option **A** (a `modify_dot_gitconfig.ps1.tmpl` overlay) — but with
+a **key-level pull-through** merge rather than the parent's allowlist, which
+also resolved the objection that pushed this doc toward B. All three landmines
+were handled: the engine is pure PowerShell in `scripts/gitconfig-merge.ps1`
+(no bash, no python/uv), `core.hooksPath` is deliberately omitted, and
+`core.autocrlf = input` is in the baseline. Implementation notes appended at the
+end of this doc.
 **Related**: `TODO.md` · parent repo `modify_dot_gitconfig.tmpl` ·
 `pitfalls/git-add-fatal-crlf-would-be-replaced-by-lf.md` ·
 `pitfalls/scoop-local-changes-overwritten-by-merge.md` ·

@@ -125,6 +125,26 @@ Drop machine-specific tweaks or secrets in
 `~/.config/powershell/local.ps1` — it is dot-sourced last by `$PROFILE` and is
 never managed by chezmoi.
 
+## Git configuration
+
+`~/.gitconfig` is managed by a `modify_` overlay (`modify_dot_gitconfig.ps1.tmpl`).
+`chezmoi apply` keeps a fixed set of keys in sync: `user.name` / `user.email`
+from the init prompts, `core.autocrlf = input`, `init.defaultBranch`,
+`pull.rebase`, `rebase.autoStash`, the Git-LFS filter and `http.postBuffer`.
+
+Everything the overlay does **not** own is preserved untouched — including the
+`[credential "..."]` blocks Git Credential Manager writes out of band. That is
+precisely why it is an overlay and not a plain managed file: a plain file would
+clobber those blocks on every apply and break corporate auth.
+
+Put machine-specific settings in `~/.gitconfig.local`; the baseline wires it up
+via `[include]` and chezmoi never touches it. Do not hand-edit `~/.gitconfig` —
+managed keys are reverted on the next apply.
+
+`core.hooksPath` is deliberately not set, because Git honours it *instead of*
+`.git/hooks/` and it would silently disable per-repository hooks such as the one
+`pre-commit install` writes.
+
 ## The Raycast / PowerToys clash
 
 Raycast and PowerToys Run both default their launcher to **Alt+Space**. Pick one:

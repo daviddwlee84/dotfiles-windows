@@ -135,6 +135,13 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
   `just upgrade-winget` 升級，不再走 npm。
 - **OpenCode**（`opencode-ai`）、**Codex**（`@openai/codex`）、**Copilot CLI**
   （`@github/copilot`）—— 透過 **npm** 全域安裝（由 scoop 的 `node` 提供）。
+  在公司機器上，`npm` 通常會被指向內部鏡像（此處是
+  `packagefeedproxy.microsoft.io/npm/`，設定在機器層級），因為
+  `registry.npmjs.org` 被封鎖。該鏡像同樣供應公開套件，所以不需要額外設定 ——
+  但 **bun 不會理會它**，這也是為什麼只要有 npm，`copilot-proxy` 就用 npm 安裝
+  自己的套件。相關踩坑紀錄有兩篇：
+  `copilot-api-connectionrefused-stale-bun-only-module` 與
+  `packagefeedproxy-npm-404-wrong-base-path`。
 - **OpenCode Desktop** —— `opencode-ai` CLI 的 GUI 版，由 scoop 安裝
   （`extras/opencode-desktop`）。
 - **claude-hud** —— 顯示在 Claude Code 輸入框下方的狀態列 HUD。由 `run_onchange`

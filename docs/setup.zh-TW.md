@@ -118,6 +118,23 @@ dotfiles」建議一律用 `cau` —— `--init` 表示落後於新增 init prom
 把機器專屬的調整或機密放在 `~/.config/powershell/local.ps1` —— 它會被 `$PROFILE`
 最後 dot-source，且永遠不受 chezmoi 管理。
 
+## Git 設定
+
+`~/.gitconfig` 由 `modify_` 疊加腳本（`modify_dot_gitconfig.ps1.tmpl`）管理。
+`chezmoi apply` 會同步一組固定的設定：來自初始化提問的 `user.name` /
+`user.email`、`core.autocrlf = input`、`init.defaultBranch`、`pull.rebase`、
+`rebase.autoStash`、Git-LFS filter 與 `http.postBuffer`。
+
+不屬於這組設定的內容都會被原封不動保留 —— 包含 Git Credential Manager 在外部
+寫入的 `[credential "..."]` 區塊。這正是它採用疊加而非一般受管檔案的原因：一般
+受管檔案會在每次 apply 時覆蓋這些區塊，導致公司帳號驗證失效。
+
+機器專屬設定請放到 `~/.gitconfig.local`；基準設定已用 `[include]` 接上它，
+chezmoi 不會碰它。請勿手動編輯 `~/.gitconfig` —— 受管理的鍵會在下次 apply 時被還原。
+
+`core.hooksPath` 刻意不設定，因為 Git 會用它**取代** `.git/hooks/`，那會悄悄停用
+各個 repo 自己的 hook（例如 `pre-commit install` 寫入的那個）。
+
 ## Raycast 與 PowerToys 的衝突
 
 Raycast 與 PowerToys Run 的啟動器預設都用 **Alt+Space**。請擇一：關閉 PowerToys Run

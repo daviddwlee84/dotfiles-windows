@@ -1,0 +1,47 @@
+#!/usr/bin/env pwsh
+# ~/.gitconfig overlay.
+#
+# chezmoi pipes the CURRENT target file into stdin and takes the new contents
+# from stdout. Runs under pwsh via [interpreters.ps1] in .chezmoi.toml.tmpl --
+# the same mechanism as dot_config/herdr/modify_config.toml.ps1.tmpl.
+#
+# WHY modify_ AND NOT A PLAIN MANAGED FILE
+# Git Credential Manager writes [credential "azrepos:org/..."] blocks into
+# ~/.gitconfig out of band (five of them on a corp box). A plain managed file
+# would clobber them on every apply and break Azure DevOps auth. The overlay
+# owns a fixed key set and pulls everything else through -- see
+# scripts/gitconfig-merge.ps1 for the model and its trade-off.
+#
+# DO NOT hand-edit ~/.gitconfig; use ~/.gitconfig.local (wired via [include]).
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+# The merge engine, inlined at render time. scripts/ is chezmoi-ignored, so this
+# is source-only -- same pattern as the editors/ overlay sources.
+{{ include "scripts/gitconfig-merge.ps1" }}
+
+$baseline = @'
+{{ template "git/gitconfig" . }}
+'@
+
+$live = [Console]::In.ReadToEnd()
+
+try {
+    $merged = Merge-GitConfig -BaselineText $baseline -LiveText $live
+}
+catch {
+    # Never abort the apply. Emitting the baseline is safe: on a fresh host
+    # stdin is empty and the baseline is the whole answer anyway (this is
+    # exactly what CI exercises, since `chezmoi apply --exclude scripts` still
+    # runs modify_ scripts against an empty destination).
+    [Console]::Error.WriteLine("modify_dot_gitconfig: merge failed ($($_.Exception.Message)); emitting baseline")
+    $merged = $baseline
+}
+
+# Byte-exact stdout: UTF-8 without BOM, LF endings. Keeps `chezmoi diff` clean
+# and makes repeated applies a genuine no-op.
+$bytes = [System.Text.UTF8Encoding]::new($false).GetBytes(($merged -replace "`r`n", "`n"))
+$stdout = [Console]::OpenStandardOutput()
+$stdout.Write($bytes, 0, $bytes.Length)
+$stdout.Flush()

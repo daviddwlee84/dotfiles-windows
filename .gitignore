@@ -22,3 +22,6 @@ docker/windows/storage/
 
 # local, untracked user overrides that may get copied here by accident
 *.local.ps1
+
+# Pester -CI test report artifact (justfile `test`)
+testResults.xml

@@ -113,6 +113,10 @@ if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
 #     so a deliberate choice is never overridden), and hard-reset the bucket
 #     clones to clear any drift already on disk.
 #     See pitfalls/scoop-local-changes-overwritten-by-merge.md.
+#     NOTE: modify_dot_gitconfig.ps1.tmpl asserts core.autocrlf=input too. That
+#     is not accidental duplication — bootstrap runs BEFORE chezmoi exists, and
+#     scoop needs the setting from the very first bucket clone. The two writers
+#     agree on the value; keep them in sync (see AGENTS.md cross-file mirrors).
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     Info 'Installing git'
     Invoke-Scoop install git

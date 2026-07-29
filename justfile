@@ -48,11 +48,6 @@ upgrade-translate:
 specstory-build:
     pwsh -NoProfile -File ./scripts/build-specstory.ps1
 
-# authenticate npm through the Microsoft-internal Azure Artifacts upstream
-# (machine-local ~/.npmrc token + untracked PowerShell local override)
-setup-internal-npm:
-    pwsh -NoProfile -File ./scripts/setup-internal-npm.ps1
-
 # enable the OpenSSH server (sshd) — run from an ELEVATED pwsh (opt-in; opens TCP 22)
 enable-sshd:
     pwsh -NoProfile -File ./scripts/enable-sshd.ps1

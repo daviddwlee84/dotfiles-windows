@@ -1,0 +1,46 @@
+# Managed by chezmoi -- rendered by modify_dot_gitconfig.ps1.tmpl.
+#
+# Every key BELOW is owned: hand-edits are reverted on the next `chezmoi apply`.
+# Everything NOT listed here (the [credential "azrepos:*"] blocks Git Credential
+# Manager writes, [otel], anything corp tooling adds) is pulled through
+# untouched.
+#
+# Per-machine overrides belong in ~/.gitconfig.local -- see [include] below.
+
+[user]
+	name = {{ .name }}
+	email = {{ .email }}
+
+[core]
+	# LOAD-BEARING. Git for Windows defaults to autocrlf=true, which
+	# renormalizes scoop's LF bucket manifests to CRLF and wedges every
+	# `scoop update` -- see pitfalls/scoop-local-changes-overwritten-by-merge.md.
+	# bootstrap.ps1 sets this too, because it runs before chezmoi exists; the
+	# two writers agree on purpose.
+	autocrlf = input
+	# core.hooksPath is deliberately ABSENT. Git honours it INSTEAD of
+	# .git/hooks/, so setting it globally would silently disarm the per-clone
+	# hook that `pre-commit install` writes -- and unlike the parent repo, this
+	# one ships no ~/.config/git/hooks dispatcher to take over. Silent loss of
+	# secret scanning is the worst possible failure mode here.
+
+[init]
+	defaultBranch = main
+
+[pull]
+	rebase = true
+
+[rebase]
+	autoStash = true
+
+[http]
+	postBuffer = 524288000
+
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true
+
+[include]
+	path = ~/.gitconfig.local

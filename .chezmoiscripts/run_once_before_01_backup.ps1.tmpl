@@ -14,7 +14,12 @@ $targets = @(
     (Join-Path $env:APPDATA 'alacritty/alacritty.toml'),
     (Join-Path $env:APPDATA 'Code/User/settings.json'),
     (Join-Path $env:APPDATA 'Cursor/User/settings.json'),
-    (Join-Path $HOME '.claude/settings.json')
+    (Join-Path $HOME '.claude/settings.json'),
+    # ~/.gitconfig is a modify_ overlay, so the first apply REWRITES a file that
+    # on a corp box holds Git Credential Manager's [credential "azrepos:*"]
+    # blocks. The overlay pulls unmanaged keys through, but this is the one
+    # irreversible step in that design — snapshot it.
+    (Join-Path $HOME '.gitconfig')
 {{- if .installInputMethod }},
     # Rime: only the hand-written *.custom.yaml. user.yaml / installation.yaml /
     # build/ / *.userdb/ are runtime state we never manage, so never restore.
