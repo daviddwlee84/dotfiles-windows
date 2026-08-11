@@ -1,11 +1,12 @@
 # copilot-proxy
 
-A native PowerShell port of the `copilot-proxy` tool series: it runs the
-[copilot-api](https://github.com/caozhiyuan/copilot-api) fork so a **GitHub Copilot
-subscription** can back **Claude Code** (and any Anthropic/OpenAI-compatible client).
+A native PowerShell port of the `copilot-proxy` tool series. It runs the
+[`@jeffreycao/copilot-api`](https://www.npmjs.com/package/@jeffreycao/copilot-api)
+fork so a **GitHub Copilot subscription** can back **Claude Code** and other
+Anthropic/OpenAI-compatible clients.
 
-Shipped as a module at `~/.config/powershell/modules/Copilot`, auto-imported by the
-`$PROFILE`. Requires `bun` (installed via scoop) and a Copilot subscription.
+The module is deployed to `~/.config/powershell/modules/Copilot` and imported by
+the PowerShell profile. It requires Bun, Node/npm and a Copilot subscription.
 
 ## Commands
 
@@ -13,72 +14,140 @@ Shipped as a module at `~/.config/powershell/modules/Copilot`, auto-imported by 
 |---|---|
 | `copilot-proxy auth` | one-time GitHub device login (stores a token) |
 | `copilot-proxy start` / `stop` / `restart` | manage the local proxy (port 4141) |
-| `copilot-proxy status` | is it up? which models? |
-| `copilot-proxy doctor [--live]` | diagnose prereqs → package → auth → proxy → Claude catalog → upstream |
+| `copilot-proxy status` | show raw served count and Claude availability |
+| `copilot-proxy doctor [--live]` | diagnose package, auth, proxy, catalog, roles and upstream |
 | `copilot-proxy logs [N]` | tail the proxy log |
 | `copilot-proxy shim [on\|off]` | toggle the throttle shim (port 4142) |
 | `copilot-proxy whoami` | account / plan / quota |
-| `copilot-proxy reinstall` | wipe + re-install the pinned copilot-api package |
+| `copilot-proxy reinstall` | wipe and reinstall the pinned package |
 | `copilot-run <cmd...>` | run a command with the proxy env injected |
 | `claude-copilot` | one-off Claude Code session on the proxy |
-| `claude-copilot-once` | pin this project, run once, auto-unpin (even on Ctrl-C) |
-| `copilot-here [on\|off\|status]` | sticky per-project pin via `.claude/settings.local.json` |
-| `copilot-model [<id>\|-l\|-c\|--auto]` | switch the pinned model |
-| `copilot-embed [TEXT\|-]` | embed text via the proxy's `/v1/embeddings` |
+| `claude-copilot-once` | pin this project, run once, then restore it |
+| `copilot-here [on\|off\|status]` | sticky project pin in `.claude/settings.local.json` |
+| `copilot-model [<id>\|-l\|-c\|--auto]` | switch or inspect the complete role profile |
+| `copilot-embed [TEXT\|-]` | embed text through `/v1/embeddings` |
 | `semsearch index \| <QUERY>` | semantic search over local text |
 
 ## Quick start
 
 ```powershell
-copilot-proxy auth        # once
+copilot-proxy auth                 # once
 copilot-proxy start
-copilot-proxy doctor      # verify the whole path
-claude-copilot            # a Claude Code session backed by Copilot
+copilot-model --auto              # select from the live catalog
+copilot-model -c                   # inspect Main/Fable/Opus/Sonnet/Haiku
+copilot-here on                    # sticky project; or use claude-copilot-once
 ```
 
-## Notes
+Existing global and project pins are deliberately not migrated by `chezmoi
+apply`. Run `copilot-model --auto` once after this upgrade. When `copilot-here`
+is active, that command refreshes the local role set; otherwise it updates the
+global one-line main-model state.
 
-- **Default model** is `claude-opus-5[1m]`. The `[1m]` suffix is a Claude Code
-  hint for the 1M-context window; it's stripped before validating against the proxy.
-  `copilot-model --auto` re-picks from the live served catalog
-  (Claude > Codex > GPT > Gemini) — useful when a sticky pin has gone stale.
-- **The pinned package is installed once** into `~/.local/share/copilot-api/pkg`
-  and run from there. `start` deliberately does **not** use `bunx`, which re-resolves
-  the package on every launch: bun can stall indefinitely resolving through a socks
-  proxy, and the wedged installer keeps bun's global cache lock so every retry hangs
-  the same way. A warm start now does zero network before binding the port. Bumping
-  `COPILOT_API_PKG` re-installs via the `.installed-spec` stamp;
-  `copilot-proxy reinstall` forces it.
-- **`COPILOT_HTTP_PROXY`** (`auto` | `always` | `never` | `http://127.0.0.1:PORT`)
-  controls how Node fetches GitHub's model catalog. `auto` picks up the Windows
-  System Proxy (what Clash Verge / mihomo / v2rayN set) or `HTTPS_PROXY`, and passes
-  `--proxy-env` so Node actually uses it — Node ignores the system setting on its
-  own. This matters because copilot-api caches `/models` **once at startup**: on an
-  egress where GitHub geo-filters the Claude catalog, the proxy would otherwise
-  cache a Claude-less list for its whole lifetime. `copilot-proxy doctor` A/Bs the
-  direct and via-proxy catalogs to tell that apart from an entitlement problem.
-- **`copilot-here`** writes only the gitignored `.claude/settings.local.json`, never
-  the committed `.claude/settings.json`, and adds a `.git/info/exclude` entry so the
-  pin never lands in a commit. `copilot-here status` and `claude-copilot-once` report
-  when an existing pin has drifted from current defaults (model bump, proxy moved,
-  a key added since) and offer to refresh it in place.
-- **`claude-copilot` / `claude-copilot-once`** run Claude Code with
-  `--dangerously-skip-permissions` — the proxy path is the trusted, hands-off flow,
-  so it never stops for permission prompts (plain `claude` is unaffected; the global
-  default stays `auto`). When the SpecStory CLI is on `PATH` they also wrap the
-  session in `specstory run` for auto-saved transcripts; on Windows that CLI has no
-  official release, so it's opt-in via the **SpecStory build** init prompt. When args
-  are passed through, the `-c` command string is rebuilt from specstory's configured
-  `claude_cmd` — `-c` *replaces* that command rather than appending to it, so a
-  hardcoded string would silently drop its flags (that is how `claude-copilot-once`
-  and `claude-copilot-once --resume X` ended up in different permission modes).
-- **The throttle shim** (`copilot-throttle-shim.js`, run under Bun) caps concurrent
-  in-flight requests and transparently retries 403/429 bursts — it's the same JS used
-  on macOS/Linux, unchanged.
-- State lives under `~/.local/state/copilot-proxy/`; the token under
-  `~/.local/share/copilot-api/github_token`.
+## How routing works
 
-!!! warning "Entitlement"
-    Some Copilot plans serve no Anthropic models — every request then returns
-    `400 model_not_supported`. `copilot-proxy doctor` distinguishes that
-    account-policy case from a stale model cache.
+```text
+Claude Code --Anthropic /v1/messages--> copilot-api (localhost:4141)
+                                          | Claude: native Messages path
+                                          | GPT: Anthropic -> Responses translation
+                                          v
+                                  GitHub Copilot API
+```
+
+The default package is `@jeffreycao/copilot-api@2.1.0`. For GPT ids it translates
+Claude Code requests to Responses, including `output_config.effort` to
+`reasoning.effort`. This is required for GPT-5.6 and Claude Code's `ultracode`
+effort setting; the old `1.13.14` path could replace the requested effort with a
+hard-coded fallback.
+
+The package is installed once under `~/.local/share/copilot-api/pkg`. Windows
+uses `npm.cmd` first because it understands the Azure Artifacts credential
+provider in `~/.npmrc`; Bun remains the fallback/runtime. A package-version stamp
+makes the 2.1.0 bump reinstall automatically. Warm starts do no package network
+work.
+
+## Model selection and role profile
+
+`copilot-model --auto` requires the live `/v1/models` catalog. It prefers served
+Claude families (`Fable > Opus > Sonnet > Haiku`), then ranks OpenAI by capability:
+
+```text
+Sol > Terra > GPT-5.5 > GPT-5.4 > GPT-5.3 Codex > Luna > mini > Gemini
+```
+
+Luna follows the older flagships because it is the lightweight tier. This role
+intent follows OpenAI's [current model guidance](https://developers.openai.com/api/docs/guides/latest-model).
+For the normal Claude-less Copilot catalog, the generated profile is:
+
+| Claude Code role | Copilot model |
+|---|---|
+| Main / Fable / Opus | `gpt-5.6-sol` |
+| Sonnet | `gpt-5.6-terra` |
+| Haiku / background / legacy small-fast | `gpt-5.6-luna` |
+
+A manually selected OpenAI main remains Main/Fable/Opus; Terra and Luna are used
+for the lower roles when served. Missing tiers fall back to the selected main,
+never to an unserved hard-coded id. Native Claude profiles select the strongest
+served model in each Claude family.
+
+The `[1m]` suffix is a Claude Code-only context hint. It is derived from each
+model's live `max_context_window_tokens` metadata when the value is at least one
+million. Raw API clients must use the plain id. Offline manual discovery remains
+available, but offline `--auto` refuses to write a potentially stale pin.
+
+Both `copilot-run` and `copilot-here on` inject the same variables:
+
+```text
+ANTHROPIC_MODEL
+ANTHROPIC_DEFAULT_FABLE_MODEL
+ANTHROPIC_DEFAULT_OPUS_MODEL
+ANTHROPIC_DEFAULT_SONNET_MODEL
+ANTHROPIC_DEFAULT_HAIKU_MODEL
+ANTHROPIC_SMALL_FAST_MODEL
+```
+
+`CLAUDE_CODE_SUBAGENT_MODEL` is intentionally left unset so workflow/frontmatter
+routing remains authoritative. Restart Claude Code after changing the profile.
+
+## Claude Code feature compatibility
+
+The useful boundary is local orchestration versus Anthropic cloud services:
+
+| Feature | Through Copilot + GPT | Notes |
+|---|---|---|
+| CLI, tools, hooks, skills, memory, plugins, MCP, checkpoints, sandboxing | Yes | Local Claude Code features; GPT behavior may differ after prompt/tool translation. |
+| Subagents and dynamic workflows | Yes | Role variables are provided without overriding workflow-specific subagent routing. See [workflows](https://code.claude.com/docs/en/workflows). |
+| `ultracode` | Yes on 2.1.0 | It is xhigh effort plus dynamic workflows, not a separate model. |
+| Thinking/reasoning | Translated | GPT uses Responses reasoning rather than Anthropic-native thinking semantics. |
+| Web search, fast/auto mode, MCP tool search | Provider-dependent | Availability depends on the Copilot endpoint and gateway translation. |
+| Ultrareview, Remote Control, Chrome, cloud Code Review, routines, web/mobile/Slack sessions | No | These require Claude.ai authentication/cloud identity; a local API gateway cannot provide it. |
+
+See Claude Code's [feature availability](https://code.claude.com/docs/en/feature-availability),
+[model configuration](https://code.claude.com/docs/en/model-config),
+[gateway protocol](https://code.claude.com/docs/en/llm-gateway-protocol), and
+[Ultrareview](https://code.claude.com/docs/en/ultrareview) references.
+
+## Network, entitlement and diagnostics
+
+- `COPILOT_HTTP_PROXY=auto` reads the Windows System Proxy or an explicit proxy
+  environment variable, scopes it to the child and passes `--proxy-env`. Node
+  otherwise ignores the WinINET system setting.
+- The model catalog is fetched once at proxy startup. `COPILOT_PROXY_START_TIMEOUT`
+  defaults to 45 seconds because a Clash/mihomo hop can make that refresh exceed
+  the old 20-second budget.
+- GitHub can vary the catalog by account, organization policy, rollout and egress.
+  No Claude models is therefore a warning when a served OpenAI fallback exists;
+  it is not by itself a broken proxy.
+- `copilot-proxy doctor` compares direct and proxied upstream catalogs, validates
+  the main model plus every role alias, and reports stale local pins. `--live`
+  sends one real request and consumes quota.
+- `copilot-here` writes only the gitignored `.claude/settings.local.json`, never
+  committed project settings. `off` removes every env key owned by the helper and
+  preserves unrelated settings.
+- `claude-copilot` and `claude-copilot-once` retain the Windows port's trusted
+  `--dangerously-skip-permissions` and optional SpecStory behavior. Plain `claude`
+  is unaffected.
+- The throttle shim remains byte-identical to the macOS/Linux copy and retries
+  403/429 bursts while limiting concurrent requests.
+
+State lives under `~/.local/state/copilot-proxy/`; the GitHub token is stored at
+`~/.local/share/copilot-api/github_token`.

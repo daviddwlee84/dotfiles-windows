@@ -15,7 +15,7 @@ Describe 'Copilot module' {
             InModuleScope Copilot { $env:COPILOT_API_PKG = 'copilot-api@0.7.0'; Get-CopilotPkgFlavor | Should -Be 'original' }
         }
         It 'treats the scoped fork as "fork"' {
-            InModuleScope Copilot { $env:COPILOT_API_PKG = '@jeffreycao/copilot-api@1.13.14'; Get-CopilotPkgFlavor | Should -Be 'fork' }
+            InModuleScope Copilot { $env:COPILOT_API_PKG = '@jeffreycao/copilot-api@2.1.0'; Get-CopilotPkgFlavor | Should -Be 'fork' }
         }
         AfterEach { $env:COPILOT_API_PKG = $null }
     }
@@ -25,7 +25,7 @@ Describe 'Copilot module' {
             InModuleScope Copilot {
                 $env:COPILOT_CLAUDE_MODEL = $null
                 Mock Get-CopilotModelState { Join-Path ([System.IO.Path]::GetTempPath()) 'does-not-exist-copilot-model' }
-                Get-CopilotDefaultModel | Should -Be 'claude-opus-5[1m]'
+                Get-CopilotDefaultModel | Should -Be 'gpt-5.6-sol[1m]'
             }
         }
         It 'honors $COPILOT_CLAUDE_MODEL' {
@@ -43,7 +43,7 @@ Describe 'Copilot module' {
         # and match every bun install on the box.
         It 'keeps the @scope while stripping the version' {
             InModuleScope Copilot {
-                $env:COPILOT_API_PKG = '@jeffreycao/copilot-api@1.13.14'
+                $env:COPILOT_API_PKG = '@jeffreycao/copilot-api@2.1.0'
                 Get-CopilotPkgName | Should -Be '@jeffreycao/copilot-api'
             }
         }
@@ -63,26 +63,26 @@ Describe 'Copilot module' {
     }
 
     Context 'best-model picker (--auto)' {
-        It 'prefers Claude and appends [1m] for the 1M-window ids' {
+        It 'prefers Fable, then the strongest Claude family, and returns a raw id' {
             InModuleScope Copilot {
-                Select-CopilotBestModel -Model @('gpt-5', 'claude-opus-5', 'gemini-2.5-pro') |
-                    Should -Be 'claude-opus-5[1m]'
+                Select-CopilotBestModel -Model @('claude-opus-5[1m]', 'gpt-5.6-sol', 'claude-fable-5') |
+                    Should -Be 'claude-fable-5'
             }
         }
-        It 'does not append [1m] to a non-1M Claude id' {
+        It 'returns a raw id and leaves context hints to catalog metadata' {
             InModuleScope Copilot {
                 Select-CopilotBestModel -Model @('claude-haiku-4-5') | Should -Be 'claude-haiku-4-5'
             }
         }
-        It 'falls back to Codex when no Claude is served' {
+        It 'puts gpt-5.6-sol ahead of every other OpenAI tier' {
             InModuleScope Copilot {
-                Select-CopilotBestModel -Model @('gpt-5-mini', 'gpt-5-codex', 'gemini-2.5-flash') |
-                    Should -Be 'gpt-5-codex'
+                Select-CopilotBestModel -Model @('gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol') |
+                    Should -Be 'gpt-5.6-sol'
             }
         }
-        It 'skips gpt-5 mini/nano in favour of the full model' {
+        It 'keeps older flagship and coding models ahead of lightweight models' {
             InModuleScope Copilot {
-                Select-CopilotBestModel -Model @('gpt-5-mini', 'gpt-5-nano', 'gpt-5') | Should -Be 'gpt-5'
+                Select-CopilotBestModel -Model @('gpt-5-mini', 'gpt-5-codex') | Should -Be 'gpt-5-codex'
             }
         }
         It 'prefers a non-flash Gemini as the last family' {
@@ -92,6 +92,156 @@ Describe 'Copilot module' {
         }
         It 'returns nothing for an empty catalog' {
             InModuleScope Copilot { Select-CopilotBestModel -Model @() | Should -BeNullOrEmpty }
+        }
+    }
+
+    Context 'catalog metadata and Claude Code role profiles' {
+        It 'adds [1m] only when the live model metadata advertises a 1M context window' {
+            InModuleScope Copilot {
+                $catalog = [pscustomobject]@{ data = @(
+                    [pscustomobject]@{
+                        id = 'gpt-5.6-sol'
+                        capabilities = [pscustomobject]@{ limits = [pscustomobject]@{ max_context_window_tokens = 1000000 } }
+                    },
+                    [pscustomobject]@{
+                        id = 'gpt-5.6-terra'
+                        capabilities = [pscustomobject]@{ limits = [pscustomobject]@{ max_context_window_tokens = 400000 } }
+                    }
+                ) }
+                ConvertTo-CopilotClaudeModel -Model 'gpt-5.6-sol' -Catalog $catalog | Should -Be 'gpt-5.6-sol[1m]'
+                ConvertTo-CopilotClaudeModel -Model 'gpt-5.6-terra[1m]' -Catalog $catalog | Should -Be 'gpt-5.6-terra'
+            }
+        }
+
+        It 'maps an OpenAI main model to Sol/Sol/Terra/Luna role tiers' {
+            InModuleScope Copilot {
+                $limits = [pscustomobject]@{ limits = [pscustomobject]@{ max_context_window_tokens = 1000000 } }
+                $catalog = [pscustomobject]@{ data = @(
+                    [pscustomobject]@{ id = 'gpt-5.6-sol'; capabilities = $limits },
+                    [pscustomobject]@{ id = 'gpt-5.6-terra'; capabilities = $limits },
+                    [pscustomobject]@{ id = 'gpt-5.6-luna'; capabilities = $limits }
+                ) }
+                $modelProfile = Get-CopilotModelProfile -Model 'gpt-5.6-sol' -Catalog $catalog
+                $modelProfile.main | Should -Be 'gpt-5.6-sol[1m]'
+                $modelProfile.fable | Should -Be 'gpt-5.6-sol[1m]'
+                $modelProfile.opus | Should -Be 'gpt-5.6-sol[1m]'
+                $modelProfile.sonnet | Should -Be 'gpt-5.6-terra[1m]'
+                $modelProfile.haiku | Should -Be 'gpt-5.6-luna[1m]'
+            }
+        }
+
+        It 'falls every missing OpenAI role back to the selected main model' {
+            InModuleScope Copilot {
+                $catalog = [pscustomobject]@{ data = @(
+                    [pscustomobject]@{
+                        id = 'gpt-5.5'
+                        capabilities = [pscustomobject]@{ limits = [pscustomobject]@{ max_context_window_tokens = 400000 } }
+                    }
+                ) }
+                $modelProfile = Get-CopilotModelProfile -Model 'gpt-5.5' -Catalog $catalog
+                @($modelProfile.Values | Select-Object -Unique) | Should -Be @('gpt-5.5')
+            }
+        }
+
+        It 'uses the strongest served native Claude model in each role family' {
+            InModuleScope Copilot {
+                $catalog = [pscustomobject]@{ data = @(
+                    'claude-fable-5', 'claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5' |
+                        ForEach-Object {
+                            [pscustomobject]@{
+                                id = $_
+                                capabilities = [pscustomobject]@{ limits = [pscustomobject]@{ max_context_window_tokens = 1000000 } }
+                            }
+                        }
+                ) }
+                $modelProfile = Get-CopilotModelProfile -Model 'claude-opus-5' -Catalog $catalog
+                $modelProfile.fable | Should -Be 'claude-fable-5[1m]'
+                $modelProfile.opus | Should -Be 'claude-opus-5[1m]'
+                $modelProfile.sonnet | Should -Be 'claude-sonnet-5[1m]'
+                $modelProfile.haiku | Should -Be 'claude-haiku-4-5[1m]'
+            }
+        }
+
+        It 'injects the complete role profile including Fable and small-fast' {
+            InModuleScope Copilot {
+                $catalog = [pscustomobject]@{ data = @(
+                    [pscustomobject]@{ id = 'gpt-5.6-sol' },
+                    [pscustomobject]@{ id = 'gpt-5.6-terra' },
+                    [pscustomobject]@{ id = 'gpt-5.6-luna' }
+                ) }
+                $envBlock = Get-CopilotEnvBlock -Pinned -Model 'gpt-5.6-sol' -Catalog $catalog
+                $envBlock.ANTHROPIC_DEFAULT_FABLE_MODEL | Should -Be 'gpt-5.6-sol'
+                $envBlock.ANTHROPIC_DEFAULT_OPUS_MODEL | Should -Be 'gpt-5.6-sol'
+                $envBlock.ANTHROPIC_DEFAULT_SONNET_MODEL | Should -Be 'gpt-5.6-terra'
+                $envBlock.ANTHROPIC_DEFAULT_HAIKU_MODEL | Should -Be 'gpt-5.6-luna'
+                $envBlock.ANTHROPIC_SMALL_FAST_MODEL | Should -Be 'gpt-5.6-luna'
+            }
+        }
+    }
+
+    Context 'copilot-model writes' {
+        BeforeEach {
+            $script:tmp = Join-Path ([System.IO.Path]::GetTempPath()) "copilot-model-$([guid]::NewGuid())"
+            New-Item -ItemType Directory -Force -Path $script:tmp | Out-Null
+            Push-Location $script:tmp
+        }
+        AfterEach { Pop-Location; Remove-Item -Recurse -Force $script:tmp -ErrorAction SilentlyContinue }
+
+        It 'refuses --auto when no live catalog is available' {
+            InModuleScope Copilot {
+                $script:state = Join-Path (Get-Location) 'state/model'
+                Mock Get-CopilotModelState { $script:state }
+                Mock Get-CopilotModelCatalog { $null }
+                $errors = @()
+                copilot-model --auto -ErrorAction SilentlyContinue -ErrorVariable +errors
+                $errors.Exception.Message | Should -Match 'needs a reachable proxy'
+                Test-Path $script:state | Should -BeFalse
+            }
+        }
+
+        It 'refreshes all local role pins while preserving unrelated settings' {
+            InModuleScope Copilot {
+                New-Item -ItemType Directory -Force -Path '.claude' | Out-Null
+                @{
+                    permissions = @{ allow = @('Read') }
+                    env = @{
+                        ANTHROPIC_BASE_URL = 'http://localhost:4142'
+                        ANTHROPIC_MODEL = 'gpt-5.6-sol[1m]'
+                        UNRELATED = 'keep-me'
+                    }
+                } | ConvertTo-Json -Depth 8 | Set-Content '.claude/settings.local.json'
+                $limits = [pscustomobject]@{ limits = [pscustomobject]@{ max_context_window_tokens = 1000000 } }
+                $catalog = [pscustomobject]@{ data = @(
+                    [pscustomobject]@{ id = 'gpt-5.6-sol'; capabilities = $limits },
+                    [pscustomobject]@{ id = 'gpt-5.6-terra'; capabilities = $limits },
+                    [pscustomobject]@{ id = 'gpt-5.6-luna'; capabilities = $limits }
+                ) }
+                Mock Get-CopilotModelCatalog { $catalog }
+
+                copilot-model --auto
+
+                $saved = Get-Content -Raw '.claude/settings.local.json' | ConvertFrom-Json
+                $saved.env.ANTHROPIC_MODEL | Should -Be 'gpt-5.6-sol[1m]'
+                $saved.env.ANTHROPIC_DEFAULT_FABLE_MODEL | Should -Be 'gpt-5.6-sol[1m]'
+                $saved.env.ANTHROPIC_DEFAULT_OPUS_MODEL | Should -Be 'gpt-5.6-sol[1m]'
+                $saved.env.ANTHROPIC_DEFAULT_SONNET_MODEL | Should -Be 'gpt-5.6-terra[1m]'
+                $saved.env.ANTHROPIC_DEFAULT_HAIKU_MODEL | Should -Be 'gpt-5.6-luna[1m]'
+                $saved.env.ANTHROPIC_SMALL_FAST_MODEL | Should -Be 'gpt-5.6-luna[1m]'
+                $saved.env.UNRELATED | Should -Be 'keep-me'
+                $saved.permissions.allow | Should -Contain 'Read'
+            }
+        }
+    }
+
+    Context 'fork authentication' {
+        It 'selects the Copilot provider explicitly for the maintained fork' {
+            InModuleScope Copilot {
+                $script:authArgs = @()
+                Mock Get-CopilotPkgFlavor { 'fork' }
+                Mock Invoke-CopilotPkgCommand { $script:authArgs = @($Argument) }
+                copilot-proxy auth
+                $script:authArgs | Should -Be @('auth', '--provider', 'copilot')
+            }
         }
     }
 

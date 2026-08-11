@@ -1,11 +1,12 @@
 # copilot-proxy
 
-`copilot-proxy` 工具系列的原生 PowerShell 版本：它執行
-[copilot-api](https://github.com/caozhiyuan/copilot-api) fork，讓 **GitHub Copilot
-訂閱**可以當作 **Claude Code**（以及任何 Anthropic/OpenAI 相容 client）的後端。
+`copilot-proxy` 工具系列的原生 PowerShell 版本。它執行
+[`@jeffreycao/copilot-api`](https://www.npmjs.com/package/@jeffreycao/copilot-api)
+fork，讓 **GitHub Copilot 訂閱**可作為 **Claude Code** 與其他 Anthropic/OpenAI
+相容 client 的後端。
 
-以模組形式放在 `~/.config/powershell/modules/Copilot`，由 `$PROFILE` 自動匯入。
-需要 `bun`（由 scoop 安裝）與 Copilot 訂閱。
+模組部署在 `~/.config/powershell/modules/Copilot`，由 PowerShell profile 自動匯入。
+需要 Bun、Node/npm 與 Copilot 訂閱。
 
 ## 指令
 
@@ -13,66 +14,127 @@
 |---|---|
 | `copilot-proxy auth` | 一次性的 GitHub device 登入（儲存 token） |
 | `copilot-proxy start` / `stop` / `restart` | 管理本機 proxy（port 4141） |
-| `copilot-proxy status` | 是否啟動？有哪些模型？ |
-| `copilot-proxy doctor [--live]` | 診斷前置需求 → 套件 → 認證 → proxy → Claude 目錄 → 上游 |
+| `copilot-proxy status` | 顯示 raw served 數量與 Claude 可用性 |
+| `copilot-proxy doctor [--live]` | 診斷套件、認證、proxy、catalog、roles 與上游 |
 | `copilot-proxy logs [N]` | 查看 proxy log |
 | `copilot-proxy shim [on\|off]` | 切換節流 shim（port 4142） |
 | `copilot-proxy whoami` | 帳號 / 方案 / 額度 |
-| `copilot-proxy reinstall` | 清掉並重裝釘選的 copilot-api 套件 |
-| `copilot-run <cmd...>` | 帶著 proxy 環境變數執行指令 |
-| `claude-copilot` | 在 proxy 上開一次性的 Claude Code session |
-| `claude-copilot-once` | 釘住此專案、跑一次、自動取消釘選（連 Ctrl-C 也是） |
-| `copilot-here [on\|off\|status]` | 用 `.claude/settings.local.json` 做專案層級的釘選 |
-| `copilot-model [<id>\|-l\|-c\|--auto]` | 切換釘選的模型 |
-| `copilot-embed [TEXT\|-]` | 透過 proxy 的 `/v1/embeddings` 產生向量 |
+| `copilot-proxy reinstall` | 清掉並重裝釘選套件 |
+| `copilot-run <cmd...>` | 注入 proxy 環境變數後執行指令 |
+| `claude-copilot` | 在 proxy 上開一次 Claude Code session |
+| `claude-copilot-once` | 暫時釘住專案、執行一次、結束後還原 |
+| `copilot-here [on\|off\|status]` | 在 `.claude/settings.local.json` 做 sticky pin |
+| `copilot-model [<id>\|-l\|-c\|--auto]` | 切換或檢查完整 role profile |
+| `copilot-embed [TEXT\|-]` | 透過 `/v1/embeddings` 產生向量 |
 | `semsearch index \| <QUERY>` | 對本機文字做語意搜尋 |
 
 ## 快速開始
 
 ```powershell
-copilot-proxy auth        # 只需一次
+copilot-proxy auth                 # 只需一次
 copilot-proxy start
-copilot-proxy doctor      # 驗證整條路徑
-claude-copilot            # 以 Copilot 為後端的 Claude Code session
+copilot-model --auto              # 從 live catalog 選模型
+copilot-model -c                   # 查看 Main/Fable/Opus/Sonnet/Haiku
+copilot-here on                    # 固定本專案；或用 claude-copilot-once
 ```
 
-## 備註
+`chezmoi apply` 不會偷偷遷移既有 global/project pin。升級後請手動執行一次
+`copilot-model --auto`。若 `copilot-here` 已開，它會刷新 local role set；否則只更新
+global 的單行 main-model state。
 
-- **預設模型**是 `claude-opus-5[1m]`。`[1m]` 後綴是給 Claude Code 的 1M context
-  提示；在對 proxy 驗證前會被去掉。`copilot-model --auto` 會從線上實際提供的清單
-  重新挑選（Claude > Codex > GPT > Gemini）—— 當釘選的模型已經過期時很有用。
-- **釘選的套件只安裝一次**到 `~/.local/share/copilot-api/pkg`，之後直接執行它。
-  `start` 刻意**不用** `bunx`：bunx 每次啟動都會重新解析套件，而 bun 透過 socks
-  proxy 解析時可能無限期卡住，卡死的安裝程序又抓著 bun 的全域 cache lock，導致
-  每次重試都以同樣方式卡死。現在暖啟動在綁 port 前完全不碰網路。調整
-  `COPILOT_API_PKG` 會透過 `.installed-spec` 戳記自動重裝；`copilot-proxy reinstall`
-  可強制重裝。
-- **`COPILOT_HTTP_PROXY`**（`auto` | `always` | `never` | `http://127.0.0.1:PORT`）
-  控制 Node 透過什麼路徑抓 GitHub 的模型目錄。`auto` 會讀 Windows 系統 Proxy
-  （Clash Verge / mihomo / v2rayN 設定的那個）或 `HTTPS_PROXY`，並帶上 `--proxy-env`
-  讓 Node 真的去用它 —— Node 自己不會理會系統 Proxy 設定。這點很關鍵，因為
-  copilot-api 只在**啟動時抓一次** `/models`：在 GitHub 對 Claude 目錄做地區過濾的
-  出口上，proxy 會把「沒有 Claude」的清單快取一整個 process 生命週期。
-  `copilot-proxy doctor` 會 A/B 比較直連與經 proxy 的目錄，藉此和「帳號權限不足」
-  區分開來。
-- **`copilot-here`** 只寫入被 gitignore 的 `.claude/settings.local.json`，絕不動到
-  已提交的 `.claude/settings.json`，並加一筆 `.git/info/exclude`，讓釘選永遠不會被
-  commit 進去。`copilot-here status` 與 `claude-copilot-once` 會偵測既有釘選是否已
-  偏離目前的預設值（模型升版、proxy 換位置、之後新增的 key），並詢問是否就地刷新。
-- **`claude-copilot` / `claude-copilot-once`** 會以 `--dangerously-skip-permissions`
-  執行 Claude Code —— proxy 這條是可信、免確認的流程，不會停下來問權限（純 `claude`
-  不受影響；全域預設仍為 `auto`）。當 SpecStory CLI 在 `PATH` 上時，也會用
-  `specstory run` 包住 session 以自動存檔逐字稿；Windows 上該 CLI 沒有官方 release，
-  需透過 **SpecStory build** 初始化提問選用啟用。有傳入參數時，`-c` 的指令字串會從
-  specstory 設定中的 `claude_cmd` 重建 —— `-c` 是**取代**該指令而非附加，寫死字串
-  會默默丟掉它帶的旗標（`claude-copilot-once` 與 `claude-copilot-once --resume X`
-  當初就是因此落在不同的權限模式）。
-- **節流 shim**（`copilot-throttle-shim.js`，以 Bun 執行）限制同時在途的請求數，
-  並在 403/429 爆量時透明重試 —— 與 macOS/Linux 用的是同一份 JS，未經修改。
-- 狀態放在 `~/.local/state/copilot-proxy/`；token 放在
-  `~/.local/share/copilot-api/github_token`。
+## Routing 原理
 
-!!! warning "權限（entitlement）"
-    有些 Copilot 方案不提供任何 Anthropic 模型 —— 這時每個請求都會回
-    `400 model_not_supported`。`copilot-proxy doctor` 能區分這種帳號政策問題與
-    模型快取過期。
+```text
+Claude Code --Anthropic /v1/messages--> copilot-api (localhost:4141)
+                                          | Claude：native Messages
+                                          | GPT：Anthropic -> Responses 轉譯
+                                          v
+                                  GitHub Copilot API
+```
+
+預設套件是 `@jeffreycao/copilot-api@2.1.0`。GPT id 會走 Responses translation，
+包括把 Claude Code 的 `output_config.effort` 轉成 `reasoning.effort`。GPT-5.6 與
+Claude Code `ultracode` 需要這條路徑；舊 `1.13.14` 可能用 hard-coded fallback 蓋掉
+client 指定的 effort。
+
+套件只安裝一次到 `~/.local/share/copilot-api/pkg`。Windows 優先用 `npm.cmd`，因為它
+能使用 `~/.npmrc` 裡的 Azure Artifacts credential provider；Bun 仍作為 fallback/runtime。
+版本戳記會讓 2.1.0 升級自動重裝，warm start 不需要套件網路。
+
+## 模型選擇與 role profile
+
+`copilot-model --auto` 必須讀到 live `/v1/models`。先選 served Claude 家族
+（`Fable > Opus > Sonnet > Haiku`），沒有 Claude 時依能力排序：
+
+```text
+Sol > Terra > GPT-5.5 > GPT-5.4 > GPT-5.3 Codex > Luna > mini > Gemini
+```
+
+Luna 雖是 5.6 世代，但屬於輕量 tier，所以排在舊旗艦後面。這個角色意圖依照 OpenAI 的
+[current model guidance](https://developers.openai.com/api/docs/guides/latest-model)。
+一般沒有 Claude 的 Copilot catalog 會產生：
+
+| Claude Code role | Copilot model |
+|---|---|
+| Main / Fable / Opus | `gpt-5.6-sol` |
+| Sonnet | `gpt-5.6-terra` |
+| Haiku / background / legacy small-fast | `gpt-5.6-luna` |
+
+若手動選另一個 OpenAI main，Main/Fable/Opus 會保留該主模型；有 served Terra/Luna 時
+分別供較低 role 使用。缺少 tier 時退回主模型，不會寫入不存在的硬編碼 id。原生 Claude
+profile 則在每個 Claude 家族中選最強 served model。
+
+`[1m]` 是只給 Claude Code 的 context 提示；helper 依 live
+`max_context_window_tokens >= 1,000,000` 決定。Raw API client 必須用 plain id。離線時仍
+提供手動 discovery 清單，但 `--auto` 會拒絕寫入可能過期的 pin。
+
+`copilot-run` 與 `copilot-here on` 會注入同一組變數：
+
+```text
+ANTHROPIC_MODEL
+ANTHROPIC_DEFAULT_FABLE_MODEL
+ANTHROPIC_DEFAULT_OPUS_MODEL
+ANTHROPIC_DEFAULT_SONNET_MODEL
+ANTHROPIC_DEFAULT_HAIKU_MODEL
+ANTHROPIC_SMALL_FAST_MODEL
+```
+
+刻意不設定 `CLAUDE_CODE_SUBAGENT_MODEL`，讓 workflow/frontmatter routing 保持最高優先。
+切換 profile 後需重開 Claude Code。
+
+## Claude Code 功能相容性
+
+關鍵分界是本機編排與 Anthropic cloud service：
+
+| 功能 | 透過 Copilot + GPT | 說明 |
+|---|---|---|
+| CLI、tools、hooks、skills、memory、plugins、MCP、checkpoints、sandboxing | 可以 | 都是本機功能；GPT 收到轉譯後的 prompt/tool schema，行為可能不同。 |
+| subagents、dynamic workflows | 可以 | 提供 role variables，但不蓋掉 workflow-specific subagent routing。見 [workflows](https://code.claude.com/docs/en/workflows)。 |
+| `ultracode` | 2.1.0 可以 | 它是 xhigh effort + dynamic workflows，不是獨立模型。 |
+| thinking/reasoning | 轉譯後可用 | GPT 使用 Responses reasoning，不是 Anthropic-native thinking semantics。 |
+| Web Search、fast/auto mode、MCP tool search | 依 provider | 取決於 Copilot endpoint 與 gateway translation。 |
+| Ultrareview、Remote Control、Chrome、cloud Code Review、routines、web/mobile/Slack session | 不可以 | 需要 Claude.ai auth/cloud identity，local gateway 無法提供。 |
+
+官方參考：[feature availability](https://code.claude.com/docs/en/feature-availability)、
+[model configuration](https://code.claude.com/docs/en/model-config)、
+[gateway protocol](https://code.claude.com/docs/en/llm-gateway-protocol)、
+[Ultrareview](https://code.claude.com/docs/en/ultrareview)。
+
+## 網路、entitlement 與診斷
+
+- `COPILOT_HTTP_PROXY=auto` 會讀 Windows System Proxy 或明確的 proxy env，僅注入 child
+  process 並帶 `--proxy-env`。Node 自己不會讀 WinINET system setting。
+- Model catalog 只在 proxy 啟動時抓一次。`COPILOT_PROXY_START_TIMEOUT` 預設 45 秒，因為
+  Clash/mihomo hop 可能讓 refresh 超過舊版的 20 秒。
+- GitHub 會依帳號、組織政策、rollout 與 egress 改變 catalog。因此在仍有 served OpenAI
+  fallback 時，「沒有 Claude」是 warning，不代表 proxy 本身壞掉。
+- `copilot-proxy doctor` 會比較 direct/proxied upstream catalog、驗證 main 與所有 role
+  aliases，並找出 stale local pin。`--live` 會送一個真實請求並消耗 quota。
+- `copilot-here` 只寫入 gitignored `.claude/settings.local.json`，不碰 committed project
+  settings；`off` 只移除 helper 擁有的 env keys，保留其他設定。
+- `claude-copilot` / `claude-copilot-once` 保留 Windows port 的 trusted
+  `--dangerously-skip-permissions` 與 optional SpecStory 行為，純 `claude` 不受影響。
+- Throttle shim 仍與 macOS/Linux 版本 byte-identical，會限制並行並重試 403/429 burst。
+
+狀態放在 `~/.local/state/copilot-proxy/`；GitHub token 放在
+`~/.local/share/copilot-api/github_token`。

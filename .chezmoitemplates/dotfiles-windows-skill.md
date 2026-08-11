@@ -41,7 +41,9 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   `copilot-run`, `claude-copilot`, `claude-copilot-once`, `copilot-here`,
   `copilot-model` (incl. `--auto`), `copilot-embed`, `semsearch`.
 - Needs `bun`. Token: `~/.local/share/copilot-api/github_token`. Ports 4141 (proxy) /
-  4142 (throttle shim). Default model `claude-opus-5[1m]`. `copilot-here` writes
+  4142 (throttle shim). Default main model `gpt-5.6-sol[1m]`; the OpenAI role
+  profile maps Fable/Opus to Sol, Sonnet to Terra, and Haiku/background to Luna.
+  `copilot-here` writes
   only the gitignored `./.claude/settings.local.json`. The pinned copilot-api is
   installed ONCE into `~/.local/share/copilot-api/pkg` (never `bunx` at launch);
   `COPILOT_HTTP_PROXY` (auto|always|never|URL) controls whether Node fetches the

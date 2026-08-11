@@ -58,7 +58,7 @@ Copy-Item -LiteralPath $moduleSource -Destination $moduleTarget -Force
 Import-Module (Join-Path (Split-Path $moduleTarget) 'Copilot.psd1') -Force
 
 Info 'verifying the internal feed'
-& $npm.Source view '@jeffreycao/copilot-api@1.13.14' version --fetch-timeout=30000 --fetch-retries=1
+& $npm.Source view '@jeffreycao/copilot-api@2.1.0' version --fetch-timeout=30000 --fetch-retries=1
 if ($LASTEXITCODE -ne 0) { throw 'The internal feed is configured but the Copilot package cannot be resolved.' }
 
 Write-Host "`nInternal npm authentication is ready. Open a new PowerShell (or run: reload), then run: copilot-proxy reinstall" -ForegroundColor Green

@@ -21,7 +21,7 @@
 # Contract preserved from the unix version: token at
 # ~/.local/share/copilot-api/github_token, ports 4141 (proxy) / 4142 (shim),
 # state under $XDG_STATE_HOME/copilot-proxy, per-project ./.claude/settings.local.json
-# pin, default model claude-opus-5[1m], and the ANTHROPIC_* env block.
+# pin, default model gpt-5.6-sol[1m], and the ANTHROPIC_* env block.
 #
 # The pinned package is INSTALLED ONCE into $XDG_DATA_HOME/copilot-api/pkg and the
 # proxy runs that binary directly. It deliberately does NOT use `bunx` at launch:
@@ -32,8 +32,9 @@
 #
 # Env knobs:
 #   COPILOT_PROXY_PORT   default 4141    - port the proxy listens on
+#   COPILOT_PROXY_START_TIMEOUT default 45 - seconds allowed for model refresh
 #   COPILOT_SHIM_PORT    default 4142    - throttle shim port
-#   COPILOT_API_PKG      default @jeffreycao/copilot-api@1.13.14 - spec to install
+#   COPILOT_API_PKG      default @jeffreycao/copilot-api@2.1.0 - spec to install
 #                                          (changing it re-installs via the stamp)
 #   COPILOT_CLAUDE_MODEL                 - override the pinned model
 #   COPILOT_PROXY_QUIET  1               - add the telemetry-suppressing env keys
@@ -50,7 +51,7 @@ Set-StrictMode -Off
 
 # ------------------------------------------------------------------ helpers ---
 function script:Get-CopilotPort { if ($env:COPILOT_PROXY_PORT) { $env:COPILOT_PROXY_PORT } else { '4141' } }
-function script:Get-CopilotPkg  { if ($env:COPILOT_API_PKG)   { $env:COPILOT_API_PKG }   else { '@jeffreycao/copilot-api@1.13.14' } }
+function script:Get-CopilotPkg  { if ($env:COPILOT_API_PKG)   { $env:COPILOT_API_PKG }   else { '@jeffreycao/copilot-api@2.1.0' } }
 function script:Get-CopilotPkgFlavor {
     switch -Regex (Get-CopilotPkg) { '^copilot-api(@.*)?$' { 'original' } default { 'fork' } }
 }
@@ -367,14 +368,14 @@ function script:Get-CopilotPinnedBase {
 #   - HYPHENATED ids (claude-opus-4-8), not dotted (claude-opus-4.8): Claude Code
 #     only recognizes hyphenated family names — dotted ids fall back to a legacy
 #     "[Opus 4] retired" label AND a 200k context assumption.
-#   - "[1m]" suffix: Copilot serves opus-5 / opus-4-8 / sonnet-5 with a 1M context
-#     window; the suffix makes Claude Code strip it, send the context-1m beta
-#     header, and size HUD/compaction to 1M. Claude Code-only.
+#   - "[1m]" suffix: Claude Code uses it to size HUD/compaction for a 1M context
+#     window. ConvertTo-CopilotClaudeModel derives it from live /v1/models metadata
+#     for every provider. Claude Code-only: raw API clients use the plain id.
 function script:Get-CopilotDefaultModel {
     if ($env:COPILOT_CLAUDE_MODEL) { return $env:COPILOT_CLAUDE_MODEL }
     $sf = Get-CopilotModelState
     if (Test-Path $sf) { return (Get-Content -First 1 $sf) }
-    'claude-opus-5[1m]'
+    'gpt-5.6-sol[1m]'
 }
 
 # Every model id the proxy accepts: .id plus the .claude_model_id alias.
@@ -386,6 +387,105 @@ function script:Get-CopilotServedModels {
         if ($m.claude_model_id) { $ids.Add($m.claude_model_id) }
     }
     $ids | Sort-Object -Unique
+}
+
+# The full live catalog is the source of truth for raw ids, Claude aliases and
+# context limits. Callers that need several views fetch it once and pass it on.
+function script:Get-CopilotModelCatalog {
+    try { Invoke-RestMethod -Uri "$(Get-CopilotBase)/v1/models" -TimeoutSec 5 -ErrorAction Stop }
+    catch { $null }
+}
+
+function script:Get-CopilotCatalogIds {
+    param($Catalog)
+    if (-not $Catalog) { return @() }
+    @($Catalog.data | ForEach-Object { $_.id } | Where-Object { $_ } | Sort-Object -Unique)
+}
+
+function script:Remove-CopilotContextHint {
+    param([string] $Model)
+    $Model -replace '\[1m\]$', ''
+}
+
+# Convert a raw proxy id to the spelling Claude Code should receive. A live
+# max_context_window_tokens >= 1M earns [1m]. Offline, preserve an explicitly
+# stored suffix but do not invent one.
+function script:ConvertTo-CopilotClaudeModel {
+    param([Parameter(Mandatory)] [string] $Model, $Catalog)
+    $hadHint = $Model -match '\[1m\]$'
+    $raw = Remove-CopilotContextHint $Model
+    if (-not $PSBoundParameters.ContainsKey('Catalog')) { $Catalog = Get-CopilotModelCatalog }
+    if ($Catalog) {
+        $entry = $Catalog.data | Where-Object { $_.id -eq $raw } | Select-Object -First 1
+        $context = $entry.capabilities.limits.max_context_window_tokens
+        if ($context -and [long]$context -ge 1000000) { return "$raw[1m]" }
+        return $raw
+    }
+    if ($hadHint) { return "$raw[1m]" }
+    $raw
+}
+
+function script:Select-CopilotFirstServed {
+    param([string[]] $Model, [string[]] $Candidate)
+    foreach ($c in $Candidate) { if ($Model -contains $c) { return $c } }
+    $null
+}
+
+# Build the complete Claude Code role profile for a selected main model. Native
+# Claude profiles use the strongest served model in each family. OpenAI profiles
+# map quality/balanced/fast work to the selected main, Terra and Luna.
+function script:Get-CopilotModelProfile {
+    param([string] $Model = (Get-CopilotDefaultModel), $Catalog)
+    if (-not $PSBoundParameters.ContainsKey('Catalog')) { $Catalog = Get-CopilotModelCatalog }
+    $models = Get-CopilotCatalogIds $Catalog
+    $raw = Remove-CopilotContextHint $Model
+    $main = ConvertTo-CopilotClaudeModel -Model $Model -Catalog $Catalog
+
+    $fableRaw = $raw; $opusRaw = $raw; $sonnetRaw = $raw; $haikuRaw = $raw
+    if ($raw -like 'claude-*') {
+        $fableRaw = Select-CopilotFirstServed -Model $models -Candidate @('claude-fable-5')
+        if (-not $fableRaw) { $fableRaw = @($models | Where-Object { $_ -like 'claude-fable-*' } | Sort-Object)[-1] }
+        if (-not $fableRaw) { $fableRaw = $raw }
+
+        $opusRaw = Select-CopilotFirstServed -Model $models -Candidate @(
+            'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-opus-4-5'
+        )
+        if (-not $opusRaw) { $opusRaw = @($models | Where-Object { $_ -like 'claude-opus-*' } | Sort-Object)[-1] }
+        if (-not $opusRaw) { $opusRaw = $raw }
+
+        $sonnetRaw = Select-CopilotFirstServed -Model $models -Candidate @(
+            'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-sonnet-4-5'
+        )
+        if (-not $sonnetRaw) { $sonnetRaw = @($models | Where-Object { $_ -like 'claude-sonnet-*' } | Sort-Object)[-1] }
+        if (-not $sonnetRaw) { $sonnetRaw = $raw }
+
+        $haikuRaw = Select-CopilotFirstServed -Model $models -Candidate @('claude-haiku-4-5')
+        if (-not $haikuRaw) { $haikuRaw = @($models | Where-Object { $_ -like 'claude-haiku-*' } | Sort-Object)[-1] }
+        if (-not $haikuRaw) { $haikuRaw = $raw }
+    }
+    elseif ($raw -like 'gpt-*' -or $raw -match 'codex') {
+        $sonnetRaw = Select-CopilotFirstServed -Model $models -Candidate @('gpt-5.6-terra')
+        if (-not $sonnetRaw) { $sonnetRaw = $raw }
+        $haikuRaw = Select-CopilotFirstServed -Model $models -Candidate @('gpt-5.6-luna', 'gpt-5.4-mini', 'gpt-5-mini')
+        if (-not $haikuRaw) { $haikuRaw = $raw }
+    }
+
+    [ordered]@{
+        main   = $main
+        fable  = ConvertTo-CopilotClaudeModel -Model $fableRaw -Catalog $Catalog
+        opus   = ConvertTo-CopilotClaudeModel -Model $opusRaw -Catalog $Catalog
+        sonnet = ConvertTo-CopilotClaudeModel -Model $sonnetRaw -Catalog $Catalog
+        haiku  = ConvertTo-CopilotClaudeModel -Model $haikuRaw -Catalog $Catalog
+    }
+}
+
+function script:Write-CopilotModelProfile {
+    param([System.Collections.IDictionary] $ModelProfile)
+    Write-Host ("  main   : {0}" -f $ModelProfile.main)
+    Write-Host ("  fable  : {0}" -f $ModelProfile.fable)
+    Write-Host ("  opus   : {0}" -f $ModelProfile.opus)
+    Write-Host ("  sonnet : {0}" -f $ModelProfile.sonnet)
+    Write-Host ("  haiku  : {0}" -f $ModelProfile.haiku)
 }
 
 # "<model>|<source>" — the model Claude Code would send from this directory.
@@ -419,16 +519,21 @@ function script:Get-CopilotEffectiveModel {
 # -Pinned uses the shim base when the shim is enabled but not yet up (what a
 # written-to-disk pin should say); copilot-run wants the live base instead.
 function script:Get-CopilotEnvBlock {
-    param([switch] $Pinned)
-    $model = Get-CopilotDefaultModel
+    param([switch] $Pinned, [string] $Model = (Get-CopilotDefaultModel), $Catalog)
+    $modelProfile = if ($PSBoundParameters.ContainsKey('Catalog')) {
+        Get-CopilotModelProfile -Model $Model -Catalog $Catalog
+    } else {
+        Get-CopilotModelProfile -Model $Model
+    }
     $block = [ordered]@{
         ANTHROPIC_BASE_URL             = if ($Pinned) { Get-CopilotPinnedBase } else { Get-CopilotClientBase }
         ANTHROPIC_AUTH_TOKEN           = 'dummy'
-        ANTHROPIC_MODEL                = $model
-        ANTHROPIC_DEFAULT_OPUS_MODEL   = $model
-        ANTHROPIC_DEFAULT_SONNET_MODEL = 'claude-sonnet-5[1m]'
-        ANTHROPIC_DEFAULT_HAIKU_MODEL  = 'claude-haiku-4-5'
-        ANTHROPIC_SMALL_FAST_MODEL     = 'claude-haiku-4-5'
+        ANTHROPIC_MODEL                = $modelProfile.main
+        ANTHROPIC_DEFAULT_FABLE_MODEL  = $modelProfile.fable
+        ANTHROPIC_DEFAULT_OPUS_MODEL   = $modelProfile.opus
+        ANTHROPIC_DEFAULT_SONNET_MODEL = $modelProfile.sonnet
+        ANTHROPIC_DEFAULT_HAIKU_MODEL  = $modelProfile.haiku
+        ANTHROPIC_SMALL_FAST_MODEL     = $modelProfile.haiku
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
     }
     if ($env:COPILOT_PROXY_QUIET -eq '1') {
@@ -548,7 +653,8 @@ function copilot-proxy {
                 }
             }
             $p.Id | Set-Content -Path $pidf
-            for ($i = 0; $i -lt 20; $i++) {
+            $startTimeout = if ($env:COPILOT_PROXY_START_TIMEOUT) { [int]$env:COPILOT_PROXY_START_TIMEOUT } else { 45 }
+            for ($i = 0; $i -lt $startTimeout; $i++) {
                 if (Test-CopilotAlive) {
                     if (Get-CopilotShimEnabled) {
                         if (Start-CopilotShim) { Write-Host "copilot-proxy: throttle shim up -> $(Get-CopilotShimBase) (-> $(Get-CopilotBase))" }
@@ -587,9 +693,12 @@ function copilot-proxy {
         'restart' { copilot-proxy stop; copilot-proxy start }
         'status' {
             if (Test-CopilotAlive) {
+                $catalog = Get-CopilotModelCatalog
+                $rawIds = Get-CopilotCatalogIds $catalog
+                $claude = @($rawIds | Where-Object { $_ -like 'claude-*' })
+                $claudeText = if ($claude.Count -gt 0) { $claude -join ' ' } else { 'none' }
                 Write-Host "copilot-proxy: RUNNING on $(Get-CopilotBase)"
-                $claude = (Get-CopilotServedModels) | Where-Object { $_ -match 'claude' }
-                Write-Host "  models: $($claude -join ' ')"
+                Write-Host "  models: $($rawIds.Count) served; Claude: $claudeText"
                 if (Get-CopilotShimEnabled) {
                     if (Test-CopilotShimAlive) { Write-Host "  shim:   ON, up on $(Get-CopilotShimBase)  -> clients use this" }
                     else { Write-Host "  shim:   ON but DOWN (clients fall back to $(Get-CopilotBase))" }
@@ -613,7 +722,8 @@ function copilot-proxy {
         'auth' {
             # One-time device login -> stores a ghu_ token copilot-api can exchange.
             Write-Host "copilot-proxy: launching copilot-api device login ..."
-            Invoke-CopilotPkgCommand auth
+            if ((Get-CopilotPkgFlavor) -eq 'original') { Invoke-CopilotPkgCommand auth }
+            else { Invoke-CopilotPkgCommand auth --provider copilot }
         }
         'reinstall' {
             # Force a clean re-install of the pinned spec (normally only needed if the
@@ -773,7 +883,7 @@ function script:Invoke-CopilotDoctor {
         $claude = @($served | Where-Object { $_ -match '^claude' })
         OK 'served' "$($served.Count) model ids"
         if ($claude.Count -gt 0) { OK 'claude models' "$($claude.Count) ids available" }
-        else { BAD 'claude models' "0 of $($served.Count) — the proxy serves no Anthropic models" }
+        else { NOTE 'claude models' "0 of $($served.Count) — Anthropic unavailable; role-aware OpenAI fallback will be used" }
 
         if ($viaClaude -gt 0 -and $dirClaude -eq 0) {
             NOTE 'egress geo' 'Claude appears ONLY via the local proxy — GitHub filters Anthropic on direct egress'
@@ -798,8 +908,48 @@ function script:Invoke-CopilotDoctor {
         else {
             BAD 'pinned model' "$model  ($src)"
             HINT 'not served -> requests return 400 model_not_supported'
-            HINT 'copilot-model --auto   # Claude > Codex > GPT > Gemini from the served list'
+            HINT 'copilot-model --auto   # Claude; else capability-ranked OpenAI, then Gemini'
             HINT 'copilot-model -l       # list served ids'
+        }
+
+        # Validate every alias Claude Code may select for background/subagent
+        # work. A stale Sonnet/Haiku id can fail with 400 while main chat works.
+        $settings = '.claude/settings.local.json'
+        $modelProfile = $null
+        if (Test-Path $settings) {
+            try {
+                $localEnv = (Get-Content -Raw $settings | ConvertFrom-Json).env
+                if ($localEnv.ANTHROPIC_BASE_URL) {
+                    $modelProfile = [ordered]@{
+                        main   = $localEnv.ANTHROPIC_MODEL
+                        fable  = $localEnv.ANTHROPIC_DEFAULT_FABLE_MODEL
+                        opus   = $localEnv.ANTHROPIC_DEFAULT_OPUS_MODEL
+                        sonnet = $localEnv.ANTHROPIC_DEFAULT_SONNET_MODEL
+                        haiku  = $localEnv.ANTHROPIC_DEFAULT_HAIKU_MODEL
+                    }
+                }
+            } catch { $modelProfile = $null }
+        }
+        if (-not $modelProfile) {
+            $catalog = Get-CopilotModelCatalog
+            $modelProfile = Get-CopilotModelProfile -Model $model -Catalog $catalog
+        }
+        $roleBad = $false
+        foreach ($role in 'fable', 'opus', 'sonnet', 'haiku') {
+            $roleModel = $modelProfile[$role]
+            if (-not $roleModel) {
+                BAD "role $role" 'unset — Claude Code may choose its native default and get model_not_supported'
+                $roleBad = $true
+            }
+            elseif ($served -notcontains $roleModel) {
+                BAD "role $role" "$roleModel is not served"
+                $roleBad = $true
+            }
+        }
+        if (-not $roleBad) {
+            OK 'model roles' "fable=$($modelProfile.fable), opus=$($modelProfile.opus), sonnet=$($modelProfile.sonnet), haiku=$($modelProfile.haiku)"
+        } else {
+            HINT 'copilot-model --auto   # rewrite main + every Claude Code role alias'
         }
     } else {
         BAD 'served' "could not fetch $(Get-CopilotBase)/v1/models"
@@ -975,7 +1125,7 @@ function claude-copilot-once {
 
 # ------------------------------------------------------------ copilot-here ----
 $script:CopilotHereKeys = @(
-    'ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL',
+    'ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_FABLE_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL',
     'ANTHROPIC_DEFAULT_SONNET_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL', 'ANTHROPIC_SMALL_FAST_MODEL',
     'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', 'CLAUDE_CODE_ATTRIBUTION_HEADER',
     'CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION', 'CLAUDE_CODE_ENABLE_AWAY_SUMMARY', 'DISABLE_NON_ESSENTIAL_MODEL_CALLS'
@@ -1026,9 +1176,9 @@ function copilot-here {
             New-Item -ItemType Directory -Force -Path '.claude' | Out-Null
             $obj = if (Test-Path $settings) { try { Get-Content -Raw $settings | ConvertFrom-Json } catch { [pscustomobject]@{} } } else { [pscustomobject]@{} }
             if (-not $obj.PSObject.Properties['env']) { $obj | Add-Member -NotePropertyName env -NotePropertyValue ([pscustomobject]@{}) }
-            $model = Get-CopilotDefaultModel
             # Single source of truth, shared with copilot-run and the drift check.
             $envSet = Get-CopilotEnvBlock -Pinned
+            $model = $envSet.ANTHROPIC_MODEL
             foreach ($k in $envSet.Keys) {
                 if ($obj.env.PSObject.Properties[$k]) { $obj.env.$k = $envSet[$k] }
                 else { $obj.env | Add-Member -NotePropertyName $k -NotePropertyValue $envSet[$k] }
@@ -1082,28 +1232,41 @@ function copilot-here {
     }
 }
 
-# Pick the best served model for Claude Code / copilot-run.
-# Preference (first match wins): Claude (known ids, else any claude-*) -> *codex*
-# -> non-mini gpt-5* -> any gpt-* -> non-flash gemini -> any gemini -> last resort.
-# Appends [1m] for the Claude ids known to expose a 1M window to Claude Code.
+# Pick the best raw served id for the main Claude Code model. Claude remains the
+# first choice when entitled. Without Claude, rank OpenAI by capability tier and
+# deliberately place lightweight Luna behind older flagship/coding tiers.
 function script:Select-CopilotBestModel {
     param([string[]] $Model)
     if (-not $Model -or $Model.Count -eq 0) { return $null }
+    $Model = @($Model | ForEach-Object { Remove-CopilotContextHint $_ } | Sort-Object -Unique)
 
-    foreach ($preferred in 'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6',
+    foreach ($preferred in 'claude-fable-5',
+                           'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6',
                            'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-sonnet-4-5',
                            'claude-opus-4-5', 'claude-haiku-4-5') {
-        if ($Model -contains $preferred) {
-            if ($preferred -in 'claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5') { return "$preferred[1m]" }
-            return $preferred
-        }
+        if ($Model -contains $preferred) { return $preferred }
     }
     $pick = { param($re, $exclude)
         $c = @($Model | Where-Object { $_ -match $re -and (-not $exclude -or $_ -notmatch $exclude) } | Sort-Object)
         if ($c.Count -gt 0) { $c[-1] } else { $null }
     }
-    foreach ($try in @(@('^claude-', $null), @('codex', $null), @('^gpt-5', 'mini|nano'),
-                       @('^gpt-', $null), @('^gemini-', 'flash'), @('^gemini-', $null))) {
+    $r = & $pick '^claude-' $null
+    if ($r) { return $r }
+
+    foreach ($preferred in 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.5', 'gpt-5.4', 'gpt-5.3-codex') {
+        if ($Model -contains $preferred) { return $preferred }
+    }
+
+    foreach ($try in @(@('^gpt-', 'mini|nano|luna'), @('codex', $null))) {
+        $r = & $pick $try[0] $try[1]
+        if ($r) { return $r }
+    }
+
+    foreach ($preferred in 'gpt-5.6-luna', 'gpt-5.4-mini', 'gpt-5-mini') {
+        if ($Model -contains $preferred) { return $preferred }
+    }
+
+    foreach ($try in @(@('^gpt-', $null), @('^gemini-', 'flash'), @('^gemini-', $null))) {
         $r = & $pick $try[0] $try[1]
         if ($r) { return $r }
     }
@@ -1123,55 +1286,75 @@ function copilot-model {
         try { if ((Get-Content -Raw $settings | ConvertFrom-Json).env.ANTHROPIC_BASE_URL) { $target = 'local' } } catch { $null = $_ }
     }
 
-    function script:_ModelList {
-        try {
-            $r = Invoke-RestMethod -Uri "$(Get-CopilotBase)/v1/models" -TimeoutSec 3 -ErrorAction Stop
-            return ($r.data.id | Sort-Object)
-        } catch {
-            Write-Host "copilot-model: proxy not reachable — showing fallback list"
-            return @('claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-opus-4-5',
-                     'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-sonnet-4-5', 'claude-haiku-4-5')
-        }
-    }
-    function script:_ModelCurrent {
-        if ($target -eq 'local') { (Get-Content -Raw $settings | ConvertFrom-Json).env.ANTHROPIC_MODEL }
-        else { Get-CopilotDefaultModel }
-    }
+    $fallback = @(
+        'claude-fable-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-opus-4-5',
+        'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-sonnet-4-5', 'claude-haiku-4-5',
+        'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.4', 'gpt-5.3-codex',
+        'gpt-5.4-mini', 'gpt-5-mini'
+    )
+    $currentModel = if ($target -eq 'local') {
+        (Get-Content -Raw $settings | ConvertFrom-Json).env.ANTHROPIC_MODEL
+    } else { Get-CopilotDefaultModel }
 
     switch ($arg) {
-        { $_ -in '-l', '--list' } { _ModelList; return }
+        { $_ -in '-l', '--list' } {
+            $catalog = Get-CopilotModelCatalog
+            if ($catalog) { Get-CopilotCatalogIds $catalog }
+            else { Write-Host 'copilot-model: proxy not reachable — showing fallback list'; $fallback }
+            return
+        }
         { $_ -in '-c', '--current' } {
-            if ($target -eq 'local') { Write-Host "$(_ModelCurrent)  (project: $settings)" } else { Write-Host "$(_ModelCurrent)  (global: $statef)" }
+            if ($target -eq 'local') {
+                $envBlock = (Get-Content -Raw $settings | ConvertFrom-Json).env
+                $modelProfile = [ordered]@{
+                    main   = if ($envBlock.ANTHROPIC_MODEL) { $envBlock.ANTHROPIC_MODEL } else { '(unset)' }
+                    fable  = if ($envBlock.ANTHROPIC_DEFAULT_FABLE_MODEL) { $envBlock.ANTHROPIC_DEFAULT_FABLE_MODEL } else { $envBlock.ANTHROPIC_MODEL }
+                    opus   = if ($envBlock.ANTHROPIC_DEFAULT_OPUS_MODEL) { $envBlock.ANTHROPIC_DEFAULT_OPUS_MODEL } else { $envBlock.ANTHROPIC_MODEL }
+                    sonnet = if ($envBlock.ANTHROPIC_DEFAULT_SONNET_MODEL) { $envBlock.ANTHROPIC_DEFAULT_SONNET_MODEL } else { $envBlock.ANTHROPIC_MODEL }
+                    haiku  = if ($envBlock.ANTHROPIC_DEFAULT_HAIKU_MODEL) { $envBlock.ANTHROPIC_DEFAULT_HAIKU_MODEL } else { $envBlock.ANTHROPIC_MODEL }
+                }
+                Write-Host "model profile (project: $settings)"
+            } else {
+                $catalog = Get-CopilotModelCatalog
+                $modelProfile = Get-CopilotModelProfile -Model $currentModel -Catalog $catalog
+                Write-Host "model profile (global main: $statef)"
+            }
+            Write-CopilotModelProfile $modelProfile
             return
         }
         { $_ -in '-h', '--help' } {
             Write-Host "Usage: copilot-model [<model-id>|-l|-c|--auto]"
-            Write-Host "  --auto  pick best from the live served list: Claude > Codex > GPT > Gemini"
+            Write-Host "  --auto  live catalog: Claude; else capability-ranked OpenAI"
+            Write-Host "          (Sol > Terra > GPT-5.5 > GPT-5.4 > GPT-5.3 Codex > Luna > mini)"
+            Write-Host "  Writes a complete Main/Fable/Opus/Sonnet/Haiku role profile locally."
             return
         }
     }
 
-    $models = _ModelList
+    $catalog = Get-CopilotModelCatalog
+    $models = if ($catalog) { Get-CopilotCatalogIds $catalog } else { $fallback }
     $resolved = ''
     if ($arg -in '--auto', '-a') {
-        # Use when a sticky pin (e.g. gemini from a Claude-less geo day) is stale, or
-        # when Anthropic is filtered out and you want the best Codex/GPT instead.
-        if (-not $models) { Write-Error "copilot-model: --auto needs a reachable proxy"; return }
-        $resolved = Select-CopilotBestModel -Model $models
-        if (-not $resolved) { Write-Error "copilot-model: --auto could not pick a model"; return }
+        # Never silently choose from the static list while the proxy is down: that
+        # recreates the stale model_not_supported pin this command is meant to fix.
+        if (-not $catalog -or -not $models) {
+            Write-Error 'copilot-model: --auto needs a reachable proxy and live /v1/models catalog'; return
+        }
+        $raw = Select-CopilotBestModel -Model $models
+        if (-not $raw) { Write-Error "copilot-model: --auto could not pick a model"; return }
+        $resolved = ConvertTo-CopilotClaudeModel -Model $raw -Catalog $catalog
         $why = switch -Regex ($resolved) {
             '^claude-'  { 'Claude preferred'; break }
-            'codex'     { 'no Claude; best Codex'; break }
-            '^(gpt-|o\d)' { 'no Claude/Codex; best GPT'; break }
-            '^gemini-'  { 'no Claude/Codex/GPT; best Gemini'; break }
+            '^(gpt-|.*codex|o\d)' { 'no Claude; capability-ranked OpenAI'; break }
+            '^gemini-'  { 'no Claude/OpenAI; best Gemini'; break }
             default     { 'best available' }
         }
         Write-Host "copilot-model: --auto -> $resolved  ($why)"
     } elseif (-not $arg) {
         if (-not (Get-Command fzf -ErrorAction SilentlyContinue)) { Write-Error "copilot-model: pass a model id (fzf not found). Try: copilot-model -l"; return }
-        $want = $models | fzf --prompt='model> ' --height=40% --reverse --header="current: $(_ModelCurrent)  |  tip: copilot-model --auto"
+        $want = $models | fzf --prompt='model> ' --height=40% --reverse --header="current: $currentModel  |  tip: copilot-model --auto"
         if (-not $want) { Write-Host 'cancelled'; return }
-        $resolved = $want
+        $resolved = ConvertTo-CopilotClaudeModel -Model $want -Catalog $catalog
     } else {
         $suffix = ''; $base = $arg
         if ($arg -match '\[1m\]$') { $suffix = '[1m]'; $base = $arg -replace '\[1m\]$', '' }
@@ -1184,23 +1367,39 @@ function copilot-model {
             if ($hits.Count -eq 1) { $resolved = $hits[0] }
             else { Write-Error "copilot-model: '$arg' did not match a unique model. Try: copilot-model -l"; return }
         }
-        $resolved = "$resolved$suffix"
+        if ($suffix) { $resolved = "$resolved$suffix" }
+        else { $resolved = ConvertTo-CopilotClaudeModel -Model $resolved -Catalog $catalog }
     }
 
-    $old = _ModelCurrent
-    if ($old -eq $resolved) { Write-Host "copilot-model: already using $resolved (no change)"; return }
+    $old = $currentModel
+    if ($old -eq $resolved -and $target -eq 'state') { Write-Host "copilot-model: already using $resolved (no change)"; return }
 
     if ($target -eq 'local') {
         $obj = Get-Content -Raw $settings | ConvertFrom-Json
-        $obj.env.ANTHROPIC_MODEL = $resolved
-        $obj.env.ANTHROPIC_DEFAULT_OPUS_MODEL = $resolved
+        $modelProfile = Get-CopilotModelProfile -Model $resolved -Catalog $catalog
+        $roleSet = [ordered]@{
+            ANTHROPIC_MODEL                 = $modelProfile.main
+            ANTHROPIC_DEFAULT_FABLE_MODEL   = $modelProfile.fable
+            ANTHROPIC_DEFAULT_OPUS_MODEL    = $modelProfile.opus
+            ANTHROPIC_DEFAULT_SONNET_MODEL  = $modelProfile.sonnet
+            ANTHROPIC_DEFAULT_HAIKU_MODEL   = $modelProfile.haiku
+            ANTHROPIC_SMALL_FAST_MODEL      = $modelProfile.haiku
+        }
+        foreach ($k in $roleSet.Keys) {
+            if ($obj.env.PSObject.Properties[$k]) { $obj.env.$k = $roleSet[$k] }
+            else { $obj.env | Add-Member -NotePropertyName $k -NotePropertyValue $roleSet[$k] }
+        }
         $obj | ConvertTo-Json -Depth 10 | Set-Content -Path $settings -Encoding utf8
-        Write-Host "copilot-model: $old -> $resolved  (project: $settings)"
+        if ($old -eq $resolved) { Write-Host "copilot-model: refreshed role profile for $resolved  (project: $settings)" }
+        else { Write-Host "copilot-model: $old -> $resolved  (project: $settings)" }
+        Write-CopilotModelProfile $modelProfile
         Write-Host "  restart Claude Code to apply (exit, then: claude -c)"
     } else {
         New-Item -ItemType Directory -Force -Path (Split-Path $statef) | Out-Null
         $resolved | Set-Content $statef
         Write-Host "copilot-model: $old -> $resolved  (global: $statef)"
+        Write-CopilotModelProfile (Get-CopilotModelProfile -Model $resolved -Catalog $catalog)
+        Write-Host '  applies to the next claude-copilot / copilot-run / copilot-here on'
     }
 }
 
