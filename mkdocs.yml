@@ -42,6 +42,7 @@ plugins:
             Shell: Shell 環境
             Rationale: 設計取捨
             copilot-proxy: copilot-proxy
+            Codex status line: Codex 狀態列
             translate: translate
             Input method: 輸入法
             Multi-agent workflow: 多 Agent 工作流
@@ -65,6 +66,7 @@ nav:
   - Shell: shell.md
   - Rationale: rationale.md
   - copilot-proxy: copilot-proxy.md
+  - Codex status line: codex-status-line.md
   - translate: translate.md
   - Input method: input-method.md
   - Multi-agent workflow: claude-code-agents.md

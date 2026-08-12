@@ -15,7 +15,7 @@ fork，讓 **GitHub Copilot 訂閱**可作為 **Claude Code** 與其他 Anthropi
 | `copilot-proxy auth` | 一次性的 GitHub device 登入（儲存 token） |
 | `copilot-proxy start` / `stop` / `restart` | 管理本機 proxy（port 4141） |
 | `copilot-proxy status` | 顯示 raw served 數量與 Claude 可用性 |
-| `copilot-proxy doctor [--live]` | 診斷套件、認證、proxy、catalog、roles 與上游 |
+| `copilot-proxy doctor [--live]` | 診斷套件、認證、proxy、catalog、roles、上游與 Codex Apps |
 | `copilot-proxy logs [N]` | 查看 proxy log |
 | `copilot-proxy shim [on\|off]` | 切換節流 shim（port 4142） |
 | `copilot-proxy whoami` | 帳號 / 方案 / 額度 |
@@ -23,6 +23,7 @@ fork，讓 **GitHub Copilot 訂閱**可作為 **Claude Code** 與其他 Anthropi
 | `copilot-run <cmd...>` | 注入 proxy 環境變數後執行指令 |
 | `claude-copilot` | 在 proxy 上開一次 Claude Code session |
 | `claude-copilot-once` | 暫時釘住專案、執行一次、結束後還原 |
+| `codex-copilot` / `codex-copilot-once` | 零持久化的 Codex Responses proxy session |
 | `copilot-here [on\|off\|status]` | 在 `.claude/settings.local.json` 做 sticky pin |
 | `copilot-model [<id>\|-l\|-c\|--auto]` | 切換或檢查完整 role profile |
 | `copilot-embed [TEXT\|-]` | 透過 `/v1/embeddings` 產生向量 |
@@ -36,6 +37,7 @@ copilot-proxy start
 copilot-model --auto              # 從 live catalog 選模型
 copilot-model -c                   # 查看 Main/Fable/Opus/Sonnet/Haiku
 copilot-here on                    # 固定本專案；或用 claude-copilot-once
+codex-copilot                     # Codex；即時 OpenAI-first model selection
 ```
 
 `chezmoi apply` 不會偷偷遷移既有 global/project pin。升級後請手動執行一次
@@ -129,7 +131,9 @@ ANTHROPIC_SMALL_FAST_MODEL
 - GitHub 會依帳號、組織政策、rollout 與 egress 改變 catalog。因此在仍有 served OpenAI
   fallback 時，「沒有 Claude」是 warning，不代表 proxy 本身壞掉。
 - `copilot-proxy doctor` 會比較 direct/proxied upstream catalog、驗證 main 與所有 role
-  aliases，並找出 stale local pin。`--live` 會送一個真實請求並消耗 quota。
+  aliases，並找出 stale local pin。`--live` 也會比較遠端 ChatGPT `codex_apps`
+  的 direct/proxied reachability，再送一個真實 inference request；只有後者消耗
+  quota，timeout 與 TLS failure 會分開報告。
 - `copilot-here` 只寫入 gitignored `.claude/settings.local.json`，不碰 committed project
   settings；`off` 只移除 helper 擁有的 env keys，保留其他設定。
 - `claude-copilot` / `claude-copilot-once` 保留 Windows port 的 trusted
@@ -138,3 +142,39 @@ ANTHROPIC_SMALL_FAST_MODEL
 
 狀態放在 `~/.local/state/copilot-proxy/`；GitHub token 放在
 `~/.local/share/copilot-api/github_token`。
+
+## Codex 走 gateway
+
+`codex-copilot` 與完全相同的 `codex-copilot-once` alias 會啟動本機
+gateway/shim，並用本次啟動的 Codex `-c` overrides 傳入 `copilot_api`
+Responses provider。它們不改 user/project Codex config，所以 plain `codex` 不受影響。
+明確 `-m` / `--model` 永遠優先；否則從即時 raw catalog 依序選
+OpenAI/Codex（`Sol > Terra > GPT-5.5 > GPT-5.4 > GPT-5.3 Codex > Luna > mini`），
+再退到 Claude、Gemini 與其他 chat model；disabled/embedding model 會排除。
+
+這是與 Claude Code `copilot-model --auto` 分開的 picker：後者保持
+Claude-first，只有 Codex launcher 是 OpenAI-first。
+
+有安裝 SpecStory 時自動整合。Wrapper 會保留生效的 `codex_cmd`（project config >
+user config > 裸 `codex`），再附加 provider/model/user arguments；
+`--no-specstory` 直接執行 Codex。Claude/Gemini fallback 經 Responses Lite，不支援
+Responses `tool_search`，因此 native Responses OpenAI models 排在 Anthropic 前。
+Launcher 也會啟用 gateway-backed remote compaction，並排除依賴不可用
+`tool_search` 的 `mcp__codex_apps__sites` namespace；後續明確傳入的 `-c`
+仍可在單次呼叫覆寫這兩項。
+
+`codex_apps` 本身不是 localhost service，也不是 Apple-Silicon-only Codex Desktop
+bridge；它是 `https://chatgpt.com/backend-api/wham/apps` 的遠端 MCP。因此即使
+`localhost:4142` inference 正常，它仍可能啟動失敗。保留 Apps 啟用，並以
+`copilot-proxy doctor --live` 獨立診斷這條路由。
+
+刻意不做 Codex 版 `copilot-here`：project `.codex/config.toml` 不能覆寫 provider
+definition、provider selection 或 auth metadata。顯式 launcher 能提供 project/session
+scope，同時不改 user-wide default。
+
+### 實驗性 direct 設定
+
+Direct `model_providers.copilot-enterprise` 範例只記錄在 macOS/Linux 完整指南，
+不會安裝。它不是 localhost proxy 路徑，而且貼文中的 `gh auth token` flow 不具可攜性：
+本次 EMU 帳號實測回 `421`/`403`；`copilot-proxy auth` 保存的 credential 加正常短效
+Copilot token exchange 則可用。因此正式 launcher 使用已認證的本機 gateway。

@@ -1,0 +1,11 @@
+[tui]
+# Native Codex only accepts built-in status items. Quota counters are omitted:
+# with codex-copilot they may describe the ChatGPT account, not Copilot usage.
+status_line = [
+  "model-with-reasoning",
+  "fast-mode",
+  "git-branch",
+  "context-remaining",
+  "task-progress",
+  "current-dir",
+]

@@ -142,13 +142,10 @@ Enabled by **Install coding agents**:
   Upgraded with `just upgrade-winget`, not npm.
 - **OpenCode** (`opencode-ai`), **Codex** (`@openai/codex`), **Copilot CLI**
   (`@github/copilot`) — installed globally via **npm** (provided by the scoop `node`).
-  On a corporate machine `npm` is typically pointed at an internal mirror
-  (here `packagefeedproxy.microsoft.io/npm/`, set at the machine level) because
-  `registry.npmjs.org` is blocked. That mirror serves public packages too, so no
-  extra setup is needed — but **bun ignores it**, which is why `copilot-proxy`
-  installs its package with npm whenever npm is available. Two pitfall docs
-  cover the failure modes: `copilot-api-connectionrefused-stale-bun-only-module`
-  and `packagefeedproxy-npm-404-wrong-base-path`.
+- **Codex native footer** — chezmoi non-destructively merges a provider-neutral
+  status line (model/reasoning, fast mode, branch, context, tasks, directory)
+  into `~/.codex/config.toml`. No fork or PATH shim; see
+  [Codex status line](codex-status-line.md).
 - **OpenCode Desktop** — GUI companion to the `opencode-ai` CLI, via scoop
   (`extras/opencode-desktop`).
 - **claude-hud** — a statusline HUD that renders below the Claude Code prompt.

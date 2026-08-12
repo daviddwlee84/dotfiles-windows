@@ -42,6 +42,11 @@ scripts/**
 tests
 tests/**
 
+# Codex config is only meaningful when the coding-agent bundle is enabled.
+{{ if not .installCodingAgents }}
+.codex/**
+{{ end }}
+
 site
 site/**
 .venv

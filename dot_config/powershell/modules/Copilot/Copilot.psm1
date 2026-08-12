@@ -1,8 +1,8 @@
-# Copilot.psm1 — GitHub Copilot -> Anthropic proxy for Claude Code, native
+# Copilot.psm1 — GitHub Copilot agent gateway for Claude Code and Codex, native
 # PowerShell port of the POSIX 43_copilot_proxy.sh / 44_copilot_embed.sh.
 #
 # Runs the maintained copilot-api fork (npm @jeffreycao/copilot-api) via `bunx`
-# so a GitHub Copilot subscription can back Claude Code. The optional Bun
+# so a GitHub Copilot subscription can back Claude Code and Codex. The optional Bun
 # throttle shim (copilot-throttle-shim.js) is reused verbatim from the unix side.
 #
 # Public commands (exported with their original hyphenated names for muscle
@@ -11,6 +11,8 @@
 #   copilot-run <cmd...>            run a command with the proxy env injected
 #   claude-copilot [args...]        one-off Claude Code session on the proxy
 #   claude-copilot-once [args...]   pinned one-shot session, auto-reverted
+#   codex-copilot [args...]         one-off Codex session on Responses proxy
+#   codex-copilot-once [args...]    identical zero-persistence alias
 # (claude-copilot / -once run claude with --dangerously-skip-permissions — the
 #  proxy flow is the trusted, hands-off path; plain `claude` is unaffected.)
 #   copilot-here [on|off|status]    per-project pin via ./.claude/settings.local.json
@@ -337,6 +339,56 @@ function script:Get-CopilotUpstreamModel {
     } catch { return $null }
 
     @($up.data.id | Where-Object { $_ } | Sort-Object -Unique)
+}
+
+# Optional ChatGPT Apps reachability. This is deliberately separate from the
+# Copilot inference probes: codex_apps is a remote MCP served by chatgpt.com,
+# not a localhost bridge to Codex.app and not part of GitHub Copilot.
+function script:Get-CopilotProbeFailureKind {
+    param($ErrorRecord)
+
+    $message = if ($ErrorRecord -is [System.Management.Automation.ErrorRecord]) {
+        $ErrorRecord.Exception.ToString()
+    } else { [string]$ErrorRecord }
+
+    if ($message -match '(?i)timed?\s*out|timeout|operation.*canceled|deadline') { return 'timeout' }
+    if ($message -match '(?i)certificate|authenticationexception|ssl|tls|secure channel') { return 'tls' }
+    'network'
+}
+
+function script:Invoke-CopilotOptionalHttpProbe {
+    param(
+        [Parameter(Mandatory)] [string] $Uri,
+        [string] $Via = 'direct'
+    )
+
+    $transport = @{}
+    if ($Via -eq 'direct') { $transport['NoProxy'] = $true }
+    elseif ($Via) { $transport['Proxy'] = $Via }
+
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    try {
+        $response = Invoke-WebRequest -Uri $Uri -Method Get -TimeoutSec 12 `
+            -SkipHttpErrorCheck -Headers @{ 'user-agent' = 'codex-copilot-doctor/1.0' } `
+            @transport -ErrorAction Stop
+        $sw.Stop()
+        [pscustomobject]@{
+            Reached = $true
+            Code    = [int]$response.StatusCode
+            Seconds = [math]::Round($sw.Elapsed.TotalSeconds, 2)
+            Kind    = $null
+            Error   = $null
+        }
+    } catch {
+        $sw.Stop()
+        [pscustomobject]@{
+            Reached = $false
+            Code    = 0
+            Seconds = [math]::Round($sw.Elapsed.TotalSeconds, 2)
+            Kind    = Get-CopilotProbeFailureKind $_
+            Error   = ($_.Exception.Message -replace '\s+', ' ').Trim()
+        }
+    }
 }
 
 
@@ -777,7 +829,7 @@ function copilot-proxy {
         }
         { $_ -in '-h', '--help', 'help' } {
             Write-Host "Usage: copilot-proxy [start|stop|restart|status|doctor [--live]|logs [shim|N [gen]]|shim [on|off|status]|whoami|auth|reinstall]"
-            Write-Host "  doctor (alias: test)  diagnose prereqs, package, auth, proxy, Claude catalog"
+            Write-Host "  doctor (alias: test)  diagnose prereqs, package, auth, proxy, Claude catalog, Codex Apps"
             Write-Host "                        (direct vs via proxy), upstream. --live costs 1 quota unit."
             Write-Host "  COPILOT_HTTP_PROXY    auto|always|never|http://127.0.0.1:PORT  (default auto)"
             Write-Host "                        auto attaches --proxy-env when a System/env proxy is found."
@@ -967,6 +1019,39 @@ function script:Invoke-CopilotDoctor {
     }
     SKIP '' 'HTTP 400/401 = reached (an unauthenticated probe is expected to be rejected)'
 
+    Write-Host "`nCodex Apps (ChatGPT MCP)"
+    $appsUri = 'https://chatgpt.com/backend-api/wham/apps'
+    SKIP 'route' "$appsUri — independent of localhost Copilot inference and Codex.app"
+    if (-not $Live) {
+        SKIP 'skipped' 'pass --live to compare direct and configured-proxy reachability'
+    } else {
+        $appsDirect = Invoke-CopilotOptionalHttpProbe -Uri $appsUri -Via 'direct'
+        if ($appsDirect.Reached) {
+            OK 'direct' "HTTP $($appsDirect.Code) in $($appsDirect.Seconds)s (an auth rejection still proves reachability)"
+        } else {
+            NOTE 'direct' "$($appsDirect.Kind) failure after $($appsDirect.Seconds)s"
+            if ($appsDirect.Kind -eq 'tls') { HINT 'inspect antivirus/corporate TLS interception and the Windows trust store' }
+            elseif ($appsDirect.Kind -eq 'timeout') { HINT 'the ChatGPT Apps route is blocked or not entering the expected TUN path' }
+        }
+
+        if ($httpProxy) {
+            $appsVia = Invoke-CopilotOptionalHttpProbe -Uri $appsUri -Via $httpProxy
+            if ($appsVia.Reached) {
+                OK 'via proxy' "HTTP $($appsVia.Code) in $($appsVia.Seconds)s ($httpProxy)"
+                if (-not $appsDirect.Reached) {
+                    HINT "Codex Apps needs this route; launch Codex with HTTPS_PROXY=$httpProxy or repair TUN routing"
+                }
+            } elseif ($appsDirect.Reached) {
+                SKIP 'via proxy' "$($appsVia.Kind) failure — direct already works, so Apps need no explicit proxy"
+            } else {
+                NOTE 'via proxy' "$($appsVia.Kind) failure after $($appsVia.Seconds)s ($httpProxy)"
+                HINT 'this does not invalidate GitHub Copilot inference; it only explains codex_apps startup failures'
+            }
+        } else {
+            SKIP 'via proxy' 'no explicit/system HTTP proxy detected; TUN may still carry direct traffic'
+        }
+    }
+
     Write-Host "`nLive probe"
     if (-not $Live) { SKIP 'skipped' 'pass --live to send one real request (consumes 1 quota unit)' }
     elseif (-not (Test-CopilotAlive)) { SKIP 'skipped' 'proxy is not running' }
@@ -1011,6 +1096,146 @@ function copilot-run {
             else { Set-Item "env:$k" $saved[$k] }
         }
     }
+}
+
+# Codex prefers a native Responses-capable OpenAI model. Claude/Gemini are
+# Responses Lite fallbacks only, unlike Select-CopilotBestModel (Claude Code),
+# where native Claude remains the first choice.
+function script:Select-CopilotBestCodexModel {
+    param([string[]] $Model)
+    if (-not $Model -or $Model.Count -eq 0) { return $null }
+    $Model = @($Model | ForEach-Object { Remove-CopilotContextHint $_ } | Sort-Object -Unique)
+
+    foreach ($preferred in 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.5', 'gpt-5.4', 'gpt-5.3-codex',
+                           'gpt-5.6-luna', 'gpt-5.4-mini', 'gpt-5-mini') {
+        if ($Model -contains $preferred) { return $preferred }
+    }
+    $pick = { param($re, $exclude)
+        $c = @($Model | Where-Object { $_ -match $re -and (-not $exclude -or $_ -notmatch $exclude) } | Sort-Object)
+        if ($c.Count -gt 0) { $c[-1] } else { $null }
+    }
+    $r = & $pick '^gpt-' 'mini|nano|luna'
+    if ($r) { return $r }
+    $r = & $pick 'codex' $null
+    if ($r) { return $r }
+    $r = & $pick '^gpt-' $null
+    if ($r) { return $r }
+
+    foreach ($preferred in 'claude-fable-5',
+                           'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6',
+                           'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-sonnet-4-5',
+                           'claude-opus-4-5', 'claude-haiku-4-5') {
+        if ($Model -contains $preferred) { return $preferred }
+    }
+    $r = & $pick '^claude-' $null
+    if ($r) { return $r }
+    $r = & $pick '^gemini-' 'flash'
+    if ($r) { return $r }
+    $r = & $pick '^gemini-' $null
+    if ($r) { return $r }
+    @($Model | Sort-Object)[-1]
+}
+
+function script:Get-SpecstoryCodexCmd {
+    foreach ($f in '.specstory/cli/config.toml', (Join-Path $HOME '.specstory/cli/config.toml')) {
+        if (-not (Test-Path -LiteralPath $f)) { continue }
+        foreach ($line in (Get-Content -LiteralPath $f -ErrorAction SilentlyContinue)) {
+            if ($line -match '^\s*codex_cmd\s*=\s*(?:"([^"]*)"|''([^'']*)'')') {
+                $v = if ($Matches[1]) { $Matches[1] } else { $Matches[2] }
+                if ($v) { return $v }
+            }
+        }
+    }
+    'codex'
+}
+
+function script:Test-CopilotExplicitCodexModel {
+    param([string[]] $Argv)
+    foreach ($a in $Argv) {
+        if ($a -in '-m', '--model' -or $a -match '^(?:-m|--model)=') { return $true }
+    }
+    $false
+}
+
+function codex-copilot {
+    [CmdletBinding()]
+    param([Parameter(ValueFromRemainingArguments)] [string[]] $Argv)
+    $ss = 'auto'
+    if ($Argv -and $Argv[0] -eq '--no-specstory') { $ss = 'never'; $Argv = @($Argv | Select-Object -Skip 1) }
+    elseif ($Argv -and $Argv[0] -eq '--specstory') { $Argv = @($Argv | Select-Object -Skip 1) }
+    elseif ($Argv -and $Argv[0] -in '-h', '--help') {
+        Write-Host 'Usage: codex-copilot [--no-specstory] [codex args...]'
+        Write-Host '  One-off Codex session on the local Copilot Responses gateway.'
+        Write-Host '  Auto model: OpenAI/Codex > Claude > Gemini > other served chat models.'
+        Write-Host '  Alias: codex-copilot-once'
+        return
+    }
+
+    if (-not (Test-CopilotAlive)) { copilot-proxy start; if (-not (Test-CopilotAlive)) { return } }
+    if ((Get-CopilotShimEnabled) -and -not (Test-CopilotShimAlive)) {
+        if (-not (Start-CopilotShim)) { return }
+    }
+    $catalog = Get-CopilotModelCatalog
+    if (-not $catalog) { Write-Error 'codex-copilot: could not read the live gateway model catalog'; return }
+
+    $explicitModel = Test-CopilotExplicitCodexModel -Argv $Argv
+    $model = $null
+    if (-not $explicitModel) {
+        $models = @($catalog.data | Where-Object {
+            ($_.policy.state -ne 'disabled') -and ($_.model_picker_enabled -ne $false) -and
+            ($_.capabilities.type -ne 'embeddings')
+        } | ForEach-Object { $_.id } | Where-Object { $_ } | Sort-Object -Unique)
+        $model = Select-CopilotBestCodexModel -Model $models
+        if (-not $model) { Write-Error 'codex-copilot: no usable chat model in the live gateway catalog'; return }
+        $Argv = @('-m', $model) + @($Argv)
+        if ($model -like 'claude-*' -or $model -like 'gemini-*') {
+            Write-Warning "codex-copilot: --auto -> $model (Responses Lite; tool_search unavailable)"
+        } else { Write-Host "codex-copilot: --auto -> $model" }
+    }
+
+    $base = Get-CopilotClientBase
+    $providerArgs = @(
+        '-c', 'model_provider="copilot_api"',
+        '-c', 'model_providers.copilot_api.name="OpenAI"',
+        '-c', "model_providers.copilot_api.base_url=`"$base`"",
+        '-c', 'model_providers.copilot_api.env_key="GITHUB_COPILOT_API_KEY"',
+        '-c', 'model_providers.copilot_api.requires_openai_auth=true',
+        '-c', 'model_providers.copilot_api.supports_websockets=false',
+        '-c', 'model_providers.copilot_api.wire_api="responses"',
+        '-c', 'model_providers.copilot_api.request_max_retries=3',
+        '-c', 'model_providers.copilot_api.stream_max_retries=1',
+        '-c', 'model_providers.copilot_api.stream_idle_timeout_ms=300000',
+        '-c', 'features.remote_compaction_v2=true',
+        '-c', 'features.code_mode.excluded_tool_namespaces=["mcp__codex_apps__sites"]'
+    )
+    if ($model) {
+        $entry = $catalog.data | Where-Object { $_.id -eq $model } | Select-Object -First 1
+        if ($entry.capabilities.limits.max_context_window_tokens) {
+            $Argv = @('-c', "model_context_window=$($entry.capabilities.limits.max_context_window_tokens)") + @($Argv)
+        }
+        if ($entry.capabilities.limits.max_prompt_tokens) {
+            $Argv = @('-c', "model_auto_compact_token_limit=$($entry.capabilities.limits.max_prompt_tokens)") + @($Argv)
+        }
+    }
+
+    $savedKey = $env:GITHUB_COPILOT_API_KEY
+    $env:GITHUB_COPILOT_API_KEY = 'dummy'
+    try {
+        if ($ss -eq 'auto' -and (Get-Command specstory -ErrorAction SilentlyContinue)) {
+            $cc = Get-SpecstoryCodexCmd
+            foreach ($a in @($providerArgs) + @($Argv)) { $cc = "$cc $(ConvertTo-CopilotShQuote $a)" }
+            specstory run codex -c $cc
+        } else { codex @providerArgs @Argv }
+    } finally {
+        if ($null -eq $savedKey) { Remove-Item env:GITHUB_COPILOT_API_KEY -ErrorAction SilentlyContinue }
+        else { $env:GITHUB_COPILOT_API_KEY = $savedKey }
+    }
+}
+
+function codex-copilot-once {
+    [CmdletBinding()]
+    param([Parameter(ValueFromRemainingArguments)] [string[]] $Argv)
+    codex-copilot @Argv
 }
 
 # --- specstory `-c` passthrough (why the base command must come from config) ---
@@ -1464,4 +1689,5 @@ function semsearch {
 }
 
 Export-ModuleMember -Function 'copilot-proxy', 'copilot-run', 'claude-copilot', 'claude-copilot-once',
+    'codex-copilot', 'codex-copilot-once',
     'copilot-here', 'copilot-model', 'copilot-embed', 'semsearch'

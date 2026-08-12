@@ -52,6 +52,7 @@ Add new entries here as you create them. Keep alphabetical.
 |---|---|---|
 | [align-windows-backup-with-unix-run-before-unified-dir](align-windows-backup-with-unix-run-before-unified-dir.md) | P? | Align Windows backup with Unix |
 | [auto-resume-wsl-docker-after-reboot](auto-resume-wsl-docker-after-reboot.md) | P? | Auto-resume WSL/Docker setup after reboot |
+| [copilot-proxy-global-apply-mode-for-claude-code-and-codex](copilot-proxy-global-apply-mode-for-claude-code-and-codex.md) | P? deferred 2026-08 | copilot-proxy global apply mode for Claude Code and Codex |
 | [specstory-windows-native-cli](specstory-windows-native-cli.md) | P? (blocked on PR #191) | SpecStory Windows-native CLI |
 | [translate-windows-distribution](translate-windows-distribution.md) | P2 | Prebuilt Windows binaries + scoop bucket for `translate` |
 | [windows-arm64-managed-machine-rough-edges](windows-arm64-managed-machine-rough-edges.md) | P? (environmental) | Windows-on-ARM64 + managed-machine rough edges |

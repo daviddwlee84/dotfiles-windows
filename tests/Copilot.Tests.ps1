@@ -95,6 +95,48 @@ Describe 'Copilot module' {
         }
     }
 
+    Context 'Codex model picker' {
+        It 'puts OpenAI Sol ahead of Claude and Gemini' {
+            InModuleScope Copilot {
+                Select-CopilotBestCodexModel -Model @('claude-fable-5', 'gemini-3.1-pro-preview', 'gpt-5.6-terra', 'gpt-5.6-sol') |
+                    Should -Be 'gpt-5.6-sol'
+            }
+        }
+        It 'uses Claude before Gemini when OpenAI is unavailable' {
+            InModuleScope Copilot {
+                Select-CopilotBestCodexModel -Model @('gemini-3.1-pro-preview', 'claude-sonnet-5', 'claude-opus-5') |
+                    Should -Be 'claude-opus-5'
+            }
+        }
+        It 'prefers non-flash Gemini as the final named family' {
+            InModuleScope Copilot {
+                Select-CopilotBestCodexModel -Model @('gemini-3.6-flash', 'gemini-3.1-pro-preview') |
+                    Should -Be 'gemini-3.1-pro-preview'
+            }
+        }
+        It 'detects every supported explicit model spelling without false positives' {
+            InModuleScope Copilot {
+                Test-CopilotExplicitCodexModel -Argv @('exec', '-m', 'claude-opus-5') | Should -BeTrue
+                Test-CopilotExplicitCodexModel -Argv @('exec', '--model=gpt-5.6-sol') | Should -BeTrue
+                Test-CopilotExplicitCodexModel -Argv @('exec', '-m=gpt-5.6-terra') | Should -BeTrue
+                Test-CopilotExplicitCodexModel -Argv @('exec', '--model', 'gpt-5.5') | Should -BeTrue
+                Test-CopilotExplicitCodexModel -Argv @('exec', '--config', 'model="gpt-5.4"') | Should -BeFalse
+            }
+        }
+        It 'preserves the project SpecStory codex command' {
+            $project = Join-Path $TestDrive 'project'
+            New-Item -ItemType Directory -Force (Join-Path $project '.specstory/cli') | Out-Null
+            'codex_cmd = "codex --ask-for-approval never"' |
+                Set-Content -LiteralPath (Join-Path $project '.specstory/cli/config.toml')
+            InModuleScope Copilot -Parameters @{ Project = $project } {
+                param($Project)
+                Push-Location $Project
+                try { Get-SpecstoryCodexCmd | Should -Be 'codex --ask-for-approval never' }
+                finally { Pop-Location }
+            }
+        }
+    }
+
     Context 'catalog metadata and Claude Code role profiles' {
         It 'adds [1m] only when the live model metadata advertises a 1M context window' {
             InModuleScope Copilot {
@@ -348,6 +390,25 @@ Describe 'Copilot module' {
         AfterEach { $env:COPILOT_HTTP_PROXY = $null }
     }
 
+    Context 'optional ChatGPT Apps probe classification' {
+        It 'keeps timeout, TLS, and generic network failures distinct' {
+            InModuleScope Copilot {
+                Get-CopilotProbeFailureKind 'The operation timed out' | Should -Be 'timeout'
+                Get-CopilotProbeFailureKind 'UNKNOWN_CERTIFICATE_VERIFICATION_ERROR' | Should -Be 'tls'
+                Get-CopilotProbeFailureKind 'No route to host' | Should -Be 'network'
+            }
+        }
+
+        It 'counts an HTTP authentication rejection as reachable' {
+            InModuleScope Copilot {
+                Mock Invoke-WebRequest { [pscustomobject]@{ StatusCode = 401 } }
+                $result = Invoke-CopilotOptionalHttpProbe -Uri 'https://chatgpt.com/backend-api/wham/apps'
+                $result.Reached | Should -BeTrue
+                $result.Code | Should -Be 401
+            }
+        }
+    }
+
     Context 'served-model parsing (includes claude_model_id alias)' {
         It 'returns both .id and .claude_model_id, sorted-unique' {
             InModuleScope Copilot {
@@ -378,9 +439,9 @@ Describe 'Copilot module' {
     }
 
     Context 'public surface' {
-        It 'exports the eight commands' {
+        It 'exports the ten commands' {
             $exported = (Get-Command -Module Copilot).Name
-            foreach ($c in 'copilot-proxy', 'copilot-run', 'claude-copilot', 'claude-copilot-once', 'copilot-here', 'copilot-model', 'copilot-embed', 'semsearch') {
+            foreach ($c in 'copilot-proxy', 'copilot-run', 'claude-copilot', 'claude-copilot-once', 'codex-copilot', 'codex-copilot-once', 'copilot-here', 'copilot-model', 'copilot-embed', 'semsearch') {
                 $exported | Should -Contain $c
             }
         }

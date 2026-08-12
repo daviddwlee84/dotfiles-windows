@@ -1,0 +1,110 @@
+#!/usr/bin/env pwsh
+# chezmoi modify_ script: enforce only Codex's native footer while preserving
+# every unrelated live setting (providers, projects, plugins, feature flags).
+# Runs under [interpreters.ps1]. A malformed live file is passed through
+# unchanged: config recovery must be explicit, never an accidental overwrite.
+
+$ErrorActionPreference = 'Stop'
+
+function Write-StdoutBytes {
+    param([byte[]] $Bytes)
+    $out = [Console]::OpenStandardOutput()
+    $out.Write($Bytes, 0, $Bytes.Length)
+    $out.Flush()
+}
+
+$utf8 = [System.Text.UTF8Encoding]::new($false)
+$overlayText = @'
+{{ include (joinPath .chezmoi.sourceDir ".chezmoitemplates/agents/codex.config.overlay.toml") }}
+'@
+$liveText = [Console]::In.ReadToEnd()
+
+# Empty input is a fresh install and the overlay itself is already valid TOML.
+if ([string]::IsNullOrWhiteSpace($liveText)) {
+    Write-StdoutBytes $utf8.GetBytes($overlayText)
+    return
+}
+
+$tmpDir = [System.IO.Path]::GetTempPath()
+$stamp = [System.IO.Path]::GetRandomFileName()
+$overlayFile = Join-Path $tmpDir "codex-overlay-$stamp.toml"
+$liveFile = Join-Path $tmpDir "codex-live-$stamp.toml"
+$pyFile = Join-Path $tmpDir "codex-merge-$stamp.py"
+$outFile = Join-Path $tmpDir "codex-out-$stamp.toml"
+
+try {
+    [System.IO.File]::WriteAllText($overlayFile, $overlayText, $utf8)
+    [System.IO.File]::WriteAllText($liveFile, $liveText, $utf8)
+
+    $py = $null
+    if (Get-Command uv -ErrorAction SilentlyContinue) {
+        $py = @('uv', 'run', '--no-project', '--quiet', '--with', 'tomlkit', '--python', '>=3.11', 'python')
+    } elseif (Get-Command python -ErrorAction SilentlyContinue) {
+        $py = @('python')
+    } elseif (Get-Command python3 -ErrorAction SilentlyContinue) {
+        $py = @('python3')
+    }
+
+    if (-not $py) {
+        [Console]::Error.WriteLine('modify_config.toml: no uv/python found; preserving live config unchanged')
+        Write-StdoutBytes $utf8.GetBytes($liveText)
+        return
+    }
+
+    $pySource = @'
+import os
+import sys
+
+import tomlkit
+
+overlay_path = os.environ["CODEX_OVERLAY_FILE"]
+live_path = os.environ["CODEX_LIVE_FILE"]
+out_path = os.environ["CODEX_OUT_FILE"]
+
+with open(overlay_path, "r", encoding="utf-8") as fh:
+    overlay_text = fh.read()
+with open(live_path, "r", encoding="utf-8") as fh:
+    live_text = fh.read()
+
+try:
+    live = tomlkit.parse(live_text)
+    overlay = tomlkit.parse(overlay_text)
+except Exception as exc:
+    print(f"modify_config.toml: invalid TOML; preserving live config unchanged: {exc}", file=sys.stderr)
+    with open(out_path, "w", encoding="utf-8", newline="") as fh:
+        fh.write(live_text)
+    sys.exit(0)
+
+if "tui" not in live or not isinstance(live["tui"], dict):
+    live["tui"] = tomlkit.table()
+live["tui"]["status_line"] = overlay["tui"]["status_line"]
+
+with open(out_path, "w", encoding="utf-8", newline="") as fh:
+    fh.write(tomlkit.dumps(live))
+'@
+    [System.IO.File]::WriteAllText($pyFile, $pySource, $utf8)
+
+    $env:CODEX_OVERLAY_FILE = $overlayFile
+    $env:CODEX_LIVE_FILE = $liveFile
+    $env:CODEX_OUT_FILE = $outFile
+    $exe = $py[0]
+    $rest = if ($py.Count -gt 1) { @($py[1..($py.Count - 1)]) } else { @() }
+    $rest += $pyFile
+    & $exe @rest
+    $rc = $LASTEXITCODE
+
+    if ($rc -ne 0 -or -not (Test-Path -LiteralPath $outFile)) {
+        [Console]::Error.WriteLine("modify_config.toml: merge failed (exit $rc); preserving live config unchanged")
+        Write-StdoutBytes $utf8.GetBytes($liveText)
+        return
+    }
+
+    Write-StdoutBytes ([System.IO.File]::ReadAllBytes($outFile))
+} finally {
+    foreach ($f in $overlayFile, $liveFile, $pyFile, $outFile) {
+        Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
+    }
+    foreach ($v in 'CODEX_OVERLAY_FILE', 'CODEX_LIVE_FILE', 'CODEX_OUT_FILE') {
+        Remove-Item "env:$v" -ErrorAction SilentlyContinue
+    }
+}
