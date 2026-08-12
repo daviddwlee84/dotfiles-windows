@@ -237,6 +237,7 @@ Describe 'Copilot module' {
         It 'selects the Copilot provider explicitly for the maintained fork' {
             InModuleScope Copilot {
                 $script:authArgs = @()
+                Mock Get-Command { [pscustomobject]@{ Name = 'bun'; Source = 'bun' } } -ParameterFilter { $Name -eq 'bun' }
                 Mock Get-CopilotPkgFlavor { 'fork' }
                 Mock Invoke-CopilotPkgCommand { $script:authArgs = @($Argument) }
                 copilot-proxy auth

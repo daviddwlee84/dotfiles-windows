@@ -29,6 +29,10 @@ def _stage_fixture_at(repo: Path, fixture_path: Path, dest_rel: str) -> None:
     dest = repo / dest_rel
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(fixture_path, dest)
+    content = dest.read_text(encoding="utf-8").replace(
+        "__SYNTHETIC_STRIPE_WEBHOOK_SECRET__", "whsec_" + "a" * 32
+    )
+    dest.write_text(content, encoding="utf-8")
     subprocess.run(["git", "add", "--", dest_rel], cwd=repo, check=True)
 
 
