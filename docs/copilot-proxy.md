@@ -166,6 +166,16 @@ catalog is ranked OpenAI/Codex first (`Sol > Terra > GPT-5.5 > GPT-5.4 > GPT-5.3
 Codex > Luna > mini`), then Claude, Gemini and other chat models. Disabled and
 embedding models are excluded.
 
+Codex always uses the shim on `localhost:4142`, even when the persisted
+throttling toggle is off. Besides throttling, that boundary normalizes blank
+descriptions in Codex `mcp_list_tools` Responses items. GitHub Copilot rejects
+those with `Invalid 'input[0].tools[0].description': empty string`, while MCP
+servers and the native Codex path may omit them. The shim fills only those tool
+definition fields and leaves prompts, schemas, and tool names unchanged.
+Codex currently zstd-compresses these requests; the shim decodes only the
+Responses body it must repair, forwards ordinary JSON, and removes the stale
+`content-encoding` header.
+
 This is a separate picker from Claude Code's `copilot-model --auto`: that path
 remains Claude-first, while only the Codex launcher is OpenAI-first.
 

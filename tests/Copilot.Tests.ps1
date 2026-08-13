@@ -446,4 +446,32 @@ Describe 'Copilot module' {
             }
         }
     }
+
+    Context 'Responses compatibility shim' {
+        It 'keeps the Unix and Windows shim implementations byte-identical' {
+            $unixShim = '/Users/david/.local/share/chezmoi/dot_config/shell/copilot-throttle-shim.js'
+            if (-not (Test-Path -LiteralPath $unixShim)) { Set-ItResult -Skipped -Because 'Unix sibling checkout is unavailable'; return }
+            $windowsShim = Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-throttle-shim.js'
+            (Get-FileHash -Algorithm SHA256 $windowsShim).Hash |
+                Should -Be (Get-FileHash -Algorithm SHA256 $unixShim).Hash
+        }
+
+        It 'fills blank MCP descriptions without adding one to a native tool' {
+            if (-not (Get-Command bun -ErrorAction SilentlyContinue)) { Set-ItResult -Skipped -Because 'bun is unavailable'; return }
+            $env:COPILOT_SHIM_TEST_PATH = (Resolve-Path (Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-throttle-shim.js')).Path
+            try {
+                $json = & bun -e @'
+import { pathToFileURL } from "node:url";
+const { normalizeResponsesToolDescriptions: n } = await import(pathToFileURL(process.env.COPILOT_SHIM_TEST_PATH));
+const p = { tools: [{ type: "web_search" }], input: [{ type: "plugin_tools", tools: [{ name: "alpha", description: "" }] }] };
+const r = n(p);
+console.log(JSON.stringify({ r, p }));
+'@
+                $result = $json | ConvertFrom-Json
+                $result.r.changed | Should -Be 1
+                $result.p.input[0].tools[0].description | Should -Be 'Tool alpha.'
+                $result.p.tools[0].PSObject.Properties.Name | Should -Not -Contain 'description'
+            } finally { Remove-Item env:COPILOT_SHIM_TEST_PATH -ErrorAction SilentlyContinue }
+        }
+    }
 }

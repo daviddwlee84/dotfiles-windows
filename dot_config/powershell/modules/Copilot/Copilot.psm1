@@ -1172,7 +1172,9 @@ function codex-copilot {
     }
 
     if (-not (Test-CopilotAlive)) { copilot-proxy start; if (-not (Test-CopilotAlive)) { return } }
-    if ((Get-CopilotShimEnabled) -and -not (Test-CopilotShimAlive)) {
+    # Codex always needs the shim's Responses compatibility normalization even
+    # when persistent burst throttling is disabled. This does not change state.
+    if (-not (Test-CopilotShimAlive)) {
         if (-not (Start-CopilotShim)) { return }
     }
     $catalog = Get-CopilotModelCatalog
@@ -1193,7 +1195,7 @@ function codex-copilot {
         } else { Write-Host "codex-copilot: --auto -> $model" }
     }
 
-    $base = Get-CopilotClientBase
+    $base = Get-CopilotShimBase
     $providerArgs = @(
         '-c', 'model_provider="copilot_api"',
         '-c', 'model_providers.copilot_api.name="OpenAI"',
