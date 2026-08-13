@@ -12,7 +12,7 @@ the PowerShell profile. It requires Bun, Node/npm and a Copilot subscription.
 
 | Command | What it does |
 |---|---|
-| `copilot-proxy auth` | one-time GitHub device login (stores a token) |
+| `copilot-proxy auth` | one-time GitHub device login (`copilot-api auth login --provider copilot`; stores but does not display the token) |
 | `copilot-proxy start` / `stop` / `restart` | manage the local proxy (port 4141) |
 | `copilot-proxy status` | show raw served count and Claude availability |
 | `copilot-proxy doctor [--live]` | diagnose package, auth, proxy, catalog, roles, upstream and Codex Apps |
@@ -63,9 +63,28 @@ hard-coded fallback.
 
 The package is installed once under `~/.local/share/copilot-api/pkg`. Windows
 uses `npm.cmd` first because it understands the Azure Artifacts credential
-provider in `~/.npmrc`; Bun remains the fallback/runtime. A package-version stamp
-makes the 2.1.0 bump reinstall automatically. Warm starts do no package network
-work.
+provider in `~/.npmrc`; Bun remains the fallback/runtime. Readiness is based on
+the installed `package.json` name/version, a verified stamp, and a runnable launch
+path—not merely an old directory or binlink. A failed install cannot restamp or
+launch stale package contents. `COPILOT_API_PKG` accepts registry package specs
+(name or `@scope/name` with an optional version/tag/range); npm aliases and
+local/git/URL specs are rejected before filesystem cleanup. Warm starts do no
+package network work.
+
+On a corporate mirror, `ETARGET` can mean the exact public version has not synced
+yet. Check the registry that npm is actually using before deleting the working
+prefix:
+
+```powershell
+npm config get registry
+npm view '@jeffreycao/copilot-api@2.1.0' version
+# Optional comparison where direct public npm is permitted:
+npm view '@jeffreycao/copilot-api@2.1.0' version --registry https://registry.npmjs.org/
+```
+
+If only the configured mirror is missing the version, wait/request mirror sync or
+use an approved registry for `copilot-proxy reinstall`; do not replace the tested
+exact pin with `latest`.
 
 ## Model selection and role profile
 
@@ -133,17 +152,25 @@ See Claude Code's [feature availability](https://code.claude.com/docs/en/feature
 - `COPILOT_HTTP_PROXY=auto` reads the Windows System Proxy or an explicit proxy
   environment variable, scopes it to the child and passes `--proxy-env`. Node
   otherwise ignores the WinINET system setting.
-- The model catalog is fetched once at proxy startup. `COPILOT_PROXY_START_TIMEOUT`
-  defaults to 45 seconds because a Clash/mihomo hop can make that refresh exceed
-  the old 20-second budget.
+- The proxy refreshes its model cache periodically; a restart forces an immediate
+  refresh. `COPILOT_PROXY_START_TIMEOUT` defaults to 45 seconds because a
+  Clash/mihomo hop can make the initial refresh exceed the old 20-second budget.
 - GitHub can vary the catalog by account, organization policy, rollout and egress.
-  No Claude models is therefore a warning when a served OpenAI fallback exists;
-  it is not by itself a broken proxy.
+  Claude IDs in `/v1/models` are therefore **advertised aliases**, not proof that
+  inference is authorized. No Claude IDs is not by itself a broken proxy; use
+  `copilot-model --auto` when you explicitly want to select another served pin.
+  There is no automatic Claude-to-OpenAI replay after a failed request.
 - `copilot-proxy doctor` compares direct and proxied upstream catalogs, validates
   the main model plus every role alias, and reports stale local pins. `--live`
   also compares direct/proxied reachability of remote ChatGPT `codex_apps`, then
-  sends one real inference request. Only the latter consumes quota; timeout and
-  TLS failures are reported separately.
+  sends one real request to the effective configured main model (or a clearly
+  labeled catalog fallback when that pin is absent). It never retries another
+  model. Only this inference request consumes quota; timeout and TLS failures are
+  reported separately.
+- HTTP 402 with `billing_not_configured` is account-wide and nonretryable. Select
+  an organization or enterprise under **Usage billed to** at
+  <https://github.com/settings/copilot/features>. Model changes,
+  `copilot-model --auto`, and shim toggles cannot repair that account setting.
 - `copilot-here` writes only the gitignored `.claude/settings.local.json`, never
   committed project settings. `off` removes every env key owned by the helper and
   preserves unrelated settings.
@@ -151,10 +178,11 @@ See Claude Code's [feature availability](https://code.claude.com/docs/en/feature
   `--dangerously-skip-permissions` and optional SpecStory behavior. Plain `claude`
   is unaffected.
 - The throttle shim remains byte-identical to the macOS/Linux copy and retries
-  403/429 bursts while limiting concurrent requests.
+  transient 403/429 bursts while limiting concurrent requests. It deliberately
+  passes HTTP 402 through once; billing configuration is not a throttle failure.
 
-State lives under `~/.local/state/copilot-proxy/`; the GitHub token is stored at
-`~/.local/share/copilot-api/github_token`.
+State lives under `~/.local/state/copilot-proxy/`; device login stores the GitHub
+token at `~/.local/share/copilot-api/github_token` without printing it by default.
 
 ## Codex through the gateway
 

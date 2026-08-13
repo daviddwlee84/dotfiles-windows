@@ -33,7 +33,9 @@ repos:
     hooks:
       - id: detect-private-key
       - id: check-added-large-files
-        args: ['--maxkb=2048']
+        # Agent transcripts can include exhaustive multi-agent review journals.
+        # Keep a finite ceiling with enough room for this repo's full review trail.
+        args: ['--maxkb=18432']
       - id: check-merge-conflict
       - id: end-of-file-fixer
         exclude: ^\.specstory/

@@ -1,29 +1,122 @@
 #!/usr/bin/env pwsh
 # chezmoi modify_ script: enforce only Codex's native footer while preserving
 # every unrelated live setting (providers, projects, plugins, feature flags).
-# Runs under [interpreters.ps1]. A malformed live file is passed through
+# Runs under [interpreters.ps1]. Every failure emits the original stdin bytes
 # unchanged: config recovery must be explicit, never an accidental overwrite.
 
 $ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $false
 
 function Write-StdoutBytes {
-    param([byte[]] $Bytes)
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [byte[]] $Bytes
+    )
+
     $out = [Console]::OpenStandardOutput()
     $out.Write($Bytes, 0, $Bytes.Length)
     $out.Flush()
+}
+
+function Write-PreservedInput {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Message,
+
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [byte[]] $Bytes
+    )
+
+    [Console]::Error.WriteLine("modify_config.toml: $Message; preserving live config unchanged")
+    Write-StdoutBytes -Bytes $Bytes
+}
+
+function Test-StartsWithUtf8Bom {
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [byte[]] $Bytes
+    )
+
+    return $Bytes.Length -ge 3 -and
+        $Bytes[0] -eq 0xEF -and
+        $Bytes[1] -eq 0xBB -and
+        $Bytes[2] -eq 0xBF
+}
+
+$inputBuffer = [System.IO.MemoryStream]::new()
+try {
+    try {
+        [Console]::OpenStandardInput().CopyTo($inputBuffer)
+        [byte[]] $originalBytes = $inputBuffer.ToArray()
+    } catch {
+        [byte[]] $originalBytes = $inputBuffer.ToArray()
+        Write-PreservedInput -Message "could not read stdin bytes: $($_.Exception.Message)" -Bytes $originalBytes
+        return
+    }
+} finally {
+    $inputBuffer.Dispose()
+}
+
+# Keep the original byte array immutable. Parsing gets a copy with at most one
+# leading UTF-8 BOM removed; successful output is always newly encoded instead.
+[byte[]] $parseBytes = [byte[]]::new($originalBytes.Length)
+[System.Array]::Copy($originalBytes, $parseBytes, $originalBytes.Length)
+$removedBom = Test-StartsWithUtf8Bom -Bytes $parseBytes
+if ($removedBom) {
+    [byte[]] $withoutBom = [byte[]]::new($parseBytes.Length - 3)
+    if ($withoutBom.Length -gt 0) {
+        [System.Array]::Copy($parseBytes, 3, $withoutBom, 0, $withoutBom.Length)
+    }
+    $parseBytes = $withoutBom
+}
+
+if ($removedBom -and (Test-StartsWithUtf8Bom -Bytes $parseBytes)) {
+    Write-PreservedInput -Message 'multiple leading UTF-8 BOMs are not valid TOML' -Bytes $originalBytes
+    return
+}
+
+$strictUtf8 = [System.Text.UTF8Encoding]::new($false, $true)
+try {
+    $liveText = $strictUtf8.GetString($parseBytes)
+} catch [System.Text.DecoderFallbackException] {
+    Write-PreservedInput -Message "stdin is not valid UTF-8: $($_.Exception.Message)" -Bytes $originalBytes
+    return
+}
+
+# tomlkit accepts a lone CR in some comments and multiline strings even though
+# TOML permits newlines only as LF or CRLF. Reject it before the parser can turn
+# malformed input into a successful, semantically changed merge.
+if ($liveText -match "`r(?!`n)") {
+    Write-PreservedInput -Message 'stdin contains a standalone CR that TOML does not permit' -Bytes $originalBytes
+    return
+}
+
+# TOML permits space, tab, LF, and CRLF as blank input. Do not let PowerShell's
+# broader Unicode whitespace definition turn NBSP, a lone CR, or similar bytes
+# into a fresh config silently; tomlkit must never be bypassed for those inputs.
+$legalBlank = [System.Text.RegularExpressions.Regex]::IsMatch(
+    $liveText,
+    '\A(?:[ \t]|\n|\r\n)*\z',
+    [System.Text.RegularExpressions.RegexOptions]::CultureInvariant
+)
+if (-not $legalBlank -and [string]::IsNullOrWhiteSpace($liveText)) {
+    Write-PreservedInput -Message 'stdin contains whitespace that TOML does not allow as blank input' -Bytes $originalBytes
+    return
+}
+
+$uv = Get-Command uv -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+if (-not $uv) {
+    Write-PreservedInput -Message 'uv was not found; the pinned TOML parser is unavailable' -Bytes $originalBytes
+    return
 }
 
 $utf8 = [System.Text.UTF8Encoding]::new($false)
 $overlayText = @'
 {{ include (joinPath .chezmoi.sourceDir ".chezmoitemplates/agents/codex.config.overlay.toml") }}
 '@
-$liveText = [Console]::In.ReadToEnd()
-
-# Empty input is a fresh install and the overlay itself is already valid TOML.
-if ([string]::IsNullOrWhiteSpace($liveText)) {
-    Write-StdoutBytes $utf8.GetBytes($overlayText)
-    return
-}
 
 $tmpDir = [System.IO.Path]::GetTempPath()
 $stamp = [System.IO.Path]::GetRandomFileName()
@@ -33,78 +126,75 @@ $pyFile = Join-Path $tmpDir "codex-merge-$stamp.py"
 $outFile = Join-Path $tmpDir "codex-out-$stamp.toml"
 
 try {
-    [System.IO.File]::WriteAllText($overlayFile, $overlayText, $utf8)
-    [System.IO.File]::WriteAllText($liveFile, $liveText, $utf8)
-
-    $py = $null
-    if (Get-Command uv -ErrorAction SilentlyContinue) {
-        $py = @('uv', 'run', '--no-project', '--quiet', '--with', 'tomlkit', '--python', '>=3.11', 'python')
-    } elseif (Get-Command python -ErrorAction SilentlyContinue) {
-        $py = @('python')
-    } elseif (Get-Command python3 -ErrorAction SilentlyContinue) {
-        $py = @('python3')
-    }
-
-    if (-not $py) {
-        [Console]::Error.WriteLine('modify_config.toml: no uv/python found; preserving live config unchanged')
-        Write-StdoutBytes $utf8.GetBytes($liveText)
-        return
-    }
+    [System.IO.File]::WriteAllBytes($overlayFile, $utf8.GetBytes($overlayText))
+    [System.IO.File]::WriteAllBytes($liveFile, $parseBytes)
 
     $pySource = @'
-import os
 import sys
 
-import tomlkit
+try:
+    import tomlkit
+except Exception as exc:
+    print(f"modify_config.toml: pinned tomlkit parser is unavailable: {exc}", file=sys.stderr)
+    sys.exit(10)
 
-overlay_path = os.environ["CODEX_OVERLAY_FILE"]
-live_path = os.environ["CODEX_LIVE_FILE"]
-out_path = os.environ["CODEX_OUT_FILE"]
-
-with open(overlay_path, "r", encoding="utf-8") as fh:
-    overlay_text = fh.read()
-with open(live_path, "r", encoding="utf-8") as fh:
-    live_text = fh.read()
+_, overlay_path, live_path, out_path = sys.argv
 
 try:
-    live = tomlkit.parse(live_text)
+    with open(overlay_path, "r", encoding="utf-8", newline="") as fh:
+        overlay_text = fh.read()
     overlay = tomlkit.parse(overlay_text)
+    status_line = overlay["tui"]["status_line"]
 except Exception as exc:
-    print(f"modify_config.toml: invalid TOML; preserving live config unchanged: {exc}", file=sys.stderr)
-    with open(out_path, "w", encoding="utf-8", newline="") as fh:
-        fh.write(live_text)
-    sys.exit(0)
+    print(f"modify_config.toml: managed overlay is invalid: {exc}", file=sys.stderr)
+    sys.exit(11)
 
-if "tui" not in live or not isinstance(live["tui"], dict):
-    live["tui"] = tomlkit.table()
-live["tui"]["status_line"] = overlay["tui"]["status_line"]
+try:
+    with open(live_path, "r", encoding="utf-8", newline="") as fh:
+        live_text = fh.read()
+    live = tomlkit.parse(live_text)
+except Exception as exc:
+    print(f"modify_config.toml: live config is invalid TOML: {exc}", file=sys.stderr)
+    sys.exit(12)
 
-with open(out_path, "w", encoding="utf-8", newline="") as fh:
-    fh.write(tomlkit.dumps(live))
+try:
+    if "tui" in live and not isinstance(live["tui"], dict):
+        print("modify_config.toml: live tui value is not a table; refusing a lossy replacement", file=sys.stderr)
+        sys.exit(14)
+    if "tui" not in live:
+        live["tui"] = tomlkit.table()
+    live["tui"]["status_line"] = status_line
+
+    output = tomlkit.dumps(live)
+    output = output.replace("\r\n", "\n").replace("\r", "\n").rstrip("\n") + "\n"
+    with open(out_path, "wb") as fh:
+        fh.write(output.encode("utf-8"))
+except Exception as exc:
+    print(f"modify_config.toml: could not merge managed status line: {exc}", file=sys.stderr)
+    sys.exit(13)
 '@
     [System.IO.File]::WriteAllText($pyFile, $pySource, $utf8)
 
-    $env:CODEX_OVERLAY_FILE = $overlayFile
-    $env:CODEX_LIVE_FILE = $liveFile
-    $env:CODEX_OUT_FILE = $outFile
-    $exe = $py[0]
-    $rest = if ($py.Count -gt 1) { @($py[1..($py.Count - 1)]) } else { @() }
-    $rest += $pyFile
-    & $exe @rest
+    $uvArgs = @(
+        'run', '--no-project', '--quiet',
+        '--with', 'tomlkit==0.13.3',
+        '--python', '>=3.11',
+        'python', $pyFile, $overlayFile, $liveFile, $outFile
+    )
+    $uvExecutable = $uv.Source
+    & $uvExecutable @uvArgs 1>$null
     $rc = $LASTEXITCODE
 
-    if ($rc -ne 0 -or -not (Test-Path -LiteralPath $outFile)) {
-        [Console]::Error.WriteLine("modify_config.toml: merge failed (exit $rc); preserving live config unchanged")
-        Write-StdoutBytes $utf8.GetBytes($liveText)
+    if ($rc -ne 0 -or -not (Test-Path -LiteralPath $outFile -PathType Leaf)) {
+        Write-PreservedInput -Message "pinned TOML merge failed (exit $rc)" -Bytes $originalBytes
         return
     }
 
-    Write-StdoutBytes ([System.IO.File]::ReadAllBytes($outFile))
+    Write-StdoutBytes -Bytes ([System.IO.File]::ReadAllBytes($outFile))
+} catch {
+    Write-PreservedInput -Message "unexpected merge failure: $($_.Exception.Message)" -Bytes $originalBytes
 } finally {
-    foreach ($f in $overlayFile, $liveFile, $pyFile, $outFile) {
-        Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
-    }
-    foreach ($v in 'CODEX_OVERLAY_FILE', 'CODEX_LIVE_FILE', 'CODEX_OUT_FILE') {
-        Remove-Item "env:$v" -ErrorAction SilentlyContinue
+    foreach ($file in $overlayFile, $liveFile, $pyFile, $outFile) {
+        try { [System.IO.File]::Delete($file) } catch { $null = $_ }
     }
 }

@@ -135,6 +135,12 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
   `just upgrade-winget` 升級，不再走 npm。
 - **OpenCode**（`opencode-ai`）、**Codex**（`@openai/codex`）、**Copilot CLI**
   （`@github/copilot`）—— 透過 **npm** 全域安裝（由 scoop 的 `node` 提供）。
+  公司機器可能因 `registry.npmjs.org` 被封鎖而使用內部 pull-through mirror。npm 會遵守
+  設定的 registry，Bun 不會，因此 `copilot-proxy` 優先以 npm 安裝到自己的 prefix。
+  用 `npm view <package>@<version> version` 診斷 mirror，不要用 `npm ping`；對應的
+  symptom record 是 `pitfalls/` 下的
+  `copilot-api-connectionrefused-stale-bun-only-module` 與
+  `packagefeedproxy-npm-404-wrong-base-path`。
 - **Codex 原生 footer** —— chezmoi 以非破壞性 overlay 把 provider-neutral
   status line（model/reasoning、fast mode、branch、context、tasks、directory）合併到
   `~/.codex/config.toml`；不裝 fork 或 PATH shim。見

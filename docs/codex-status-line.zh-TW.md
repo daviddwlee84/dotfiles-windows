@@ -15,8 +15,11 @@ status_line = [
 ]
 ```
 
-Modifier 採 fail-closed：live TOML 損壞時原樣保留。只有啟用 **Install coding agents**
-才會部署此檔。
+Modifier 以 `uv` 執行釘選版本的 `tomlkit` parser；bootstrap 會在 chezmoi 前安裝
+`uv`。它接受一個開頭的 UTF-8 BOM 作為 encoding signature。TOML 損壞、UTF-8 無效、
+parser 失敗或 managed overlay 無效時一律 fail-closed，逐 byte 輸出原始 stdin（包括
+CRLF）。只有成功 merge 才正規化成無 BOM 的 UTF-8、LF line ending 與一個結尾換行。
+只有啟用 **Install coding agents** 才會部署此檔。
 
 實際路由以 `/status` 為準。`codex-copilot` session 應顯示 localhost provider；Account
 仍顯示已登入 ChatGPT 帳號不代表 inference 沒走 Copilot。Footer 刻意省略

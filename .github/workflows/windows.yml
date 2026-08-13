@@ -11,6 +11,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
 
       - name: Install chezmoi + PowerShell modules
         shell: pwsh
@@ -119,8 +120,40 @@ jobs:
         shell: pwsh
         run: |
           $dest = Join-Path $env:RUNNER_TEMP 'dothome'
-          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          $codexDir = Join-Path $dest '.codex'
+          $codexPath = Join-Path $codexDir 'config.toml'
+          New-Item -ItemType Directory -Force -Path $codexDir | Out-Null
+          $seed = @'
+          model = "ci-preserved-model"
+
+          [model_providers.ci]
+          base_url = "https://ci.example.invalid/v1"
+          wire_api = "responses"
+
+          [tui]
+          status_line = ["old-status"]
+          '@
+          [System.IO.File]::WriteAllText($codexPath, $seed + "`r`n", [System.Text.UTF8Encoding]::new($false))
+
           chezmoi apply --source $PWD --destination $dest --exclude scripts --verbose
+
+          $codexConfig = Get-Content -Raw -LiteralPath $codexPath
+          if ($codexConfig -notmatch 'model = "ci-preserved-model"') {
+            throw 'Codex modifier dropped an unrelated top-level setting'
+          }
+          if ($codexConfig -notmatch 'base_url = "https://ci\.example\.invalid/v1"' -or
+              $codexConfig -notmatch 'wire_api = "responses"') {
+            throw 'Codex modifier dropped an unrelated provider setting'
+          }
+          if ($codexConfig -match 'old-status') {
+            throw 'Codex modifier retained the stale managed status_line'
+          }
+          foreach ($item in 'model-with-reasoning', 'fast-mode', 'git-branch', 'context-remaining', 'task-progress', 'current-dir') {
+            if ($codexConfig -notmatch [regex]::Escape('"' + $item + '"')) {
+              throw "Codex modifier did not install managed status item: $item"
+            }
+          }
+
           Write-Host '--- deployed tree ---'
           Get-ChildItem -Recurse -File $dest | ForEach-Object { $_.FullName.Replace($dest,'') }
 

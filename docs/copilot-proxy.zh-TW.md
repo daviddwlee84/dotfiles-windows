@@ -12,7 +12,7 @@ fork，讓 **GitHub Copilot 訂閱**可作為 **Claude Code** 與其他 Anthropi
 
 | 指令 | 作用 |
 |---|---|
-| `copilot-proxy auth` | 一次性的 GitHub device 登入（儲存 token） |
+| `copilot-proxy auth` | 一次性的 GitHub device 登入（執行 `copilot-api auth login --provider copilot`；儲存但不顯示 token） |
 | `copilot-proxy start` / `stop` / `restart` | 管理本機 proxy（port 4141） |
 | `copilot-proxy status` | 顯示 raw served 數量與 Claude 可用性 |
 | `copilot-proxy doctor [--live]` | 診斷套件、認證、proxy、catalog、roles、上游與 Codex Apps |
@@ -61,7 +61,24 @@ client 指定的 effort。
 
 套件只安裝一次到 `~/.local/share/copilot-api/pkg`。Windows 優先用 `npm.cmd`，因為它
 能使用 `~/.npmrc` 裡的 Azure Artifacts credential provider；Bun 仍作為 fallback/runtime。
-版本戳記會讓 2.1.0 升級自動重裝，warm start 不需要套件網路。
+Ready 判定會核對已安裝 `package.json` 的 name/version、verified stamp 與可執行的 launch
+path，不會只看舊目錄或 binlink。安裝失敗不能重新蓋 stamp，也不能啟動 stale package。
+`COPILOT_API_PKG` 接受 registry package spec（name 或 `@scope/name` 加 optional
+version/tag/range）；npm alias 與 local/git/URL spec 會在 filesystem cleanup 前拒絕。
+warm start 不需要套件網路。
+
+公司 mirror 回 `ETARGET` 時，可能只是精確的公開版本尚未同步。刪掉仍可用的 prefix 前，
+先確認 npm 實際使用的 registry：
+
+```powershell
+npm config get registry
+npm view '@jeffreycao/copilot-api@2.1.0' version
+# 公司政策允許直連 public npm 時，可做對照：
+npm view '@jeffreycao/copilot-api@2.1.0' version --registry https://registry.npmjs.org/
+```
+
+若只有設定中的 mirror 缺少此版本，應等待／要求 mirror 同步，或以核准的 registry 執行
+`copilot-proxy reinstall`；不要把測過的精確 pin 改成 `latest`。
 
 ## 模型選擇與 role profile
 
@@ -126,22 +143,29 @@ ANTHROPIC_SMALL_FAST_MODEL
 
 - `COPILOT_HTTP_PROXY=auto` 會讀 Windows System Proxy 或明確的 proxy env，僅注入 child
   process 並帶 `--proxy-env`。Node 自己不會讀 WinINET system setting。
-- Model catalog 只在 proxy 啟動時抓一次。`COPILOT_PROXY_START_TIMEOUT` 預設 45 秒，因為
-  Clash/mihomo hop 可能讓 refresh 超過舊版的 20 秒。
-- GitHub 會依帳號、組織政策、rollout 與 egress 改變 catalog。因此在仍有 served OpenAI
-  fallback 時，「沒有 Claude」是 warning，不代表 proxy 本身壞掉。
+- Proxy 會定期刷新 model cache；restart 會強制立即刷新。`COPILOT_PROXY_START_TIMEOUT`
+  預設 45 秒，因為 Clash/mihomo hop 可能讓首次 refresh 超過舊版的 20 秒。
+- GitHub 會依帳號、組織政策、rollout 與 egress 改變 catalog。`/v1/models` 裡的 Claude
+  ID 因此只是**被刊登的 alias**，不代表 inference 已獲授權。沒有 Claude ID 不等於
+  proxy 壞掉；需要改選其他 served pin 時，明確執行 `copilot-model --auto`。請求失敗後
+  不會自動從 Claude replay 到 OpenAI。
 - `copilot-proxy doctor` 會比較 direct/proxied upstream catalog、驗證 main 與所有 role
   aliases，並找出 stale local pin。`--live` 也會比較遠端 ChatGPT `codex_apps`
-  的 direct/proxied reachability，再送一個真實 inference request；只有後者消耗
-  quota，timeout 與 TLS failure 會分開報告。
+  的 direct/proxied reachability，再對實際設定的 main model 送一個真實請求；只有該 pin
+  不在 catalog 時才改用清楚標記的 catalog fallback。它不會失敗後再試另一個 model。
+  只有 inference request 消耗 quota；timeout 與 TLS failure 會分開報告。
+- HTTP 402 `billing_not_configured` 是 account-wide、不可 retry 的設定問題。請到
+  <https://github.com/settings/copilot/features> 的 **Usage billed to** 選擇 organization
+  或 enterprise。換 model、執行 `copilot-model --auto` 或切換 shim 都修不了這個帳號設定。
 - `copilot-here` 只寫入 gitignored `.claude/settings.local.json`，不碰 committed project
   settings；`off` 只移除 helper 擁有的 env keys，保留其他設定。
 - `claude-copilot` / `claude-copilot-once` 保留 Windows port 的 trusted
   `--dangerously-skip-permissions` 與 optional SpecStory 行為，純 `claude` 不受影響。
-- Throttle shim 仍與 macOS/Linux 版本 byte-identical，會限制並行並重試 403/429 burst。
+- Throttle shim 仍與 macOS/Linux 版本 byte-identical，會限制並行並重試暫時性的
+  403/429 burst。它刻意讓 HTTP 402 只通過一次；billing 設定不是 throttle failure。
 
-狀態放在 `~/.local/state/copilot-proxy/`；GitHub token 放在
-`~/.local/share/copilot-api/github_token`。
+狀態放在 `~/.local/state/copilot-proxy/`；device login 會把 GitHub token 存在
+`~/.local/share/copilot-api/github_token`，預設不印出內容。
 
 ## Codex 走 gateway
 

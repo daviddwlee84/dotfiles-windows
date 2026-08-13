@@ -1,9 +1,10 @@
 # Copilot.psm1 — GitHub Copilot agent gateway for Claude Code and Codex, native
 # PowerShell port of the POSIX 43_copilot_proxy.sh / 44_copilot_embed.sh.
 #
-# Runs the maintained copilot-api fork (npm @jeffreycao/copilot-api) via `bunx`
-# so a GitHub Copilot subscription can back Claude Code and Codex. The optional Bun
-# throttle shim (copilot-throttle-shim.js) is reused verbatim from the unix side.
+# Runs the maintained copilot-api fork (npm @jeffreycao/copilot-api) from a pinned
+# local install so a GitHub Copilot subscription can back Claude Code and Codex.
+# The optional Bun throttle shim (copilot-throttle-shim.js) is reused verbatim from
+# the unix side.
 #
 # Public commands (exported with their original hyphenated names for muscle
 # memory — PSUseApprovedVerbs is intentionally waived):
@@ -36,8 +37,9 @@
 #   COPILOT_PROXY_PORT   default 4141    - port the proxy listens on
 #   COPILOT_PROXY_START_TIMEOUT default 45 - seconds allowed for model refresh
 #   COPILOT_SHIM_PORT    default 4142    - throttle shim port
-#   COPILOT_API_PKG      default @jeffreycao/copilot-api@2.1.0 - spec to install
-#                                          (changing it re-installs via the stamp)
+#   COPILOT_API_PKG      default @jeffreycao/copilot-api@2.1.0 - registry spec
+#                          (name or @scope/name + optional version/tag/range;
+#                           aliases/local/git/URL specs are rejected before cleanup)
 #   COPILOT_CLAUDE_MODEL                 - override the pinned model
 #   COPILOT_PROXY_QUIET  1               - add the telemetry-suppressing env keys
 #   COPILOT_INSTALL_NOPROXY 1            - skip straight to the no-proxy install try
@@ -77,18 +79,97 @@ function script:Get-XdgData { if ($env:XDG_DATA_HOME) { $env:XDG_DATA_HOME } els
 # running the resulting binary removes the per-start resolve entirely — a warm
 # start does zero network before it binds the port.
 
-# Package NAME without the trailing @version, keeping any @scope/ prefix.
-# The naive "split on @" eats the whole string on a scoped spec with no version
-# (@jeffreycao/copilot-api -> ""), so test on the scope-stripped copy.
-function script:Get-CopilotPkgName {
+# Parse only registry package specs: name or @scope/name, optionally followed by
+# a version/tag/range. npm aliases and local/git/URL selectors are rejected before
+# their text can reach any filesystem path or destructive cleanup.
+function script:Get-CopilotPkgSpecInfo {
     $spec = Get-CopilotPkg
-    if ($spec.TrimStart('@') -match '@') { $spec -replace '@[^@]*$', '' } else { $spec }
+    $match = [regex]::Match(
+        $spec,
+        '^(?<name>@[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*|[A-Za-z0-9][A-Za-z0-9._-]*)(?:@(?<selector>.+))?$'
+    )
+    if (-not $match.Success) { return $null }
+    $selector = [string]$match.Groups['selector'].Value
+    if ($selector -and (
+        $selector -match '^(?:npm:|file:|link:|https?:|git(?:\+[^:]*)?:|github:|gitlab:|bitbucket:)' -or
+        $selector -match '[\\/]'
+    )) { return $null }
+    [pscustomobject]@{
+        Name     = [string]$match.Groups['name'].Value
+        Selector = $selector
+    }
+}
+
+function script:Get-CopilotPkgName {
+    $info = Get-CopilotPkgSpecInfo
+    if ($info) { $info.Name } else { $null }
 }
 
 function script:Get-CopilotPkgPrefix { Join-Path (Get-XdgData) 'copilot-api/pkg' }
-# Records the spec the prefix currently holds, so bumping COPILOT_API_PKG (or the
-# pinned default) re-installs instead of silently running the old version.
+# Records verified installed metadata, so bumping COPILOT_API_PKG (or the pinned
+# default) re-installs instead of silently running an old or partial tree.
 function script:Get-CopilotPkgStamp { Join-Path (Get-CopilotPkgPrefix) '.installed-spec' }
+
+# Exact registry selectors can be verified against installed package metadata.
+function script:Get-CopilotPkgExactVersion {
+    $info = Get-CopilotPkgSpecInfo
+    if ($info -and $info.Selector -match '^v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$') {
+        return $Matches[1]
+    }
+    $null
+}
+
+function script:Get-CopilotPkgMetadata {
+    $name = Get-CopilotPkgName
+    if (-not $name) { return $null }
+    $path = Join-Path (Get-CopilotPkgPrefix) "node_modules/$name/package.json"
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
+    try {
+        $json = Get-Content -LiteralPath $path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        if ([string]::IsNullOrWhiteSpace([string]$json.name) -or
+            [string]::IsNullOrWhiteSpace([string]$json.version)) { return $null }
+        [pscustomobject]@{
+            Name    = [string]$json.name
+            Version = [string]$json.version
+            Path    = $path
+        }
+    } catch { $null }
+}
+
+function script:Get-CopilotPkgStampMetadata {
+    $path = Get-CopilotPkgStamp
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
+    try {
+        $json = Get-Content -LiteralPath $path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        if ([string]::IsNullOrWhiteSpace([string]$json.requestedSpec) -or
+            [string]::IsNullOrWhiteSpace([string]$json.name) -or
+            [string]::IsNullOrWhiteSpace([string]$json.version)) { return $null }
+        [pscustomobject]@{
+            RequestedSpec = [string]$json.requestedSpec
+            Name          = [string]$json.name
+            Version       = [string]$json.version
+        }
+    } catch { $null }
+}
+
+function script:Get-CopilotPkgLegacyStamp {
+    $path = Get-CopilotPkgStamp
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
+    try {
+        $raw = (Get-Content -LiteralPath $path -Raw -ErrorAction Stop).Trim()
+        if ($raw -and -not $raw.StartsWith('{')) { return $raw }
+    } catch { $null }
+    $null
+}
+
+function script:Write-CopilotPkgStamp {
+    param([Parameter(Mandatory)] $Metadata)
+    [ordered]@{
+        requestedSpec = Get-CopilotPkg
+        name          = [string]$Metadata.Name
+        version       = [string]$Metadata.Version
+    } | ConvertTo-Json -Compress | Set-Content -Path (Get-CopilotPkgStamp) -Encoding utf8
+}
 
 # The binlink bun wrote, if any. Bun on Windows writes node_modules/.bin/<name>.exe
 # (plus a .bunx sidecar); the other extensions cover an npm/yarn-populated prefix.
@@ -117,32 +198,84 @@ function script:Get-CopilotPkgLaunch {
     if ($bin -and [System.IO.Path]::GetExtension($bin) -in '.exe', '.cmd', '.bat') {
         return @{ Exe = $bin; Pre = @(); Cwd = $null }
     }
-    if (Get-Command bun -ErrorAction SilentlyContinue) {
+    if ($bin -and (Get-Command bun -ErrorAction SilentlyContinue)) {
         return @{ Exe = 'bun'; Pre = @('run', 'copilot-api'); Cwd = (Get-CopilotPkgPrefix) }
     }
     $null
 }
 
-# Did the package actually land in the prefix? This is the postcondition every
-# install path is checked against — see Invoke-CopilotPkgInstallTry for why the
-# process exit code is not trusted.
-function script:Test-CopilotPkgPresent {
-    if (Get-CopilotPkgBin) { return $true }
-    Test-Path -LiteralPath (Join-Path (Get-CopilotPkgPrefix) "node_modules/$(Get-CopilotPkgName)")
+# Did the requested package actually land in the prefix and remain runnable?
+# Metadata is authoritative: a stale directory or binlink alone never satisfies
+# this postcondition. Exact selectors must also match the installed version.
+function script:Test-CopilotPkgInstalled {
+    param($Metadata = (Get-CopilotPkgMetadata))
+    if (-not $Metadata) { return $false }
+    if ($Metadata.Name -cne (Get-CopilotPkgName)) { return $false }
+    $exactVersion = Get-CopilotPkgExactVersion
+    if ($exactVersion -and $Metadata.Version -cne $exactVersion) { return $false }
+    $null -ne (Get-CopilotPkgLaunch)
 }
 
-# Is the CURRENTLY pinned spec installed and runnable?
+# Is the CURRENT selector installed, stamped with verified metadata and runnable?
 function script:Test-CopilotPkgReady {
-    $stamp = Get-CopilotPkgStamp
-    if (-not (Test-Path -LiteralPath $stamp)) { return $false }
-    if ((Get-Content -First 1 $stamp -ErrorAction SilentlyContinue) -ne (Get-CopilotPkg)) { return $false }
-    Test-CopilotPkgPresent
+    $metadata = Get-CopilotPkgMetadata
+    if (-not (Test-CopilotPkgInstalled -Metadata $metadata)) { return $false }
+    $stamp = Get-CopilotPkgStampMetadata
+    if (-not $stamp) { return $false }
+    ($stamp.RequestedSpec -ceq (Get-CopilotPkg)) -and
+        ($stamp.Name -ceq $metadata.Name) -and
+        ($stamp.Version -ceq $metadata.Version)
+}
+
+# Remove only the requested package and its dedicated launch shims. Resolve and
+# verify containment before deletion, then require cleanup to be complete: retained
+# matching files could otherwise certify a failed installer attempt.
+function script:Clear-CopilotPkgInstallTarget {
+    $name = Get-CopilotPkgName
+    if (-not $name) {
+        Write-Error "copilot-proxy: unsupported COPILOT_API_PKG registry spec '$(Get-CopilotPkg)'"
+        return $false
+    }
+
+    $nodeModules = [System.IO.Path]::GetFullPath((Join-Path (Get-CopilotPkgPrefix) 'node_modules'))
+    $packageDir = [System.IO.Path]::GetFullPath((Join-Path $nodeModules $name))
+    $trimChars = [char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    $nodeModulesRoot = $nodeModules.TrimEnd($trimChars) + [System.IO.Path]::DirectorySeparatorChar
+    $comparison = if ($IsWindows) { [System.StringComparison]::OrdinalIgnoreCase } else { [System.StringComparison]::Ordinal }
+    if (-not $packageDir.StartsWith($nodeModulesRoot, $comparison)) {
+        Write-Error "copilot-proxy: refusing package cleanup outside $nodeModulesRoot"
+        return $false
+    }
+
+    $binDir = Join-Path $nodeModules '.bin'
+    try {
+        if ([System.IO.Directory]::Exists($packageDir)) {
+            [System.IO.Directory]::Delete($packageDir, $true)
+        }
+        if ([System.IO.Directory]::Exists($binDir)) {
+            foreach ($binPath in [System.IO.Directory]::GetFiles($binDir, 'copilot-api*')) {
+                [System.IO.File]::Delete($binPath)
+            }
+        }
+    } catch {
+        Write-Error "copilot-proxy: could not clear the previous package target ($_)"
+        return $false
+    }
+
+    $remainingBin = if ([System.IO.Directory]::Exists($binDir)) {
+        @([System.IO.Directory]::GetFiles($binDir, 'copilot-api*'))
+    } else { @() }
+    if ([System.IO.Directory]::Exists($packageDir) -or $remainingBin.Count -gt 0) {
+        Write-Error 'copilot-proxy: previous package target is still present after cleanup; refusing to run the installer'
+        return $false
+    }
+    $true
 }
 
 # One package-install attempt in -Dir, bounded by -BudgetSeconds. npm is preferred
 # because it supports Azure Artifacts' credential-provider token in ~/.npmrc;
 # Bun does not. -NoProxy strips the proxy env for the child. Returns $true only
-# when the package is actually present afterwards.
+# when matching metadata and a runnable launch path exist afterwards.
 #
 # Success is judged from the FILESYSTEM, not $p.ExitCode: a Start-Process -PassThru
 # object reports ExitCode 0 even for a child that exited non-zero (verified — the
@@ -155,6 +288,7 @@ function script:Test-CopilotPkgReady {
 function script:Invoke-CopilotPkgInstallTry {
     param([string] $Dir, [switch] $NoProxy, [int] $BudgetSeconds)
 
+    if (-not (Clear-CopilotPkgInstallTarget)) { return $false }
     $proxyVars = 'ALL_PROXY', 'all_proxy', 'HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY', 'https_proxy'
     $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
     $installer = if ($npm) {
@@ -170,7 +304,7 @@ function script:Invoke-CopilotPkgInstallTry {
     try {
         $p = Start-Process -FilePath $installer.File -ArgumentList $installer.Args `
             -WorkingDirectory $Dir -PassThru -NoNewWindow -ErrorAction Stop
-        if ($p.WaitForExit($BudgetSeconds * 1000)) { return (Test-CopilotPkgPresent) }
+        if ($p.WaitForExit($BudgetSeconds * 1000)) { return (Test-CopilotPkgInstalled) }
         Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
         # The subshell's child is the one actually holding the install lock.
         $name = [regex]::Escape((Get-CopilotPkgName))
@@ -182,14 +316,32 @@ function script:Invoke-CopilotPkgInstallTry {
         Write-Error "copilot-proxy: could not launch package installer ($_)"; return $false
     } finally {
         if ($NoProxy) {
-            foreach ($v in $proxyVars) { if ($null -ne $saved[$v]) { Set-Item "env:$v" $saved[$v] } }
+            foreach ($v in $proxyVars) {
+                if ($null -eq $saved[$v]) { Remove-Item "env:$v" -ErrorAction SilentlyContinue }
+                else { Set-Item "env:$v" $saved[$v] }
+            }
         }
     }
 }
 
 # Ensure the pinned spec is installed. No-op (and no network) once it is.
 function script:Install-CopilotPkg {
+    if (-not (Get-CopilotPkgSpecInfo)) {
+        Write-Error "copilot-proxy: COPILOT_API_PKG must be a registry package spec (name or @scope/name with an optional version/tag/range); aliases and local/git/URL specs are unsupported: $(Get-CopilotPkg)"
+        return $false
+    }
     if (Test-CopilotPkgReady) { return $true }
+
+    # Migrate the old one-line stamp without a network call only when an exact
+    # selector, the legacy stamp, live package metadata and launch path all agree.
+    $metadata = Get-CopilotPkgMetadata
+    if ((Get-CopilotPkgExactVersion) -and
+        (Get-CopilotPkgLegacyStamp) -ceq (Get-CopilotPkg) -and
+        (Test-CopilotPkgInstalled -Metadata $metadata)) {
+        Write-CopilotPkgStamp -Metadata $metadata
+        return $true
+    }
+
     if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
         Write-Error "copilot-proxy: bun not found (scoop install bun)"; return $false
     }
@@ -209,7 +361,7 @@ function script:Install-CopilotPkg {
     $skipFirst = ($env:COPILOT_INSTALL_NOPROXY -eq '1')
     if ($skipFirst -or -not (Invoke-CopilotPkgInstallTry -Dir $prefix -BudgetSeconds 45)) {
         if (-not $skipFirst) {
-            Write-Warning "copilot-proxy: install stalled with the proxy env — retrying without it ..."
+            Write-Warning "copilot-proxy: install failed or stalled with the proxy env — retrying without it ..."
             # Drop bun's cache lock dir before retrying; the killed attempt may have
             # left it behind, and a stale lock hangs the retry for the same reason.
             $bunHome = if ($env:BUN_INSTALL) { $env:BUN_INSTALL } else { Join-Path $HOME '.bun' }
@@ -220,10 +372,13 @@ function script:Install-CopilotPkg {
         }
     }
 
-    if (-not (Test-CopilotPkgPresent) -or -not (Get-CopilotPkgLaunch)) {
-        Write-Error "copilot-proxy: install finished but no runnable copilot-api under $prefix."; return $false
+    $metadata = Get-CopilotPkgMetadata
+    if (-not (Test-CopilotPkgInstalled -Metadata $metadata)) {
+        $actual = if ($metadata) { "$($metadata.Name)@$($metadata.Version)" } else { 'no readable package metadata' }
+        Write-Error "copilot-proxy: install finished but $actual does not satisfy $spec with a runnable launch path under $prefix."
+        return $false
     }
-    $spec | Set-Content -Path (Get-CopilotPkgStamp) -Encoding utf8
+    Write-CopilotPkgStamp -Metadata $metadata
     $true
 }
 
@@ -231,12 +386,24 @@ function script:Install-CopilotPkg {
 # Honours $launch.Cwd so the `bun run` fallback resolves node_modules/.bin.
 function script:Invoke-CopilotPkgCommand {
     param([Parameter(ValueFromRemainingArguments)] [string[]] $Argument)
-    if (-not (Install-CopilotPkg)) { return }
+    if (-not (Install-CopilotPkg)) {
+        $global:LASTEXITCODE = 1
+        throw 'copilot-proxy: package installation or verification failed'
+    }
     $launch = Get-CopilotPkgLaunch
-    if (-not $launch) { Write-Error "copilot-proxy: no runnable copilot-api — try 'copilot-proxy reinstall'"; return }
+    if (-not $launch) {
+        $global:LASTEXITCODE = 1
+        throw "copilot-proxy: no runnable copilot-api — try 'copilot-proxy reinstall'"
+    }
     if ($launch.Cwd) { Push-Location $launch.Cwd }
-    try { & $launch.Exe @($launch.Pre + $Argument) }
-    finally { if ($launch.Cwd) { Pop-Location } }
+    try {
+        & $launch.Exe @($launch.Pre + $Argument)
+        $commandExitCode = $LASTEXITCODE
+        $global:LASTEXITCODE = $commandExitCode
+        if ($commandExitCode -ne 0) {
+            throw "copilot-proxy: copilot-api $($Argument -join ' ') failed with exit code $commandExitCode"
+        }
+    } finally { if ($launch.Cwd) { Pop-Location } }
 }
 
 # Live `bun add … copilot-api` processes. Install is a one-shot, so a match at
@@ -261,12 +428,12 @@ function script:Get-CopilotModelState { Join-Path (Get-XdgState) 'copilot-proxy/
 
 # --- egress: which proxy should Node use for the GitHub /models fetch? --------
 #
-# copilot-api fetches /models ONCE at startup and caches it for the whole process
-# lifetime, and GitHub geo-filters the Claude catalog on some egress paths. Node
-# does NOT honour the Windows System Proxy on its own — it only sees HTTP(S)_PROXY
-# — so a host whose browser reaches the unfiltered catalog could still have the
-# proxy cache a Claude-less list, which then looks exactly like an entitlement
-# problem. Resolve the URL here and hand it to the child explicitly.
+# copilot-api fetches /models at startup and refreshes its cache periodically;
+# restart forces an immediate refresh. GitHub geo-filters the Claude catalog on
+# some egress paths. Node does NOT honour the Windows System Proxy on its own — it
+# only sees HTTP(S)_PROXY — so a host whose browser reaches the unfiltered catalog
+# could still have the proxy cache a Claude-less list, which then looks exactly
+# like an entitlement problem. Resolve the URL here and hand it to the child.
 #
 # COPILOT_HTTP_PROXY: auto|always|never|<url>. Returns a URL or $null.
 function script:Resolve-CopilotHttpProxy {
@@ -430,13 +597,16 @@ function script:Get-CopilotDefaultModel {
     'gpt-5.6-sol[1m]'
 }
 
-# Every model id the proxy accepts: .id plus the .claude_model_id alias.
+# Every model id the proxy accepts: .id plus the .claude_model_id alias. Callers
+# with several catalog views pass one snapshot so all decisions share one response.
 function script:Get-CopilotServedModels {
-    try { $r = Invoke-RestMethod -Uri "$(Get-CopilotBase)/v1/models" -TimeoutSec 5 -ErrorAction Stop } catch { return @() }
+    param($Catalog)
+    if (-not $PSBoundParameters.ContainsKey('Catalog')) { $Catalog = Get-CopilotModelCatalog }
+    if (-not $Catalog) { return @() }
     $ids = [System.Collections.Generic.List[string]]::new()
-    foreach ($m in $r.data) {
-        if ($m.id) { $ids.Add($m.id) }
-        if ($m.claude_model_id) { $ids.Add($m.claude_model_id) }
+    foreach ($m in $Catalog.data) {
+        if ($m.id) { $ids.Add([string]$m.id) }
+        if ($m.claude_model_id) { $ids.Add([string]$m.claude_model_id) }
     }
     $ids | Sort-Object -Unique
 }
@@ -457,6 +627,131 @@ function script:Get-CopilotCatalogIds {
 function script:Remove-CopilotContextHint {
     param([string] $Model)
     $Model -replace '\[1m\]$', ''
+}
+
+# Pick exactly one live inference target. The configured main wins only when its
+# raw id is advertised; otherwise the catalog-ranked fallback is explicit.
+function script:Resolve-CopilotDoctorTarget {
+    param([string] $ConfiguredMain, [string[]] $RawModel)
+    $RawModel = @($RawModel | Where-Object { $_ -and $_ -notmatch 'embedding' } | Sort-Object -Unique)
+    $rawConfigured = Remove-CopilotContextHint $ConfiguredMain
+    if (-not $rawConfigured) {
+        return [pscustomobject]@{
+            Model  = $null
+            Label  = 'MissingConfiguredMain'
+            Reason = 'the active project proxy pin has no ANTHROPIC_MODEL'
+        }
+    }
+    if ($RawModel -contains $rawConfigured) {
+        return [pscustomobject]@{
+            Model  = $rawConfigured
+            Label  = 'ConfiguredMain'
+            Reason = 'configured main is advertised by the live catalog'
+        }
+    }
+
+    $fallback = Select-CopilotBestModel -Model $RawModel
+    [pscustomobject]@{
+        Model  = $fallback
+        Label  = 'CatalogFallback'
+        Reason = "configured main '$rawConfigured' is not advertised by the live catalog"
+    }
+}
+
+function script:ConvertTo-CopilotCompactText {
+    param($Value, [int] $MaxLength = 320)
+    $text = if ($Value -is [string]) { $Value } else {
+        try { $Value | ConvertTo-Json -Depth 12 -Compress -ErrorAction Stop } catch { [string]$Value }
+    }
+    $text = ($text -replace '\s+', ' ').Trim()
+    if ($text.Length -gt $MaxLength) { return $text.Substring(0, $MaxLength - 3) + '...' }
+    $text
+}
+
+# Error bodies appear as direct code/message pairs, error.code/error.message, or
+# another JSON error encoded inside error.message. Normalize all three shapes.
+function script:Get-CopilotApiError {
+    param($Body, [int] $Depth = 0)
+    $raw = ConvertTo-CopilotCompactText $Body
+    if ($Depth -gt 4) {
+        return [pscustomobject]@{ Code = $null; Message = $null; Raw = $raw }
+    }
+
+    $object = $Body
+    if ($Body -is [string]) {
+        try { $object = $Body | ConvertFrom-Json -ErrorAction Stop }
+        catch { return [pscustomobject]@{ Code = $null; Message = $null; Raw = $raw } }
+    }
+    if (-not $object) { return [pscustomobject]@{ Code = $null; Message = $null; Raw = $raw } }
+
+    $container = $object
+    if ($object.PSObject.Properties['error']) {
+        $container = $object.error
+        if ($container -is [string]) {
+            $nestedError = Get-CopilotApiError -Body $container -Depth ($Depth + 1)
+            if ($nestedError.Code -or $nestedError.Message) { return $nestedError }
+        }
+    }
+
+    $code = if ($container.PSObject.Properties['code']) { [string]$container.code } else { $null }
+    $message = if ($container.PSObject.Properties['message']) { [string]$container.message } else { $null }
+    if ($message -and $message.TrimStart().StartsWith('{')) {
+        $nestedMessage = Get-CopilotApiError -Body $message -Depth ($Depth + 1)
+        if ($nestedMessage.Code -or $nestedMessage.Message) {
+            return [pscustomobject]@{
+                Code    = if ($nestedMessage.Code) { $nestedMessage.Code } else { $code }
+                Message = if ($nestedMessage.Message) { $nestedMessage.Message } else { $message }
+                Raw     = $raw
+            }
+        }
+    }
+    [pscustomobject]@{ Code = $code; Message = $message; Raw = $raw }
+}
+
+function script:Classify-CopilotInferenceError {
+    param([int] $StatusCode, $Body)
+    $errorInfo = Get-CopilotApiError -Body $Body
+    $code = ([string]$errorInfo.Code).ToLowerInvariant()
+    $detailParts = @($errorInfo.Code, $errorInfo.Message) | Where-Object { $_ }
+    $detail = $detailParts -join ': '
+    if (-not $detail) { $detail = $errorInfo.Raw }
+
+    if ($StatusCode -eq 402 -and $code -eq 'billing_not_configured') {
+        return [pscustomobject]@{
+            Kind        = 'BillingNotConfigured'
+            Code        = $errorInfo.Code
+            Message     = $errorInfo.Message
+            Summary     = "account-wide GitHub Copilot billing is not configured: $detail"
+            Retryable   = $false
+            AccountWide = $true
+            Action      = 'https://github.com/settings/copilot/features'
+            Guidance    = 'Select an organization or enterprise in GitHub''s "Usage billed to" setting. Changing the model, using --auto, or enabling the shim cannot fix this account-wide failure.'
+        }
+    }
+
+    if ($code -match '^(model_not_supported|model_unsupported|unsupported_model)$') {
+        return [pscustomobject]@{
+            Kind        = 'ModelUnsupported'
+            Code        = $errorInfo.Code
+            Message     = $errorInfo.Message
+            Summary     = $detail
+            Retryable   = $false
+            AccountWide = $false
+            Action      = 'Run copilot-model --auto, or copilot-model -l and select a model advertised by the live catalog.'
+            Guidance    = $null
+        }
+    }
+
+    [pscustomobject]@{
+        Kind        = 'HttpError'
+        Code        = $errorInfo.Code
+        Message     = $errorInfo.Message
+        Summary     = $detail
+        Retryable   = ($StatusCode -eq 429 -or $StatusCode -ge 500)
+        AccountWide = $false
+        Action      = $null
+        Guidance    = $null
+    }
 }
 
 # Convert a raw proxy id to the spelling Claude Code should receive. A live
@@ -542,13 +837,15 @@ function script:Write-CopilotModelProfile {
 
 # "<model>|<source>" — the model Claude Code would send from this directory.
 function script:Get-CopilotEffectiveModel {
-    $settings = '.claude/settings.local.json'
+    param([string] $Settings = '.claude/settings.local.json')
+    $settings = $Settings
     if (Test-Path $settings) {
         try {
             $j = Get-Content -Raw $settings | ConvertFrom-Json
             if ($j.env.ANTHROPIC_BASE_URL) {
                 $m = $j.env.ANTHROPIC_MODEL
                 if ($m) { return "$m|project pin: $settings" }
+                return "|project pin missing ANTHROPIC_MODEL: $settings"
             }
         } catch { $null = $_ }
     }
@@ -775,7 +1072,7 @@ function copilot-proxy {
             # One-time device login -> stores a ghu_ token copilot-api can exchange.
             Write-Host "copilot-proxy: launching copilot-api device login ..."
             if ((Get-CopilotPkgFlavor) -eq 'original') { Invoke-CopilotPkgCommand auth }
-            else { Invoke-CopilotPkgCommand auth --provider copilot }
+            else { Invoke-CopilotPkgCommand auth login --provider copilot }
         }
         'reinstall' {
             # Force a clean re-install of the pinned spec (normally only needed if the
@@ -783,7 +1080,8 @@ function copilot-proxy {
             Write-Host "copilot-proxy: removing $(Get-CopilotPkgPrefix) ..."
             Remove-Item -Recurse -Force (Get-CopilotPkgPrefix) -ErrorAction SilentlyContinue
             if (-not (Install-CopilotPkg)) { return }
-            Write-Host "copilot-proxy: installed $(Get-CopilotPkg) -> $(Get-CopilotPkgPrefix)"
+            $installed = Get-CopilotPkgMetadata
+            Write-Host "copilot-proxy: installed $($installed.Name)@$($installed.Version) (requested $(Get-CopilotPkg)) -> $(Get-CopilotPkgPrefix)"
         }
         { $_ -in 'whoami', 'usage' } {
             if (-not (Test-Path (Get-CopilotToken))) { Write-Error "copilot-proxy: not authenticated — run 'copilot-proxy auth'."; return }
@@ -854,6 +1152,11 @@ function script:Invoke-CopilotDoctor {
 
     Write-Host "`ncopilot-proxy doctor   port $port   pkg $pkg`n"
 
+    # This is the doctor's only /v1/models fetch. The same snapshot determines
+    # liveness, raw ids, aliases, role checks and the optional live target.
+    $catalog = Get-CopilotModelCatalog
+    $proxyAlive = $null -ne $catalog
+
     Write-Host 'Prerequisites'
     foreach ($t in 'bun', 'node', 'uv') {
         $c = Get-Command $t -ErrorAction SilentlyContinue
@@ -862,17 +1165,32 @@ function script:Invoke-CopilotDoctor {
 
     Write-Host "`nPackage"
     # The proxy runs an INSTALLED binary, not `bunx <pkg>` — so a warm start does no
-    # network at all. An un-installed prefix is not a fault: the next start installs it.
+    # network at all. Report live metadata even when it disagrees with the selector.
+    $installedMetadata = Get-CopilotPkgMetadata
+    $installedStamp = Get-CopilotPkgStampMetadata
+    $launch = Get-CopilotPkgLaunch
     if (Test-CopilotPkgReady) {
-        OK 'installed' $pkg
-        $launch = Get-CopilotPkgLaunch
-        if ($launch) {
-            $how = "$($launch.Exe) $($launch.Pre -join ' ')".Trim()
-            if ($launch.Cwd) { $how += "   (cwd: $($launch.Cwd))" }
-            SKIP 'runs via' $how
-        } else { BAD 'runs via' 'no runnable binary'; HINT 'copilot-proxy reinstall' }
+        OK 'installed' "$($installedMetadata.Name)@$($installedMetadata.Version) (requested $pkg)"
+        $how = "$($launch.Exe) $($launch.Pre -join ' ')".Trim()
+        if ($launch.Cwd) { $how += "   (cwd: $($launch.Cwd))" }
+        SKIP 'runs via' $how
+    } elseif ($installedMetadata) {
+        NOTE 'installed' "$($installedMetadata.Name)@$($installedMetadata.Version) does not verify requested $pkg"
+        $exactVersion = Get-CopilotPkgExactVersion
+        if ($installedMetadata.Name -cne (Get-CopilotPkgName)) {
+            HINT "metadata name mismatch: wanted $(Get-CopilotPkgName), found $($installedMetadata.Name)"
+        } elseif ($exactVersion -and $installedMetadata.Version -cne $exactVersion) {
+            HINT "metadata version mismatch: wanted $exactVersion, found $($installedMetadata.Version)"
+        } elseif (-not $launch) {
+            HINT 'metadata exists but no runnable launch path is available'
+        } elseif (-not $installedStamp) {
+            HINT 'verified JSON stamp is absent or corrupt'
+        } else {
+            HINT "stamp mismatch: requested=$($installedStamp.RequestedSpec), name=$($installedStamp.Name), version=$($installedStamp.Version)"
+        }
+        HINT 'copilot-proxy reinstall'
     } else {
-        NOTE 'not installed' "$pkg — the next 'copilot-proxy start' installs it (one-time)"
+        NOTE 'not installed' "$pkg — no readable installed package metadata; the next start installs it"
         HINT 'copilot-proxy reinstall   # or force it now'
     }
 
@@ -880,7 +1198,7 @@ function script:Invoke-CopilotDoctor {
     if (Test-Path (Get-CopilotToken)) { OK 'token file' (Get-CopilotToken) } else { BAD 'token file' 'absent'; HINT 'copilot-proxy auth' }
 
     Write-Host "`nProxy"
-    if (Test-CopilotAlive) { OK 'listening' (Get-CopilotBase) } else { BAD 'listening' "nothing on port $port"; HINT 'copilot-proxy start' }
+    if ($proxyAlive) { OK 'listening' (Get-CopilotBase) } else { BAD 'listening' "nothing on port $port"; HINT 'copilot-proxy start' }
     # A wedged package installer is the non-obvious reason a proxy never binds the
     # port: `start` just says "did not come up in time" and the log shows only
     # "Resolving dependencies". Hard failure when nothing is listening (that IS the
@@ -888,7 +1206,7 @@ function script:Invoke-CopilotDoctor {
     # which will hang the next restart).
     $stale = @(Get-CopilotStaleInstaller)
     if ($stale.Count -gt 0) {
-        if (Test-CopilotAlive) { NOTE 'stale installer' "$($stale.Count) leftover 'bun add … copilot-api' proc(s) — they hold bun's cache lock (a restart will hang)" }
+        if ($proxyAlive) { NOTE 'stale installer' "$($stale.Count) leftover 'bun add … copilot-api' proc(s) — they hold bun's cache lock (a restart will hang)" }
         else { BAD 'stale installer' "$($stale.Count) wedged 'bun add … copilot-api' proc(s) — start is blocked at `"Resolving dependencies`", never binds port $port" }
         HINT "kill just those: Stop-Process -Id $($stale.ProcessId -join ',') -Force"
         HINT 'then: copilot-proxy reinstall'
@@ -930,12 +1248,15 @@ function script:Invoke-CopilotDoctor {
         }
     }
 
-    $served = Get-CopilotServedModels
-    if ($served -and $served.Count -gt 0) {
-        $claude = @($served | Where-Object { $_ -match '^claude' })
-        OK 'served' "$($served.Count) model ids"
-        if ($claude.Count -gt 0) { OK 'claude models' "$($claude.Count) ids available" }
-        else { NOTE 'claude models' "0 of $($served.Count) — Anthropic unavailable; role-aware OpenAI fallback will be used" }
+    # The one local catalog snapshot drives raw ids, aliases, role checks and the
+    # live target. Do not mix decisions from several /v1/models responses.
+    $rawIds = Get-CopilotCatalogIds $catalog
+    $served = @(Get-CopilotServedModels -Catalog $catalog)
+    if ($served.Count -gt 0) {
+        $claude = @($rawIds | Where-Object { $_ -match '^claude' })
+        OK 'served catalog' "$($rawIds.Count) raw ids, $($served.Count) ids including Claude Code aliases"
+        if ($claude.Count -gt 0) { OK 'claude catalog' "$($claude.Count) raw Claude ids advertised (inference not yet tested)" }
+        else { NOTE 'claude catalog' "0 of $($rawIds.Count) raw ids — select an advertised non-Claude model explicitly" }
 
         if ($viaClaude -gt 0 -and $dirClaude -eq 0) {
             NOTE 'egress geo' 'Claude appears ONLY via the local proxy — GitHub filters Anthropic on direct egress'
@@ -983,7 +1304,6 @@ function script:Invoke-CopilotDoctor {
             } catch { $modelProfile = $null }
         }
         if (-not $modelProfile) {
-            $catalog = Get-CopilotModelCatalog
             $modelProfile = Get-CopilotModelProfile -Model $model -Catalog $catalog
         }
         $roleBad = $false
@@ -1053,20 +1373,42 @@ function script:Invoke-CopilotDoctor {
     }
 
     Write-Host "`nLive probe"
+    $effective = (Get-CopilotEffectiveModel) -split '\|', 2
+    $probeTarget = Resolve-CopilotDoctorTarget -ConfiguredMain $effective[0] -RawModel $rawIds
     if (-not $Live) { SKIP 'skipped' 'pass --live to send one real request (consumes 1 quota unit)' }
-    elseif (-not (Test-CopilotAlive)) { SKIP 'skipped' 'proxy is not running' }
-    elseif (-not $served) { SKIP 'skipped' 'no served model to probe with' }
+    elseif (-not $proxyAlive) { SKIP 'skipped' 'proxy is not running' }
+    elseif ($probeTarget.Label -eq 'MissingConfiguredMain') { SKIP 'skipped' $probeTarget.Reason }
+    elseif (-not $probeTarget.Model) { SKIP 'skipped' 'the catalog has no usable inference model' }
     else {
-        $pm = @($served | Where-Object { $_ -notmatch 'embedding' -and $_ -notmatch '\[1m\]' })[0]
+        $pm = $probeTarget.Model
+        SKIP 'target' "$pm [$($probeTarget.Label): $($probeTarget.Reason)]"
         $body = @{ model = $pm; max_tokens = 1; messages = @(@{ role = 'user'; content = 'hi' }) } | ConvertTo-Json -Depth 5
         try {
             $sw = [System.Diagnostics.Stopwatch]::StartNew()
-            $r = Invoke-WebRequest -Uri "$(Get-CopilotClientBase)/v1/messages?beta=true" -Method Post `
+            # Bypass the throttle shim: doctor promises one upstream inference
+            # attempt, while the normal client route intentionally retries bursts.
+            $r = Invoke-WebRequest -Uri "$(Get-CopilotBase)/v1/messages?beta=true" -Method Post `
                 -ContentType 'application/json' -Body $body -TimeoutSec 60 -SkipHttpErrorCheck -ErrorAction Stop
             $sw.Stop()
-            if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 300) { OK 'round-trip' "$pm -> HTTP $($r.StatusCode) in $([math]::Round($sw.Elapsed.TotalSeconds,2))s" }
-            else { BAD 'round-trip' "$pm -> HTTP $($r.StatusCode)"; HINT 'copilot-proxy logs 40' }
-        } catch { BAD 'round-trip' "$pm -> request failed ($_)" }
+            if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 300) {
+                OK 'round-trip' "$pm -> HTTP $($r.StatusCode) in $([math]::Round($sw.Elapsed.TotalSeconds,2))s"
+            } else {
+                $classified = Classify-CopilotInferenceError -StatusCode ([int]$r.StatusCode) -Body $r.Content
+                BAD 'round-trip' "$pm -> HTTP $($r.StatusCode): $($classified.Summary)"
+                if ($classified.Kind -eq 'BillingNotConfigured') {
+                    HINT $classified.Action
+                    HINT $classified.Guidance
+                } elseif ($classified.Kind -eq 'ModelUnsupported') {
+                    HINT $classified.Action
+                } else {
+                    HINT 'copilot-proxy logs 40'
+                }
+                SKIP 'retry' 'not attempted — doctor sends exactly one inference request'
+            }
+        } catch {
+            BAD 'round-trip' "$pm -> request failed ($_)"
+            SKIP 'retry' 'not attempted — doctor sends exactly one inference request'
+        }
     }
 
     Write-Host ''

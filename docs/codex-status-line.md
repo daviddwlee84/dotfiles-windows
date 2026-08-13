@@ -16,8 +16,13 @@ status_line = [
 ]
 ```
 
-The modifier fails closed: malformed live TOML is left unchanged. The file is
-deployed only when **Install coding agents** is enabled.
+The modifier uses `uv` with a pinned `tomlkit` parser; bootstrap installs `uv`
+before chezmoi runs. It accepts one leading UTF-8 BOM as an encoding signature.
+Malformed TOML, invalid UTF-8, a parser failure, or an invalid managed overlay is
+fail-closed: the original stdin bytes are emitted exactly, including CRLF. A
+successful merge is normalized to UTF-8 without BOM, LF line endings, and one
+final newline. The file is deployed only when **Install coding agents** is
+enabled.
 
 Use `/status` as the routing proof. A `codex-copilot` session should show the
 localhost provider even though the Account line can still show the logged-in

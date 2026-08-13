@@ -142,6 +142,12 @@ Enabled by **Install coding agents**:
   Upgraded with `just upgrade-winget`, not npm.
 - **OpenCode** (`opencode-ai`), **Codex** (`@openai/codex`), **Copilot CLI**
   (`@github/copilot`) — installed globally via **npm** (provided by the scoop `node`).
+  On a corporate machine, npm may use an internal pull-through mirror because
+  `registry.npmjs.org` is blocked. npm honours that configured registry; Bun does
+  not, so `copilot-proxy` prefers npm for its private prefix. Diagnose the mirror
+  with `npm view <package>@<version> version`, not `npm ping`; the matching
+  symptom records are `copilot-api-connectionrefused-stale-bun-only-module`
+  and `packagefeedproxy-npm-404-wrong-base-path` under `pitfalls/`.
 - **Codex native footer** — chezmoi non-destructively merges a provider-neutral
   status line (model/reasoning, fast mode, branch, context, tasks, directory)
   into `~/.codex/config.toml`. No fork or PATH shim; see
