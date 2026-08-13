@@ -252,7 +252,13 @@ Describe 'Copilot module' {
             '@jeffreycao/copilot-api@2.1.0' | Set-Content -LiteralPath (Join-Path $script:pkgPrefix '.installed-spec')
             InModuleScope Copilot {
                 Mock Get-Command { $null } -ParameterFilter { $Name -eq 'bun' }
-                Install-CopilotPkg 2>$null | Should -BeFalse
+                $previousErrorActionPreference = $ErrorActionPreference
+                try {
+                    $ErrorActionPreference = 'Continue'
+                    Install-CopilotPkg 2>$null | Should -BeFalse
+                } finally {
+                    $ErrorActionPreference = $previousErrorActionPreference
+                }
                 Get-CopilotPkgStampMetadata | Should -BeNullOrEmpty
                 Get-CopilotPkgLegacyStamp | Should -BeExactly '@jeffreycao/copilot-api@2.1.0'
             }
@@ -264,7 +270,13 @@ Describe 'Copilot module' {
             '@jeffreycao/copilot-api@latest' | Set-Content -LiteralPath (Join-Path $script:pkgPrefix '.installed-spec')
             InModuleScope Copilot {
                 Mock Get-Command { $null } -ParameterFilter { $Name -eq 'bun' }
-                Install-CopilotPkg 2>$null | Should -BeFalse
+                $previousErrorActionPreference = $ErrorActionPreference
+                try {
+                    $ErrorActionPreference = 'Continue'
+                    Install-CopilotPkg 2>$null | Should -BeFalse
+                } finally {
+                    $ErrorActionPreference = $previousErrorActionPreference
+                }
                 Get-CopilotPkgStampMetadata | Should -BeNullOrEmpty
             }
         }
@@ -276,7 +288,13 @@ Describe 'Copilot module' {
             $env:COPILOT_API_PKG = '..\..\victim'
             InModuleScope Copilot {
                 Mock Start-Process { throw 'installer must not start' }
-                Install-CopilotPkg 2>$null | Should -BeFalse
+                $previousErrorActionPreference = $ErrorActionPreference
+                try {
+                    $ErrorActionPreference = 'Continue'
+                    Install-CopilotPkg 2>$null | Should -BeFalse
+                } finally {
+                    $ErrorActionPreference = $previousErrorActionPreference
+                }
                 Should -Invoke Start-Process -Times 0
             }
             Test-Path -LiteralPath (Join-Path $victim 'marker.txt') | Should -BeTrue
