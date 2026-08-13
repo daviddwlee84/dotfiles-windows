@@ -199,9 +199,23 @@ Off by default; enable the matching init prompt:
 | translate (on for workstation) | [`translate`](https://github.com/daviddwlee84/translate) — terminal translator (CLI + TUI) over copilot-proxy / Ollama / Google plus an offline CC-CEDICT + ECDICT dictionary. No scoop/winget manifest and no prebuilt Windows release, so it is built from source with `go install` (go is installed by the block itself, so *Extra runtimes* need not be on) into `~\.local\bin`; the **first build takes several minutes**. Ships pwsh tab-completion and the `translate` tv channel. See [translate](translate.md). |
 | Rime input method | [Weasel / 小狼毫](https://github.com/rime/weasel) (`Rime.Weasel`), Rime for Windows, registered as **Traditional Chinese**. Machine-scope NSIS installer, so applying raises a **UAC prompt**. The `*.custom.yaml` under `%APPDATA%\Rime` is chezmoi-managed and the engine-level part is **shared byte-for-byte with the macOS/Linux repo** (Squirrel / ibus-rime). See [Input method](input-method.md). |
 
-**China mirrors** routes pip / npm / cargo / go / node package fetches through GFW
-mirrors (Tsinghua / npmmirror / goproxy.cn / rsproxy), applied both at install time
-and in the interactive shell (`profile.d/05_mirrors.ps1`).
+## Package registries
+
+One shared policy is applied both at install time and in interactive shells
+(`profile.d/05_mirrors.ps1`):
+
+- **Managed machines** route pip/uv through the company PyPI pull-through
+  registry and npm through the company npm pull-through registry. The PyPI path
+  was verified with `tomlkit==0.13.3`; its artifacts are served by the corporate
+  Azure Artifacts backend. IT already provisions the enabled company NuGet source
+  and disables nuget.org, so the dotfiles do not rewrite NuGet configuration.
+- **China mirrors** apply only on non-managed machines and route pip / npm / cargo /
+  go / node through Tsinghua / npmmirror / goproxy.cn / rsproxy.
+- No company Go or Cargo registry was discovered, so managed machines leave those
+  ecosystems at their existing defaults.
+
+The managed-machine policy wins if both toggles are true. This prevents a GFW
+mirror from bypassing corporate package policy.
 
 ## Television (tv) channels
 

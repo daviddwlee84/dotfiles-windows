@@ -54,8 +54,9 @@
 Set-StrictMode -Off
 
 # ------------------------------------------------------------------ helpers ---
+$script:CopilotDefaultPkg = '@jeffreycao/copilot-api@2.1.0'
 function script:Get-CopilotPort { if ($env:COPILOT_PROXY_PORT) { $env:COPILOT_PROXY_PORT } else { '4141' } }
-function script:Get-CopilotPkg  { if ($env:COPILOT_API_PKG)   { $env:COPILOT_API_PKG }   else { '@jeffreycao/copilot-api@2.1.0' } }
+function script:Get-CopilotPkg  { if ($env:COPILOT_API_PKG)   { $env:COPILOT_API_PKG }   else { $script:CopilotDefaultPkg } }
 function script:Get-CopilotPkgFlavor {
     switch -Regex (Get-CopilotPkg) { '^copilot-api(@.*)?$' { 'original' } default { 'fork' } }
 }
@@ -201,7 +202,32 @@ function script:Get-CopilotPkgLaunch {
     if ($bin -and (Get-Command bun -ErrorAction SilentlyContinue)) {
         return @{ Exe = 'bun'; Pre = @('run', 'copilot-api'); Cwd = (Get-CopilotPkgPrefix) }
     }
+    # The hash-pinned CDN fallback carries the published dist files but no npm
+    # binlink. Run its declared entry point directly with Bun.
+    $metadata = Get-CopilotPkgMetadata
+    $main = if ($metadata) { Join-Path (Split-Path -Parent $metadata.Path) 'dist/main.js' } else { $null }
+    if ($main -and (Test-Path -LiteralPath $main -PathType Leaf) -and (Get-Command bun -ErrorAction SilentlyContinue)) {
+        return @{ Exe = 'bun'; Pre = @($main); Cwd = (Get-CopilotPkgPrefix) }
+    }
     $null
+}
+
+function script:Test-CopilotPkgDependencies {
+    param($Metadata = (Get-CopilotPkgMetadata))
+    if (-not $Metadata) { return $false }
+    try {
+        $package = Get-Content -LiteralPath $Metadata.Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        $names = if ($package.dependencies) { @($package.dependencies.PSObject.Properties.Name) } else { @() }
+        $packageDir = Split-Path -Parent $Metadata.Path
+        $prefix = Get-CopilotPkgPrefix
+        foreach ($dependency in $names) {
+            $local = Join-Path $packageDir "node_modules/$dependency/package.json"
+            $hoisted = Join-Path $prefix "node_modules/$dependency/package.json"
+            if (-not (Test-Path -LiteralPath $local -PathType Leaf) -and
+                -not (Test-Path -LiteralPath $hoisted -PathType Leaf)) { return $false }
+        }
+        return $true
+    } catch { return $false }
 }
 
 # Did the requested package actually land in the prefix and remain runnable?
@@ -213,7 +239,7 @@ function script:Test-CopilotPkgInstalled {
     if ($Metadata.Name -cne (Get-CopilotPkgName)) { return $false }
     $exactVersion = Get-CopilotPkgExactVersion
     if ($exactVersion -and $Metadata.Version -cne $exactVersion) { return $false }
-    $null -ne (Get-CopilotPkgLaunch)
+    (Test-CopilotPkgDependencies -Metadata $Metadata) -and $null -ne (Get-CopilotPkgLaunch)
 }
 
 # Is the CURRENT selector installed, stamped with verified metadata and runnable?
@@ -324,6 +350,103 @@ function script:Invoke-CopilotPkgInstallTry {
     }
 }
 
+# Runtime files from the exact public npm package, mirrored by jsDelivr. Hashes
+# are SHA-256/base64 from data.jsdelivr.com and are pinned here so a CDN response
+# cannot silently replace the reviewed 2.1.0 gateway. This fallback is deliberately
+# unavailable for arbitrary COPILOT_API_PKG overrides.
+function script:Get-CopilotPkgCdnManifest {
+    if ((Get-CopilotPkg) -cne $script:CopilotDefaultPkg) { return $null }
+    [pscustomobject]@{
+        BaseUrl = 'https://cdn.jsdelivr.net/npm/@jeffreycao/copilot-api@2.1.0/'
+        Files   = [ordered]@{
+            'dist/auth-C0aeKq7k.js'           = 'SlXC4gSEaGNwdS4tXTtqhiF/D02E8+iNrQBwFwPndVk='
+            'dist/auth-DH-ThnhJ.js'            = 'p/LRoZdk8wOOM5DQCufu0gIIGU84NRETuD8+J21ZCaI='
+            'dist/config-CoMdcHDW.js'          = 'tlRwGNY2oBBkVNWqioLKCfcLlq6pO3sNjGd5bKJX9Lo='
+            'dist/debug-D2giR-Kj.js'            = 'AwZwgakDhoVncgyOCXPgbfxGtWM71RKh52uVzQfK/4w='
+            'dist/electron-fetch-DPhDE6JE.js'   = '4AbNiuAKta9UotthWSjDdeFOIsUa5sVHn0UH2XPmv/E='
+            'dist/main.js'                      = 'oQOghbsofHbuu5LH+YOP6SMGcHbH6KuDXNvdiWMDVhY='
+            'dist/mcp-BG6fpi6q.js'              = 'wrS9K3fGks5lXduDse3rc0ElpitVMVV8YaJlEEp92sM='
+            'dist/models-DUdPhOBN.js'           = 'UIQEMx31RTqQ4jLIPNMKx2SjISxKEPSuIBQk8zYboEI='
+            'dist/server-DcL9pgmS.js'           = 'xerRQ08UU/gW0HlymLaApCkvffna7y2lAurhGmU/+zs='
+            'dist/start-D3oRc7UM.js'            = 'gLDD5nPRkA+fBKnxvLrJceZpso/exlJqlZpmDwqlnFg='
+            'dist/tls-BmWaOfKV.js'              = 'TYMkywUE/GWAkU3yHZqcATkW+OrKvp2z1r6zA1G4JEY='
+            'dist/token-_ZvkUtOA.js'             = 'NlrLr8byUuqBuLbMrdhSnLhgCWPgkFBW90NCpuHLJ8Q='
+            'dist/tool-search-Ds1vbmGG.js'       = 'nayapOul67JQ5MZlG6VHjbOOmtFWkdp57Ix1QBR6XjE='
+            'LICENSE'                           = 'heZrUUWQ2XF0DN2cwkTHVOuqFpAhW/xs6boMUHgC+zk='
+            'package.json'                      = 'zZgMgbuYwB/SkThsZ4vBA3no+GTyfx3JYG4QPMrGcUM='
+            'pages/index.html'                  = 'qwkHLR+pD3xUVT4R2qb86ohDG0vEDFTk/eV3lllEnXU='
+        }
+    }
+}
+
+function script:Get-CopilotSha256Base64 {
+    param([Parameter(Mandatory)] [string] $Path)
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        try { [Convert]::ToBase64String($sha.ComputeHash($stream)) } finally { $sha.Dispose() }
+    } finally { $stream.Dispose() }
+}
+
+function script:Install-CopilotPkgDependencies {
+    param([Parameter(Mandatory)] [string] $PackageDir, [int] $BudgetSeconds = 120)
+    $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    if (-not $npm) {
+        Write-Error 'copilot-proxy: npm.cmd is required to install CDN package dependencies through the configured registry'
+        return $false
+    }
+    try {
+        $npmArgs = @('install', '--omit=dev', '--ignore-scripts', '--no-save', '--package-lock=false', '--no-audit', '--no-fund')
+        $p = Start-Process -FilePath $npm.Source -ArgumentList $npmArgs -WorkingDirectory $PackageDir -PassThru -NoNewWindow -ErrorAction Stop
+        if (-not $p.WaitForExit($BudgetSeconds * 1000)) {
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            return $false
+        }
+        return (Test-CopilotPkgDependencies)
+    } catch {
+        Write-Error "copilot-proxy: could not install CDN package dependencies ($_)"
+        return $false
+    }
+}
+
+function script:Install-CopilotPkgFromCdn {
+    $manifest = Get-CopilotPkgCdnManifest
+    if (-not $manifest) { return $false }
+    if (-not (Clear-CopilotPkgInstallTarget)) { return $false }
+
+    $packageDir = Join-Path (Get-CopilotPkgPrefix) 'node_modules/@jeffreycao/copilot-api'
+    $downloadDir = Join-Path (Get-CopilotPkgPrefix) ".cdn-$([guid]::NewGuid())"
+    try {
+        New-Item -ItemType Directory -Force -Path $downloadDir | Out-Null
+        foreach ($relativePath in $manifest.Files.Keys) {
+            $downloadPath = Join-Path $downloadDir ($relativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $downloadPath) | Out-Null
+            Invoke-WebRequest -Uri ($manifest.BaseUrl + $relativePath) -OutFile $downloadPath -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+            $actualHash = Get-CopilotSha256Base64 -Path $downloadPath
+            if ($actualHash -cne $manifest.Files[$relativePath]) {
+                throw "hash mismatch for $relativePath"
+            }
+        }
+
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $packageDir) | Out-Null
+        Move-Item -LiteralPath $downloadDir -Destination $packageDir -ErrorAction Stop
+        $metadata = Get-CopilotPkgMetadata
+        if (-not $metadata -or $metadata.Name -cne '@jeffreycao/copilot-api' -or $metadata.Version -cne '2.1.0') {
+            throw 'downloaded package metadata does not identify @jeffreycao/copilot-api@2.1.0'
+        }
+        if (-not (Install-CopilotPkgDependencies -PackageDir $packageDir)) {
+            throw 'dependency installation through the configured registry failed'
+        }
+        return (Test-CopilotPkgInstalled)
+    } catch {
+        Write-Warning "copilot-proxy: pinned CDN fallback failed ($_)"
+        $null = Clear-CopilotPkgInstallTarget
+        return $false
+    } finally {
+        Remove-Item -LiteralPath $downloadDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 # Ensure the pinned spec is installed. No-op (and no network) once it is.
 function script:Install-CopilotPkg {
     if (-not (Get-CopilotPkgSpecInfo)) {
@@ -368,7 +491,10 @@ function script:Install-CopilotPkg {
             Remove-Item -Recurse -Force (Join-Path $bunHome 'install/cache/.tmp') -ErrorAction SilentlyContinue
         }
         if (-not (Invoke-CopilotPkgInstallTry -Dir $prefix -NoProxy -BudgetSeconds 90)) {
-            Write-Error "copilot-proxy: could not install $spec — run 'copilot-proxy doctor'."; return $false
+            Write-Warning 'copilot-proxy: configured npm registry did not provide the pin — trying the hash-pinned jsDelivr package copy; dependencies still use the configured registry ...'
+            if (-not (Install-CopilotPkgFromCdn)) {
+                Write-Error "copilot-proxy: could not install $spec from the configured registry or pinned CDN fallback — run 'copilot-proxy doctor'."; return $false
+            }
         }
     }
 
@@ -1191,6 +1317,14 @@ function script:Invoke-CopilotDoctor {
         HINT 'copilot-proxy reinstall'
     } else {
         NOTE 'not installed' "$pkg — no readable installed package metadata; the next start installs it"
+        $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
+        if ($npm) {
+            try {
+                $registry = (& $npm.Source config get registry 2>$null | Select-Object -First 1).Trim()
+                if ($registry) { SKIP 'npm registry' $registry }
+            } catch { $null = $_ }
+        }
+        if (Get-CopilotPkgCdnManifest) { SKIP 'fallback' 'hash-pinned jsDelivr runtime files; dependencies use the npm registry above' }
         HINT 'copilot-proxy reinstall   # or force it now'
     }
 

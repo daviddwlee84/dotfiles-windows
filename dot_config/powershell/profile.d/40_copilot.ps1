@@ -7,4 +7,8 @@
 # module just no-ops here. -DisableNameChecking: the exported commands use
 # hyphenated / unapproved-verb names (copilot-proxy, claude-copilot, …) by design,
 # so silence the import warnings about unapproved verbs and restricted characters.
-Import-Module Copilot -DisableNameChecking -ErrorAction SilentlyContinue
+# -Force is required because `reload` dot-sources $PROFILE in the same process.
+# Without it, PowerShell keeps the old module scriptblocks even after chezmoi has
+# deployed a fixed Copilot.psm1, which made `copilot-proxy auth` repeat the old
+# ETARGET-only installer until the entire terminal was restarted.
+Import-Module Copilot -Force -DisableNameChecking -ErrorAction SilentlyContinue

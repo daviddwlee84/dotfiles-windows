@@ -15,8 +15,9 @@ status_line = [
 ]
 ```
 
-Modifier 以 `uv` 執行釘選版本的 `tomlkit` parser；bootstrap 會在 chezmoi 前安裝
-`uv`。它接受一個開頭的 UTF-8 BOM 作為 encoding signature。TOML 損壞、UTF-8 無效、
+Modifier 使用 baseline toolset 已安裝的 Bun 內建 TOML parser。`chezmoi apply` 不再
+存取 Python 或 package registry，因此公司規則封鎖 PyPI 時仍可套用 footer。它接受一個
+開頭的 UTF-8 BOM 作為 encoding signature。TOML 損壞、UTF-8 無效、
 parser 失敗或 managed overlay 無效時一律 fail-closed，逐 byte 輸出原始 stdin（包括
 CRLF）。只有成功 merge 才正規化成無 BOM 的 UTF-8、LF line ending 與一個結尾換行。
 只有啟用 **Install coding agents** 才會部署此檔。

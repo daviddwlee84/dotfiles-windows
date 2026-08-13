@@ -32,14 +32,10 @@ $script:Failures = [System.Collections.Generic.List[string]]::new()
 
 # UTF-8 console so winget's localized output isn't mojibake on zh-* Windows.
 try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch { $null = $_ }
-{{ if .useChineseMirror }}
-# China (GFW) mirrors for install-time package fetches.
-$env:PIP_INDEX_URL = 'https://pypi.tuna.tsinghua.edu.cn/simple'
-$env:UV_DEFAULT_INDEX = 'https://pypi.tuna.tsinghua.edu.cn/simple'
-if (-not $env:npm_config_registry) { $env:npm_config_registry = 'https://registry.npmmirror.com' }
-$env:GOPROXY = 'https://goproxy.cn,direct'
-$env:MISE_NODE_MIRROR_URL = 'https://npmmirror.com/mirrors/node/'
-{{ end }}
+# Package registries: company-approved pull-through feeds on managed machines,
+# otherwise optional China/GFW mirrors. Shared with profile.d so apply-time and
+# interactive commands cannot drift apart.
+{{ template "package-sources.ps1" . }}
 
 function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 function Have($n) { [bool](Get-Command $n -ErrorAction SilentlyContinue) }

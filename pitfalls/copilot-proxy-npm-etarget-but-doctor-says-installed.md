@@ -57,8 +57,11 @@ npm view '@jeffreycao/copilot-api@2.1.0' version --registry https://registry.npm
 ```
 
 If only the corporate mirror is missing 2.1.0, wait/request synchronization or
-use an approved registry for the reinstall. Then deploy the fixed module and
-reinstall:
+use an approved registry for the reinstall. The fixed Windows module can also
+recover automatically from this exact case: it downloads the published 2.1.0
+runtime files from jsDelivr, verifies a baked SHA-256 for every file, and installs
+only ordinary dependencies through the configured npm registry. Then deploy the
+fixed module and reinstall:
 
 ```powershell
 chezmoi apply ~/.config/powershell/modules/Copilot/Copilot.psm1

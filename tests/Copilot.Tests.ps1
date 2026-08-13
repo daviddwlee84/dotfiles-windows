@@ -10,6 +10,13 @@ BeforeAll {
 
 Describe 'Copilot module' {
 
+    Context 'profile module loading' {
+        It 'forces a fresh module import so reload picks up deployed fixes' {
+            $loader = Get-Content -Raw (Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'profile.d' '40_copilot.ps1')
+            $loader | Should -Match 'Import-Module\s+Copilot\s+-Force\b'
+        }
+    }
+
     Context 'package flavor detection' {
         It 'keeps the maintained fork default pinned exactly' {
             InModuleScope Copilot {
@@ -131,6 +138,54 @@ Describe 'Copilot module' {
                 Get-CopilotPkgMetadata | Should -Not -BeNullOrEmpty
                 Get-CopilotPkgLaunch | Should -BeNullOrEmpty
                 Test-CopilotPkgInstalled | Should -BeFalse
+            }
+        }
+
+        It 'runs hash-pinned CDN files directly with Bun when no binlink exists' {
+            Set-TestCopilotPackage -NoLaunch
+            New-Item -ItemType Directory -Force (Join-Path $script:pkgDir 'dist') | Out-Null
+            'console.log("test")' | Set-Content -LiteralPath (Join-Path $script:pkgDir 'dist/main.js')
+            InModuleScope Copilot {
+                $launch = Get-CopilotPkgLaunch
+                $launch.Exe | Should -BeExactly 'bun'
+                $launch.Pre[0] | Should -BeLike '*dist*main.js'
+                Test-CopilotPkgInstalled | Should -BeTrue
+            }
+        }
+
+        It 'exposes the CDN manifest only for the reviewed default pin' {
+            InModuleScope Copilot {
+                $manifest = Get-CopilotPkgCdnManifest
+                $manifest.BaseUrl | Should -Match '@jeffreycao/copilot-api@2\.1\.0'
+                $manifest.Files['dist/main.js'] | Should -BeExactly 'oQOghbsofHbuu5LH+YOP6SMGcHbH6KuDXNvdiWMDVhY='
+                $env:COPILOT_API_PKG = '@jeffreycao/copilot-api@latest'
+                Get-CopilotPkgCdnManifest | Should -BeNullOrEmpty
+            }
+        }
+
+        It 'installs a mocked CDN package only after every file hash verifies' {
+            InModuleScope Copilot {
+                $packageJson = '{"name":"@jeffreycao/copilot-api","version":"2.1.0","dependencies":{}}'
+                $main = 'console.log("test")'
+                function HashOf([string] $Text) {
+                    $sha = [Security.Cryptography.SHA256]::Create()
+                    try { [Convert]::ToBase64String($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($Text))) } finally { $sha.Dispose() }
+                }
+                Mock Get-CopilotPkgCdnManifest {
+                    [pscustomobject]@{
+                        BaseUrl = 'https://example.invalid/'
+                        Files = [ordered]@{ 'package.json' = HashOf $packageJson; 'dist/main.js' = HashOf $main }
+                    }
+                }
+                Mock Invoke-WebRequest {
+                    param($Uri, $OutFile)
+                    $text = if ($Uri -like '*package.json') { $packageJson } else { $main }
+                    [IO.File]::WriteAllText($OutFile, $text, [Text.UTF8Encoding]::new($false))
+                }
+                Mock Install-CopilotPkgDependencies { $true }
+                Install-CopilotPkgFromCdn | Should -BeTrue
+                (Get-CopilotPkgMetadata).Version | Should -BeExactly '2.1.0'
+                Should -Invoke Invoke-WebRequest -Times 2
             }
         }
 

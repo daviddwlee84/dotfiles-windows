@@ -78,7 +78,10 @@ npm view '@jeffreycao/copilot-api@2.1.0' version --registry https://registry.npm
 ```
 
 若只有設定中的 mirror 缺少此版本，應等待／要求 mirror 同步，或以核准的 registry 執行
-`copilot-proxy reinstall`；不要把測過的精確 pin 改成 `latest`。
+`copilot-proxy reinstall`。Windows module 也會自動 fallback 到 jsDelivr 上精確的 2.1.0
+runtime files，逐檔核對內建 SHA-256，再只透過目前 npm registry 解析一般 dependencies。
+這可處理 mirror 延遲同步，同時不放寬 pin，也不繞過核准 feed 取得 dependency tree。
+不要把測過的精確 pin 改成 `latest`。
 
 ## 模型選擇與 role profile
 

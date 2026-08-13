@@ -16,8 +16,10 @@ status_line = [
 ]
 ```
 
-The modifier uses `uv` with a pinned `tomlkit` parser; bootstrap installs `uv`
-before chezmoi runs. It accepts one leading UTF-8 BOM as an encoding signature.
+The modifier uses Bun's built-in TOML parser, which is installed in the baseline
+toolset. It performs no Python or package-registry access during `chezmoi apply`,
+so managed machines that block PyPI still get the footer. It accepts one leading
+UTF-8 BOM as an encoding signature.
 Malformed TOML, invalid UTF-8, a parser failure, or an invalid managed overlay is
 fail-closed: the original stdin bytes are emitted exactly, including CRLF. A
 successful merge is normalized to UTF-8 without BOM, LF line endings, and one

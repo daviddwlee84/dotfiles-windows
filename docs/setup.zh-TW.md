@@ -91,7 +91,7 @@ powershell -ExecutionPolicy Bypass -File "%TEMP%\bootstrap.ps1"
 | translate | 開（workstation） | 終端機翻譯 CLI + TUI，用 `go install` 從原始碼編（第一次要編好幾分鐘） |
 | Rime 輸入法（小狼毫） | 關 | 繁體中文輸入法。安裝程式是 machine scope —— 會跳 UAC；並把共用的 Rime `*.custom.yaml` 部署到 `%APPDATA%\Rime` |
 | China mirrors | 關 | pip / npm / cargo / go / node 走 GFW 鏡像 |
-| Managed machine | 關 | 略過 org 政策常擋的 app（Tailscale、Grammarly） |
+| Managed machine | 關 | 使用公司 PyPI/npm registry，並略過 org 政策常擋的 app（Tailscale、Grammarly） |
 | Backup mode | `smart` | 首次 apply 前備份既有檔案（`smart`/`full`/`off`） |
 | PSReadLine vi mode | 開 | shell 的 vi 編輯模式 |
 

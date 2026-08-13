@@ -86,8 +86,23 @@ try {
     return
 }
 
-# tomlkit accepts a lone CR in some comments and multiline strings even though
-# TOML permits newlines only as LF or CRLF. Reject it before the parser can turn
+# An older text-mode modifier could decode a UTF-8 BOM through the Windows OEM
+# code page and write the mojibake back. Two observed forms are the direct OEM
+# rendering and that rendering encoded/decoded once more. They are unambiguous at
+# byte zero and are not legal TOML key prefixes, so repair exactly these known
+# signatures; every unknown malformed prefix remains fail-closed below.
+$mojibakeBom = @( ([string]([char]0x2229) + [char]0x2557 + [char]0x2510), 'Γê⌐ΓòùΓöÉ' )
+foreach ($prefix in $mojibakeBom) {
+    if ($liveText.StartsWith($prefix, [System.StringComparison]::Ordinal)) {
+        [Console]::Error.WriteLine('modify_config.toml: repairing a mojibake UTF-8 BOM prefix from an older modifier')
+        $liveText = $liveText.Substring($prefix.Length)
+        $parseBytes = $strictUtf8.GetBytes($liveText)
+        break
+    }
+}
+
+# Some TOML parsers accept a lone CR in comments or multiline strings even though
+# TOML permits newlines only as LF or CRLF. Reject it before a parser can turn
 # malformed input into a successful, semantically changed merge.
 if ($liveText -match "`r(?!`n)") {
     Write-PreservedInput -Message 'stdin contains a standalone CR that TOML does not permit' -Bytes $originalBytes
@@ -96,7 +111,7 @@ if ($liveText -match "`r(?!`n)") {
 
 # TOML permits space, tab, LF, and CRLF as blank input. Do not let PowerShell's
 # broader Unicode whitespace definition turn NBSP, a lone CR, or similar bytes
-# into a fresh config silently; tomlkit must never be bypassed for those inputs.
+# into a fresh config silently; the parser must never be bypassed for those inputs.
 $legalBlank = [System.Text.RegularExpressions.Regex]::IsMatch(
     $liveText,
     '\A(?:[ \t]|\n|\r\n)*\z',
@@ -107,9 +122,9 @@ if (-not $legalBlank -and [string]::IsNullOrWhiteSpace($liveText)) {
     return
 }
 
-$uv = Get-Command uv -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-if (-not $uv) {
-    Write-PreservedInput -Message 'uv was not found; the pinned TOML parser is unavailable' -Bytes $originalBytes
+$bun = Get-Command bun -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+if (-not $bun) {
+    Write-PreservedInput -Message 'bun was not found; the offline TOML parser is unavailable' -Bytes $originalBytes
     return
 }
 
@@ -122,71 +137,219 @@ $tmpDir = [System.IO.Path]::GetTempPath()
 $stamp = [System.IO.Path]::GetRandomFileName()
 $overlayFile = Join-Path $tmpDir "codex-overlay-$stamp.toml"
 $liveFile = Join-Path $tmpDir "codex-live-$stamp.toml"
-$pyFile = Join-Path $tmpDir "codex-merge-$stamp.py"
+$jsFile = Join-Path $tmpDir "codex-merge-$stamp.js"
 $outFile = Join-Path $tmpDir "codex-out-$stamp.toml"
 
 try {
     [System.IO.File]::WriteAllBytes($overlayFile, $utf8.GetBytes($overlayText))
     [System.IO.File]::WriteAllBytes($liveFile, $parseBytes)
 
-    $pySource = @'
-import sys
+        $jsSource = @'
+import { readFileSync, writeFileSync } from "node:fs";
 
-try:
-    import tomlkit
-except Exception as exc:
-    print(f"modify_config.toml: pinned tomlkit parser is unavailable: {exc}", file=sys.stderr)
-    sys.exit(10)
+const [, , overlayPath, livePath, outPath] = process.argv;
+const normalize = (text) => text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
-_, overlay_path, live_path, out_path = sys.argv
+let statusLine;
+try {
+    const overlay = Bun.TOML.parse(readFileSync(overlayPath, "utf8"));
+    statusLine = overlay?.tui?.status_line;
+    if (!Array.isArray(statusLine) || !statusLine.every((item) => typeof item === "string")) {
+        throw new Error("tui.status_line is not an array of strings");
+    }
+} catch (error) {
+    console.error(`modify_config.toml: managed overlay is invalid: ${error.message}`);
+    process.exit(11);
+}
 
-try:
-    with open(overlay_path, "r", encoding="utf-8", newline="") as fh:
-        overlay_text = fh.read()
-    overlay = tomlkit.parse(overlay_text)
-    status_line = overlay["tui"]["status_line"]
-except Exception as exc:
-    print(f"modify_config.toml: managed overlay is invalid: {exc}", file=sys.stderr)
-    sys.exit(11)
+let liveText = normalize(readFileSync(livePath, "utf8"));
+let live;
+try {
+    live = Bun.TOML.parse(liveText);
+} catch (error) {
+    console.error(`modify_config.toml: live config is invalid TOML: ${error.message}`);
+    process.exit(12);
+}
 
-try:
-    with open(live_path, "r", encoding="utf-8", newline="") as fh:
-        live_text = fh.read()
-    live = tomlkit.parse(live_text)
-except Exception as exc:
-    print(f"modify_config.toml: live config is invalid TOML: {exc}", file=sys.stderr)
-    sys.exit(12)
+if (Object.hasOwn(live, "tui") && (live.tui === null || Array.isArray(live.tui) || typeof live.tui !== "object")) {
+    console.error("modify_config.toml: live tui value is not a table; refusing a lossy replacement");
+    process.exit(14);
+}
 
-try:
-    if "tui" in live and not isinstance(live["tui"], dict):
-        print("modify_config.toml: live tui value is not a table; refusing a lossy replacement", file=sys.stderr)
-        sys.exit(14)
-    if "tui" not in live:
-        live["tui"] = tomlkit.table()
-    live["tui"]["status_line"] = status_line
+// Find a direct [tui] header or its direct status_line assignment without ever
+// interpreting lookalike text inside TOML strings/comments. Bun validates the
+// complete document first; this scanner only locates the raw range to replace,
+// which preserves every unrelated byte and comment.
+function lineState(text, callback) {
+    let mode = "normal";
+    let triple = false;
+    let escaped = false;
+    let lineStart = 0;
 
-    output = tomlkit.dumps(live)
-    output = output.replace("\r\n", "\n").replace("\r", "\n").rstrip("\n") + "\n"
-    with open(out_path, "wb") as fh:
-        fh.write(output.encode("utf-8"))
-except Exception as exc:
-    print(f"modify_config.toml: could not merge managed status line: {exc}", file=sys.stderr)
-    sys.exit(13)
+    for (let i = 0; i <= text.length; i += 1) {
+        const ch = text[i] ?? "\n";
+        const atLineStart = i === lineStart;
+        if (atLineStart && mode === "normal") {
+            const newline = text.indexOf("\n", i);
+            const lineEnd = newline === -1 ? text.length : newline;
+            const result = callback(text.slice(i, lineEnd), i, lineEnd, newline === -1 ? text.length : newline + 1);
+            if (result) return result;
+        }
+
+        if (mode === "comment") {
+            if (ch === "\n") mode = "normal";
+        } else if (mode === "basic") {
+            if (triple && text.startsWith('"""', i) && !escaped) {
+                mode = "normal";
+                triple = false;
+                i += 2;
+            } else if (!triple && ch === '"' && !escaped) {
+                mode = "normal";
+            }
+            if (ch === "\\" && !escaped) escaped = true;
+            else escaped = false;
+        } else if (mode === "literal") {
+            if (triple && text.startsWith("'''", i)) {
+                mode = "normal";
+                triple = false;
+                i += 2;
+            } else if (!triple && ch === "'") {
+                mode = "normal";
+            }
+        } else if (ch === "#") {
+            mode = "comment";
+        } else if (text.startsWith('"""', i)) {
+            mode = "basic";
+            triple = true;
+            escaped = false;
+            i += 2;
+        } else if (text.startsWith("'''", i)) {
+            mode = "literal";
+            triple = true;
+            i += 2;
+        } else if (ch === '"') {
+            mode = "basic";
+            triple = false;
+            escaped = false;
+        } else if (ch === "'") {
+            mode = "literal";
+            triple = false;
+        }
+
+        if (ch === "\n") lineStart = i + 1;
+    }
+    return null;
+}
+
+function assignmentEnd(text, equalsAt) {
+    let square = 0;
+    let curly = 0;
+    let mode = "normal";
+    let triple = false;
+    let escaped = false;
+
+    for (let i = equalsAt + 1; i < text.length; i += 1) {
+        const ch = text[i];
+        if (mode === "comment") {
+            if (ch === "\n") {
+                mode = "normal";
+                if (square === 0 && curly === 0) return i + 1;
+            }
+            continue;
+        }
+        if (mode === "basic") {
+            if (triple && text.startsWith('"""', i) && !escaped) {
+                mode = "normal";
+                triple = false;
+                i += 2;
+            } else if (!triple && ch === '"' && !escaped) mode = "normal";
+            if (ch === "\\" && !escaped) escaped = true;
+            else escaped = false;
+            continue;
+        }
+        if (mode === "literal") {
+            if (triple && text.startsWith("'''", i)) {
+                mode = "normal";
+                triple = false;
+                i += 2;
+            } else if (!triple && ch === "'") mode = "normal";
+            continue;
+        }
+        if (ch === "#") mode = "comment";
+        else if (text.startsWith('"""', i)) {
+            mode = "basic";
+            triple = true;
+            escaped = false;
+            i += 2;
+        } else if (text.startsWith("'''", i)) {
+            mode = "literal";
+            triple = true;
+            i += 2;
+        } else if (ch === '"') {
+            mode = "basic";
+            triple = false;
+            escaped = false;
+        } else if (ch === "'") {
+            mode = "literal";
+            triple = false;
+        } else if (ch === "[") square += 1;
+        else if (ch === "]") square -= 1;
+        else if (ch === "{") curly += 1;
+        else if (ch === "}") curly -= 1;
+        else if (ch === "\n" && square === 0 && curly === 0) return i + 1;
+    }
+    return text.length;
+}
+
+let inTui = false;
+let tuiInsertAt = null;
+const found = lineState(liveText, (line, start, lineEnd, nextLine) => {
+    if (/^\s*\[\s*tui\s*\]\s*(?:#.*)?$/.test(line)) {
+        inTui = true;
+        tuiInsertAt = nextLine;
+        return null;
+    }
+    if (/^\s*\[/.test(line)) inTui = false;
+    const direct = inTui ? /^\s*status_line\s*=/.exec(line) : null;
+    const dotted = tuiInsertAt === null ? /^\s*tui\.status_line\s*=/.exec(line) : null;
+    const match = direct ?? dotted;
+    if (!match) return null;
+    const equalsAt = start + line.indexOf("=", match.index);
+    return { start, end: assignmentEnd(liveText, equalsAt), dotted: Boolean(dotted) };
+});
+
+const arrayBody = statusLine.map((item) => `  ${JSON.stringify(item)},`).join("\n");
+const assignment = `status_line = [\n${arrayBody}\n]\n`;
+if (found) {
+    const replacement = found.dotted ? `tui.${assignment}` : assignment;
+    liveText = liveText.slice(0, found.start) + replacement + liveText.slice(found.end);
+} else if (tuiInsertAt !== null) {
+    liveText = liveText.slice(0, tuiInsertAt) + assignment + liveText.slice(tuiInsertAt);
+} else {
+    liveText = liveText.replace(/\n*$/, "\n");
+    liveText += `\n[tui]\n${assignment}`;
+}
+
+liveText = liveText.replace(/\n*$/, "\n");
+try {
+    const output = Bun.TOML.parse(liveText);
+    if (JSON.stringify(output?.tui?.status_line) !== JSON.stringify(statusLine)) {
+        throw new Error("merged tui.status_line did not match the managed value");
+    }
+} catch (error) {
+    console.error(`modify_config.toml: could not merge managed status line: ${error.message}`);
+    process.exit(13);
+}
+
+writeFileSync(outPath, liveText, "utf8");
 '@
-    [System.IO.File]::WriteAllText($pyFile, $pySource, $utf8)
+        [System.IO.File]::WriteAllText($jsFile, $jsSource, $utf8)
 
-    $uvArgs = @(
-        'run', '--no-project', '--quiet',
-        '--with', 'tomlkit==0.13.3',
-        '--python', '>=3.11',
-        'python', $pyFile, $overlayFile, $liveFile, $outFile
-    )
-    $uvExecutable = $uv.Source
-    & $uvExecutable @uvArgs 1>$null
+        & $bun.Source $jsFile $overlayFile $liveFile $outFile 1>$null
     $rc = $LASTEXITCODE
 
     if ($rc -ne 0 -or -not (Test-Path -LiteralPath $outFile -PathType Leaf)) {
-        Write-PreservedInput -Message "pinned TOML merge failed (exit $rc)" -Bytes $originalBytes
+                Write-PreservedInput -Message "offline TOML merge failed (exit $rc)" -Bytes $originalBytes
         return
     }
 
@@ -194,7 +357,7 @@ except Exception as exc:
 } catch {
     Write-PreservedInput -Message "unexpected merge failure: $($_.Exception.Message)" -Bytes $originalBytes
 } finally {
-    foreach ($file in $overlayFile, $liveFile, $pyFile, $outFile) {
+    foreach ($file in $overlayFile, $liveFile, $jsFile, $outFile) {
         try { [System.IO.File]::Delete($file) } catch { $null = $_ }
     }
 }

@@ -148,6 +148,29 @@ Describe 'Codex config byte-safe overlay' {
         (ConvertFrom-StrictUtf8 -Bytes $result.StdoutBytes) | Should -Match 'model = "bom-model"'
     }
 
+    It 'repairs the double-mojibake BOM prefix already written by the old modifier' {
+        $prefix = 'Γê⌐ΓòùΓöÉ'
+        $liveBytes = $Utf8.GetBytes($prefix + "model = `"recovered`"`r`n")
+        $result = Invoke-CodexModifier -LiveBytes $liveBytes
+
+        $result.ExitCode | Should -Be 0
+        $result.Stderr | Should -Match 'repairing a mojibake UTF-8 BOM prefix'
+        $text = ConvertFrom-StrictUtf8 -Bytes $result.StdoutBytes
+        $text | Should -Match 'model = "recovered"'
+        $text | Should -Not -Match [regex]::Escape($prefix)
+        $text | Should -Match 'model-with-reasoning'
+    }
+
+    It 'repairs the direct OEM mojibake BOM prefix' {
+        $prefix = [string]([char]0x2229) + [char]0x2557 + [char]0x2510
+        $liveBytes = $Utf8.GetBytes($prefix + "model = `"recovered`"`n")
+        $result = Invoke-CodexModifier -LiveBytes $liveBytes
+
+        $result.ExitCode | Should -Be 0
+        $result.Stderr | Should -Match 'repairing a mojibake UTF-8 BOM prefix'
+        (ConvertFrom-StrictUtf8 -Bytes $result.StdoutBytes) | Should -Not -Match [regex]::Escape($prefix)
+    }
+
     It 'preserves a double BOM byte-for-byte with a diagnostic' {
         [byte[]] $liveBytes = ([byte[]] (0xEF, 0xBB, 0xBF)) + ([byte[]] (0xEF, 0xBB, 0xBF)) + $Utf8.GetBytes("model = `"untouched`"`n")
         $result = Invoke-CodexModifier -LiveBytes $liveBytes
@@ -224,7 +247,7 @@ insert_newline = ["ctrl-j"]
         Assert-ExactBytes -Actual $result.StdoutBytes -Expected $liveBytes
     }
 
-    It 'rejects a standalone CR before tomlkit can normalize it' {
+    It 'rejects a standalone CR before the TOML parser can normalize it' {
         $liveBytes = $Utf8.GetBytes('x = """a' + "`r" + 'b"""' + "`n")
         $result = Invoke-CodexModifier -LiveBytes $liveBytes
 
@@ -242,12 +265,12 @@ insert_newline = ["ctrl-j"]
         Assert-ExactBytes -Actual $result.StdoutBytes -Expected $liveBytes
     }
 
-    It 'preserves valid input when uv is absent instead of using bare Python' {
+    It 'preserves valid input when bun is absent instead of downloading a parser' {
         $liveBytes = $Utf8.GetBytes("model = `"no-parser`"`r`n")
         $result = Invoke-CodexModifier -LiveBytes $liveBytes -Environment @{ PATH = $TestDrive }
 
         $result.ExitCode | Should -Be 0
-        $result.Stderr | Should -Match 'uv was not found'
+        $result.Stderr | Should -Match 'bun was not found'
         Assert-ExactBytes -Actual $result.StdoutBytes -Expected $liveBytes
     }
 

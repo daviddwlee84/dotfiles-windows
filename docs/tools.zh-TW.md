@@ -187,9 +187,19 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
 | translate（workstation 預設開） | [`translate`](https://github.com/daviddwlee84/translate) —— 終端機翻譯工具（CLI + TUI），走 copilot-proxy / Ollama / Google，另有離線的 CC-CEDICT + ECDICT 辭典。它沒有 scoop/winget manifest，也沒有預先編譯的 Windows release，所以用 `go install` 從原始碼編進 `~\.local\bin`（go 由該區塊自己裝，不必開「Extra runtimes」）；**第一次編譯要好幾分鐘**。附帶 pwsh tab 補全與 `translate` tv channel。見 [translate](translate.zh-TW.md)。 |
 | Rime 輸入法 | [小狼毫 / Weasel](https://github.com/rime/weasel)（`Rime.Weasel`），Windows 版 Rime，註冊為**繁體中文**。winget manifest 是 machine-scope NSIS，套用時會跳 **UAC**。`%APPDATA%\Rime` 下的 `*.custom.yaml` 由 chezmoi 納管，其中引擎層設定與 macOS/Linux repo（鼠鬚管 / ibus-rime）**逐位元組共用**。見 [輸入法](input-method.zh-TW.md)。 |
 
-**China mirrors** 會把 pip / npm / cargo / go / node 的套件抓取導向 GFW 鏡像
-（清華 / npmmirror / goproxy.cn / rsproxy），安裝時與互動式 shell
-（`profile.d/05_mirrors.ps1`）皆生效。
+## 套件 registry
+
+套用時的 installer 與互動式 shell（`profile.d/05_mirrors.ps1`）共用同一份政策：
+
+- **受管機器**的 pip/uv 走公司 PyPI pull-through registry，npm 走公司 npm
+  pull-through registry。PyPI 路徑已用 `tomlkit==0.13.3` 驗證，artifact 由公司
+  Azure Artifacts backend 提供。NuGet 的公司 source 與停用 nuget.org 已由 IT
+  machine-wide 配置，因此 dotfiles 不覆寫 NuGet 設定。
+- **China mirrors** 只在非受管機器生效，把 pip / npm / cargo / go / node 導向
+  清華 / npmmirror / goproxy.cn / rsproxy。
+- 未找到公司的 Go 或 Cargo registry，因此受管機器保留這兩者既有預設值。
+
+若兩個 toggle 同時為 true，受管機器政策優先，避免 GFW mirror 繞過公司套件政策。
 
 ## Television（tv）channels
 

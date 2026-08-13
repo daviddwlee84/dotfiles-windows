@@ -83,8 +83,12 @@ npm view '@jeffreycao/copilot-api@2.1.0' version --registry https://registry.npm
 ```
 
 If only the configured mirror is missing the version, wait/request mirror sync or
-use an approved registry for `copilot-proxy reinstall`; do not replace the tested
-exact pin with `latest`.
+use an approved registry for `copilot-proxy reinstall`. The Windows module also
+falls back automatically to the exact 2.1.0 runtime files on jsDelivr, verifies a
+baked SHA-256 for every file, then resolves only its ordinary dependencies through
+the configured npm registry. This handles a lagging mirror without weakening the
+pin or bypassing the approved feed for the dependency tree. Do not replace the
+tested exact pin with `latest`.
 
 ## Model selection and role profile
 

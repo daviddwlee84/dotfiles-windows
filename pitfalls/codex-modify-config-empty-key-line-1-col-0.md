@@ -12,7 +12,8 @@ managed `tui.status_line` is not applied.
 **First seen**: 2026-08
 **Affects**: Windows dotfiles at the first `modify_`-based Codex footer release,
 when the live config starts with a UTF-8 BOM.
-**Status**: fixed — the modifier accepts one BOM and preserves every failure path
+**Status**: fixed — the modifier accepts one BOM, repairs the two exact mojibake
+BOM signatures written by the old path, and preserves every other failure path
 byte-for-byte.
 
 ## Symptom
@@ -23,7 +24,8 @@ an existing file created by a Windows editor can fail.
 
 A separate CI symptom had the same outward result (the old status line survived):
 Python existed on `windows-latest`, but `tomlkit` did not. The old Pester helper
-discarded stderr, so the import failure was hidden.
+discarded stderr, so the import failure was hidden. The modifier now uses Bun's
+built-in TOML parser and has no apply-time Python/PyPI dependency.
 
 ## Root cause
 
@@ -36,7 +38,10 @@ consumed zero valid key characters, and raised `Empty key at line 1 col 0`.
 
 The same text-mode path also made “preserving unchanged” weaker than advertised:
 invalid UTF-8 could be replaced during decode, and Python universal-newline reads
-could turn CRLF into LF.
+could turn CRLF into LF. On a live Windows install the BOM was even observed after
+two OEM/UTF-8 round trips as `Γê⌐ΓòùΓöÉ` before the first real key. Bun's parser
+returned an empty object for that prefix rather than throwing, so the modifier now
+repairs only this exact marker (and the direct `∩╗┐` form) before validation.
 
 References:
 
@@ -79,7 +84,7 @@ preserve.
   whitespace grammar.
 - Capture stderr and assert bytes in Pester. Include BOM-only, BOM-prefixed valid
   TOML, malformed CRLF, invalid UTF-8, double-BOM, and idempotence cases.
-- Provision the same pinned parser runtime in CI and seed a non-empty target before
+- Exercise Bun's built-in parser in CI and seed a non-empty target before
   `chezmoi apply`; an empty target does not exercise the merge path.
 
 ## Related

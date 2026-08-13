@@ -32,6 +32,10 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   truth** for installs, gated by the init toggles. scoop = CLI tools, winget = GUI
   apps, npm = AI agents, PSGallery = PSFzf/AudioDeviceCmdlets. Fault-tolerant: one
   failed package is collected + reported, never aborts the apply.
+- Package sources are defined once in `.chezmoitemplates/package-sources.ps1` and
+  reused by the installer and `profile.d/05_mirrors.ps1`: managed machines
+  use company PyPI/npm pull-through registries; otherwise the China-mirror toggle
+  selects GFW mirrors. Managed-machine policy wins if both toggles are true.
 - Install ≠ upgrade: `chezmoi apply` only installs what's missing; upgrade via
   `just upgrade-scoop` / `just upgrade-winget`.
 

@@ -69,7 +69,10 @@ Describe 'try fragment' {
             try {
                 $seed = Join-Path $tmp 'seed'; git init -q $seed
                 Set-Content (Join-Path $seed 'a.txt') 'hi'
-                git -C $seed -c user.email=t@t -c user.name=t add -A 2>$null
+                # Git for Windows sets system core.safecrlf=true; Set-Content
+                # writes CRLF, so fixture staging must explicitly allow the same
+                # harmless CRLF->LF normalization documented for SpecStory files.
+                git -C $seed -c core.safecrlf=false -c user.email=t@t -c user.name=t add -A 2>$null
                 git -C $seed -c user.email=t@t -c user.name=t commit -qm init 2>$null
                 $origin = Join-Path $tmp 'seed.git'; git clone -q --bare $seed $origin 2>$null
                 $dest = Join-Path $tmp '2026-07-12-seed'
@@ -90,7 +93,7 @@ Describe 'try fragment' {
             try {
                 $repo = Join-Path $tmp 'repo'; git init -q $repo
                 Set-Content (Join-Path $repo 'r.txt') 'x'
-                git -C $repo -c user.email=t@t -c user.name=t add -A 2>$null
+                git -C $repo -c core.safecrlf=false -c user.email=t@t -c user.name=t add -A 2>$null
                 git -C $repo -c user.email=t@t -c user.name=t commit -qm init 2>$null
                 $dest = Join-Path $tmp '2026-07-12-wt'
                 $sh = "/usr/bin/env sh -c 'if git -C '$repo' rev-parse --is-inside-work-tree; then git -C `"`$repo`" worktree add --detach '$dest'; fi'"
