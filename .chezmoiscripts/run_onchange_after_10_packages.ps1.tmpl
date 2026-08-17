@@ -161,7 +161,8 @@ function Install-Herdr {
 # Requires go: the plugin's Windows build command is `go build -o bin/herdr-plus.exe .`
 # (its sh-based build is skipped on Windows). go is gated behind installExtraRuntimes,
 # so SKIP with an actionable message rather than failing when it is absent.
-# `-y` accepts the interactive "Install this plugin? [y/N]" prompt.
+# `--yes` accepts the interactive "Install this plugin? [y/N]" prompt. Keep it
+# after the repository argument: the Windows preview parses options in that order.
 # NB: the keybinds must target the `-windows` action ids — herdr-plus scopes
 # `quick-actions`/`projects` to linux+macos. See
 # pitfalls/herdr-plus-action-does-not-support-platform-windows.md
@@ -176,7 +177,7 @@ function Install-HerdrPlus {
     }
     Info 'herdr plugin install cloudmanic/herdr-plus (backs prefix+y / prefix+O)'
     try {
-        herdr plugin install -y cloudmanic/herdr-plus 2>&1 | Out-Host
+        herdr plugin install cloudmanic/herdr-plus --yes 2>&1 | Out-Host
         if ($LASTEXITCODE -ne 0) { Register-Failure 'herdr-plus' }
     } catch {
         Write-Warning "herdr-plus install error: $_"
@@ -637,7 +638,8 @@ Install-Weasel
 if ($script:Failures.Count -gt 0) {
     Write-Warning ("package install: {0} item(s) failed and were skipped:" -f $script:Failures.Count)
     $script:Failures | ForEach-Object { Write-Warning "  - $_" }
-    Write-Warning "Re-run 'just apply' (or 'chezmoi apply') to retry, or install them manually."
+    Write-Warning "This is a run_onchange script; an unchanged apply will not retry it."
+    Write-Warning "Retry only this installer with: chezmoi state delete --bucket=entryState --key='C:/Users/{{ .chezmoi.username }}/.chezmoiscripts/10_packages.ps1'; chezmoi apply"
 } else {
     Info 'package install complete — no failures'
 }

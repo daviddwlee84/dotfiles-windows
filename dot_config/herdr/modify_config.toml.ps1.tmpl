@@ -37,6 +37,11 @@
 
 $ErrorActionPreference = 'Stop'
 
+# modify_ scripts run under `pwsh -NoProfile`, so the deployed 05_mirrors.ps1
+# fragment is not loaded here. Apply the same source policy inline before uv
+# resolves tomlkit: managed machines must use the IT-approved pull-through feed.
+{{ template "package-sources.ps1" . }}
+
 # Emit bytes verbatim so nothing re-encodes the config's ⭐ / box-drawing glyphs
 # and no BOM or trailing CRLF churn creeps into chezmoi's diff.
 function Write-StdoutBytes {

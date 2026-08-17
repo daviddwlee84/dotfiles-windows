@@ -44,10 +44,20 @@ Describe 'shared package-source policy' {
         $rendered | Should -Not -Match '\$env:(PIP_INDEX_URL|UV_DEFAULT_INDEX|npm_config_registry|GOPROXY)\s*='
     }
 
-    It 'is embedded by both install-time and interactive-shell entry points' {
+    It 'is embedded by install-time, modify-time, and interactive-shell entry points' {
         Get-Content -Raw (Join-Path $RepoRoot '.chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl') |
+            Should -Match 'template "package-sources\.ps1"'
+        Get-Content -Raw (Join-Path $RepoRoot 'dot_config/herdr/modify_config.toml.ps1.tmpl') |
             Should -Match 'template "package-sources\.ps1"'
         Get-Content -Raw (Join-Path $RepoRoot 'dot_config/powershell/profile.d/05_mirrors.ps1.tmpl') |
             Should -Match 'template "package-sources\.ps1"'
+    }
+}
+
+Describe 'package installer command compatibility' {
+    It 'passes the Herdr Plus repository before the non-interactive option' {
+        $script = Get-Content -Raw (Join-Path $RepoRoot '.chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl')
+        $script | Should -Match 'herdr plugin install cloudmanic/herdr-plus --yes'
+        $script | Should -Not -Match 'herdr plugin install -y cloudmanic/herdr-plus'
     }
 }
