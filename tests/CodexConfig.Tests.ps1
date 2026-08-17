@@ -109,7 +109,8 @@ BeforeAll {
                 Stderr      = $Utf8.GetString($stderr.ToArray())
                 ExitCode    = $process.ExitCode
             }
-        } finally {
+        }
+        finally {
             $stdout.Dispose()
             $stderr.Dispose()
             $process.Dispose()

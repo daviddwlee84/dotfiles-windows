@@ -41,9 +41,9 @@ function Test-StartsWithUtf8Bom {
     )
 
     return $Bytes.Length -ge 3 -and
-        $Bytes[0] -eq 0xEF -and
-        $Bytes[1] -eq 0xBB -and
-        $Bytes[2] -eq 0xBF
+    $Bytes[0] -eq 0xEF -and
+    $Bytes[1] -eq 0xBB -and
+    $Bytes[2] -eq 0xBF
 }
 
 $inputBuffer = [System.IO.MemoryStream]::new()
@@ -51,12 +51,14 @@ try {
     try {
         [Console]::OpenStandardInput().CopyTo($inputBuffer)
         [byte[]] $originalBytes = $inputBuffer.ToArray()
-    } catch {
+    }
+    catch {
         [byte[]] $originalBytes = $inputBuffer.ToArray()
         Write-PreservedInput -Message "could not read stdin bytes: $($_.Exception.Message)" -Bytes $originalBytes
         return
     }
-} finally {
+}
+finally {
     $inputBuffer.Dispose()
 }
 
@@ -81,7 +83,8 @@ if ($removedBom -and (Test-StartsWithUtf8Bom -Bytes $parseBytes)) {
 $strictUtf8 = [System.Text.UTF8Encoding]::new($false, $true)
 try {
     $liveText = $strictUtf8.GetString($parseBytes)
-} catch [System.Text.DecoderFallbackException] {
+}
+catch [System.Text.DecoderFallbackException] {
     Write-PreservedInput -Message "stdin is not valid UTF-8: $($_.Exception.Message)" -Bytes $originalBytes
     return
 }
@@ -144,7 +147,7 @@ try {
     [System.IO.File]::WriteAllBytes($overlayFile, $utf8.GetBytes($overlayText))
     [System.IO.File]::WriteAllBytes($liveFile, $parseBytes)
 
-        $jsSource = @'
+    $jsSource = @'
 import { readFileSync, writeFileSync } from "node:fs";
 
 const [, , overlayPath, livePath, outPath] = process.argv;
@@ -343,20 +346,22 @@ try {
 
 writeFileSync(outPath, liveText, "utf8");
 '@
-        [System.IO.File]::WriteAllText($jsFile, $jsSource, $utf8)
+    [System.IO.File]::WriteAllText($jsFile, $jsSource, $utf8)
 
-        & $bun.Source $jsFile $overlayFile $liveFile $outFile 1>$null
+    & $bun.Source $jsFile $overlayFile $liveFile $outFile 1>$null
     $rc = $LASTEXITCODE
 
     if ($rc -ne 0 -or -not (Test-Path -LiteralPath $outFile -PathType Leaf)) {
-                Write-PreservedInput -Message "offline TOML merge failed (exit $rc)" -Bytes $originalBytes
+        Write-PreservedInput -Message "offline TOML merge failed (exit $rc)" -Bytes $originalBytes
         return
     }
 
     Write-StdoutBytes -Bytes ([System.IO.File]::ReadAllBytes($outFile))
-} catch {
+}
+catch {
     Write-PreservedInput -Message "unexpected merge failure: $($_.Exception.Message)" -Bytes $originalBytes
-} finally {
+}
+finally {
     foreach ($file in $overlayFile, $liveFile, $jsFile, $outFile) {
         try { [System.IO.File]::Delete($file) } catch { $null = $_ }
     }

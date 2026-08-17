@@ -47,7 +47,7 @@ jobs:
       # init step below die with an opaque `promptChoiceOnce: EOF`, and the
       # Pester step at the end never gets reached. This surfaces the actual
       # missing flag instead. (Invariant #1.)
-      - name: 'Init prompts are answerable non-interactively (invariant #1)'
+      - name: "Init prompts are answerable non-interactively (invariant #1)"
         shell: pwsh
         run: Invoke-Pester -CI -Path ./tests/InitPrompts.Tests.ps1 -Output Detailed
 
