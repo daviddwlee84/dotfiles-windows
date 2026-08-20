@@ -1,110 +1,58 @@
 # Windows as a `fleet` worker — what this repo has to provide
 
-**Status**: P? — design captured 2026-08-20; nothing implemented on either side. Blocked on a per-box reachability spike, not on effort.
-**Effort**: S here (this repo mostly already ships the pieces; the work is a decision + docs). The runner change is L and lives in `daviddwlee84/dotfiles`.
-**Related**: `scripts/enable-sshd.ps1` · `scripts/enable-wsl-ubuntu.ps1` · `scripts/bootstrap-wsl-dotfiles.ps1` · `.chezmoiscripts/run_onchange_after_40_openssh_server.ps1.tmpl` · `dot_ssh/private_config.d/create_private_00-defaults` · unix twin `daviddwlee84/dotfiles` → `backlog/fleet-windows-workers.md` · cross-repo note `dotfiles-all/docs/multi-machine-compute-plane.md`
+**Status**: P? — blocked on a per-box reachability spike (see below), not on effort.
+**Effort**: S here. The runner-side work is L and lives in `daviddwlee84/dotfiles`.
+**Related**: `scripts/enable-sshd.ps1` · `scripts/enable-wsl-ubuntu.ps1` · `.chezmoiscripts/run_onchange_after_40_openssh_server.ps1.tmpl` · `dot_ssh/private_config.d/create_private_00-defaults`
+
+**The design and its rationale live outside this repo — do not restate them here:**
+
+- `dotfiles-all/docs/multi-machine-compute-plane.md` — the cross-platform decision: head/worker split, transport ladder, what does not cross over.
+- `daviddwlee84/dotfiles` → `backlog/fleet-windows-workers.md` — the runner design, the wire format, and the evidence behind it.
+
+This doc is only the **Windows-side checklist**: what a box here must provide,
+and what is still missing.
 
 ## Context
 
 2026-08. The user wants one machine to host every coding-agent session (the
-*head*) and to push compute onto other Windows devboxes (*workers*), with the
-laptop out of the loop because it is not always powered on.
+*head*) and to push compute onto other Windows devboxes (*workers*).
 
-`fleet` — the multi-host orchestrator (inventory, asyncssh fan-out, cross-host
-pueue/tmux rollups) — lives entirely in the Unix repo and is called out as a
-known gap here already (`backlog/herdr-windows-port-verification.md`: *"`fleet`
-is a mac/linux-only tool in the parent repo; nothing to point at here"*).
+`fleet` — the multi-host orchestrator — lives entirely in the Unix repo and is
+already noted as a gap here (`backlog/herdr-windows-port-verification.md`:
+*"`fleet` is a mac/linux-only tool in the parent repo; nothing to point at
+here"*). **That gap is the design, not a defect.** The control plane stays on
+the head so agent credentials and session state live on exactly one machine;
+Windows only has to execute.
 
-**This repo does not need a `fleet` port.** The control plane stays on the head;
-Windows only has to be a good *worker*. That asymmetry is deliberate — agent
-credentials, session state and orchestration all stay on one machine.
+Note the head may itself be a Windows devbox: `installWslUbuntu` +
+`wslUbuntuBootstrap` provision a WSL Ubuntu carrying the cross-platform
+dotfiles, which is a complete `fleet` host. Nothing new is needed for that case.
 
-The head itself may well be a Windows devbox: `installWslUbuntu` +
-`wslUbuntuBootstrap` already provision a WSL Ubuntu with the cross-platform
-dotfiles inside it, and that is a complete `fleet` host today. Nothing new is
-needed for that case either.
-
-## What a worker has to provide
+## What a worker must provide
 
 | Requirement | Status here |
 |---|---|
 | Inbound SSH | `installSshServer` → `scripts/enable-sshd.ps1` (capability + service + firewall rule on 22) — **shipped** |
-| Key-based auth from the head | `dot_ssh/` seeds the client side only; `authorized_keys` on the worker is manual today |
-| A shell the runner can target | pwsh 7 is present; see the `DefaultShell` note below |
+| Key-based auth from the head | `dot_ssh/` seeds the **client** side only; `authorized_keys` on the worker is manual — **the one real gap** |
+| A shell the runner can target | pwsh 7 — **shipped** |
 | Optional POSIX env | `installWslUbuntu` → Ubuntu-24.04 + cross-platform dotfiles — **shipped** |
-| Queue | not recommended natively — see below |
+| Queue | not recommended natively; queues stay on POSIX/WSL hosts |
 
-## The `DefaultShell` question — and why it stops mattering
+## Decisions that bind files in this repo
 
-`scripts/enable-sshd.ps1:64` deliberately sets:
+**Keep `DefaultShell = pwsh`.** `scripts/enable-sshd.ps1:64` sets it so an
+interactive `ssh devbox` lands in PowerShell 7. That setting breaks naive remote
+execution of POSIX command strings, but the runner side sends a base64
+`-EncodedCommand` payload that survives either default shell, so this repo needs
+no change. Do not "fix" `enable-sshd.ps1` for remote-execution reasons.
 
-```powershell
-New-ItemProperty -Path 'HKLM:\SOFTWARE\OpenSSH' -Name DefaultShell -Value $pwsh
-```
+**`scripts/enable-wsl-ubuntu.ps1` already carries the encoding fixes** any WSL
+execution path needs (`$OutputEncoding = [System.Text.UTF8Encoding]::new($false)`,
+`$env:WSL_UTF8 = '1'`, and the feed-bash-over-stdin idiom). Reuse them rather
+than re-deriving.
 
-so an interactive `ssh devbox` lands in PowerShell 7 rather than cmd.exe. That is
-good for humans and actively hostile to naive remote execution:
-ansible-collections/community.general#11307 documents the WSL connection plugin
-breaking on exactly this setting — pwsh mangles the backticks in a POSIX command
-before bash sees it (`/bin/bash: -c: line 1: syntax error near unexpected token
-')'`), and the reported fix is to set the default shell back to cmd.
-
-**Do not change it.** The runner side solves this instead, by sending
-
-```
-pwsh -NoProfile -EncodedCommand <base64 UTF-16LE>
-```
-
-which is pure ASCII with no quotes, backticks or `$`, and therefore arrives
-intact through either cmd.exe or pwsh. The consequence for this repo is that
-`enable-sshd.ps1` needs **no change**, and a devbox someone else configured works
-the same as one of ours. Rationale in full: the unix twin doc.
-
-## WSL as the execution environment — the fragile option
-
-A worker can execute either natively (pwsh) or inside its WSL distro. The WSL hop
-is the *less* reliable of the two, contrary to intuition:
-
-- microsoft/WSL#8072 — `Access is denied` opening `wsl.exe` from an SSH session
-- microsoft/WSL#9373 — WSL does not start when connected over SSH
-- microsoft/WSL#8889 — Windows executables give no output from an SSH session
-
-If a WSL worker is wanted anyway, the payload shape is
-`wsl.exe -d <distro> -u <user> -- bash -lc '<script>'` *inside* the encoded pwsh
-command, so quoting never crosses the sshd boundary. `scripts/enable-wsl-ubuntu.ps1`
-already carries the two encoding fixes that path needs
-(`$OutputEncoding = [System.Text.UTF8Encoding]::new($false)` and
-`$env:WSL_UTF8 = '1'`), plus the "pipe the bash script over stdin" idiom.
-
-Upside of the WSL path: it is the only one where pueue behaves like it does on
-the rest of the fleet.
-
-## Queue: not on native Windows
-
-pueue's README says Windows is *"fully supported and working fine for quite a
-while"*, but Nukesor/pueue#344 records that `pueued` does not handle Windows
-service events, so registering it as a service times out — it needs a
-logon-triggered Scheduled Task. Tasks also execute **through PowerShell** on
-Windows, so a queued string does not mean the same thing it means on a POSIX
-host. Keep queues on POSIX/WSL; native Windows gets synchronous execution only.
-
-## The blocker: `managedMachine` + Dev Box means possibly no route at all
-
-This repo's own prompt text defines the constraint: *"Managed or corporate
-machine (skip org-policy-blocked apps like **Tailscale** and Grammarly)"*. On a
-managed box there is no overlay network. A Microsoft Dev Box additionally has no
-public IP, and its supported connection paths are the Dev Box service (RDP /
-browser / VS Code headless) — peer-to-peer inbound TCP/22 is not guaranteed.
-
-Both closed at once means **no inbound transport exists** and no shell
-engineering helps. The fallback is an outbound-dialing worker: `ssh -R` /
-autossh reverse tunnel, a GitHub self-hosted runner (outbound-only, and this repo
-already reaches Windows that way in CI), or a poll-based work pool. Recorded as a
-tier; not built.
-
-Lifecycle is easy once reachability is solved: `az devcenter dev dev-box
-start|stop|list` (`devcenter` CLI extension, Azure CLI >= 2.75). `installIacTools`
-already installs the Azure CLI.
+**Native execution is preferred over the WSL hop** on a worker. Reasons and
+issue references are in the Unix-side doc.
 
 ## Key question for the spike
 
@@ -114,14 +62,18 @@ From the intended head, per box:
 ssh <box> 'pwsh -NoProfile -Command "$PSVersionTable.PSVersion"'
 ```
 
-If that succeeds, tier A (inbound SSH → native pwsh) is available and the rest is
-runner-side work in the Unix repo. If it cannot succeed on the corporate boxes,
-the whole design changes shape to an outbound-dialing worker and should be
-re-scoped before any code is written.
+If it succeeds, everything remaining is runner-side work in the Unix repo. If it
+cannot succeed on the corporate boxes, the design flips to an outbound-dialing
+worker and must be re-scoped before any code is written.
+
+The repo-local constraint that makes this uncertain: `managedMachine` is defined
+here as *"Managed or corporate machine (skip org-policy-blocked apps like
+**Tailscale** and Grammarly)"* — so a managed box has no overlay network, and a
+Dev Box has no public IP either.
 
 ## Decision (so far)
 
-Nothing to implement here yet. When the spike passes, the likely additions to
-this repo are small and additive: an `authorized_keys` provisioning path for the
-head's key, and a docs page describing worker setup. Deliberately **not** doing:
-porting `fleet`, changing `DefaultShell`, or running a queue natively.
+Nothing to implement here yet. When the spike passes, the likely addition is
+small and additive: an `authorized_keys` provisioning path for the head's key,
+plus a worker-setup docs page. Deliberately **not** doing: porting `fleet`,
+changing `DefaultShell`, or running a queue natively.
