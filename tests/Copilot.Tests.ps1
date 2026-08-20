@@ -323,6 +323,40 @@ Describe 'Copilot module' {
         }
     }
 
+    Context 'shared OpenAI model ordering' {
+        It 'keeps every named tier in one order for Claude and Codex' {
+            InModuleScope Copilot {
+                $known = @(
+                    'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.5', 'gpt-5.4',
+                    'gpt-5.3-codex', 'gpt-5.6-luna', 'gpt-5.4-mini', 'gpt-5-mini'
+                )
+                foreach ($i in 0..($known.Count - 2)) {
+                    $pair = @($known[$i + 1], $known[$i])
+                    Select-CopilotBestOpenAIModel -Model $pair | Should -BeExactly $known[$i]
+                    Select-CopilotBestModel -Model $pair | Should -BeExactly $known[$i]
+                    Select-CopilotBestCodexModel -Model $pair | Should -BeExactly $known[$i]
+                }
+            }
+        }
+
+        It 'uses the same future-model vectors for Claude and Codex' {
+            InModuleScope Copilot {
+                $vectors = @(
+                    @{ Model = @('gpt-5.7', 'gpt-5.6-luna'); Expected = 'gpt-5.6-luna' },
+                    @{ Model = @('gpt-5.7', 'gpt-5.4-mini'); Expected = 'gpt-5.4-mini' },
+                    @{ Model = @('gpt-5.7-mini', 'gpt-5.7'); Expected = 'gpt-5.7' },
+                    @{ Model = @('gpt-5-codex', 'gpt-5-mini'); Expected = 'gpt-5-mini' },
+                    @{ Model = @('gpt-5.6-terra', 'gpt-5.6-sol[1m]'); Expected = 'gpt-5.6-sol' }
+                )
+                foreach ($vector in $vectors) {
+                    Select-CopilotBestOpenAIModel -Model $vector.Model | Should -BeExactly $vector.Expected
+                    Select-CopilotBestModel -Model $vector.Model | Should -BeExactly $vector.Expected
+                    Select-CopilotBestCodexModel -Model $vector.Model | Should -BeExactly $vector.Expected
+                }
+            }
+        }
+    }
+
     Context 'best-model picker (--auto)' {
         It 'prefers Fable, then the strongest Claude family, and returns a raw id' {
             InModuleScope Copilot {
@@ -341,9 +375,9 @@ Describe 'Copilot module' {
                     Should -Be 'gpt-5.6-sol'
             }
         }
-        It 'keeps older flagship and coding models ahead of lightweight models' {
+        It 'keeps named older flagship and coding models ahead of lightweight models' {
             InModuleScope Copilot {
-                Select-CopilotBestModel -Model @('gpt-5-mini', 'gpt-5-codex') | Should -Be 'gpt-5-codex'
+                Select-CopilotBestModel -Model @('gpt-5-mini', 'gpt-5.3-codex') | Should -Be 'gpt-5.3-codex'
             }
         }
         It 'prefers a non-flash Gemini as the last family' {
@@ -398,6 +432,34 @@ Describe 'Copilot module' {
         }
     }
 
+    Context 'catalog eligibility policy' {
+        It 'excludes every veto while retaining entries with absent metadata' {
+            InModuleScope Copilot {
+                $catalog = [pscustomobject]@{ data = @(
+                    [pscustomobject]@{ id = 'claude-fable-5'; policy = [pscustomobject]@{ state = 'disabled' } },
+                    [pscustomobject]@{ id = 'claude-opus-5'; model_picker_enabled = $false },
+                    [pscustomobject]@{ id = 'gpt-5.6-sol'; capabilities = [pscustomobject]@{ type = 'embeddings' } },
+                    [pscustomobject]@{ id = 'claude-sonnet-5' },
+                    [pscustomobject]@{ id = 'gpt-5.5'; policy = [pscustomobject]@{ state = 'enabled' } },
+                    [pscustomobject]@{ id = 'gpt-5.5' },
+                    [pscustomobject]@{ id = $null },
+                    $null
+                ) }
+                @(Get-CopilotSelectableModelIds $catalog) |
+                    Should -BeExactly @('claude-sonnet-5', 'gpt-5.5')
+            }
+        }
+
+        It 'returns no automatic candidate for an embedding-only catalog' {
+            InModuleScope Copilot {
+                $catalog = [pscustomobject]@{ data = @(
+                    [pscustomobject]@{ id = 'text-embedding-3-small'; capabilities = [pscustomobject]@{ type = 'embeddings' } }
+                ) }
+                @(Get-CopilotSelectableModelIds $catalog).Count | Should -Be 0
+            }
+        }
+    }
+
     Context 'catalog metadata and Claude Code role profiles' {
         It 'adds [1m] only when the live model metadata advertises a 1M context window' {
             InModuleScope Copilot {
@@ -430,6 +492,20 @@ Describe 'Copilot module' {
                 $modelProfile.opus | Should -Be 'gpt-5.6-sol[1m]'
                 $modelProfile.sonnet | Should -Be 'gpt-5.6-terra[1m]'
                 $modelProfile.haiku | Should -Be 'gpt-5.6-luna[1m]'
+            }
+        }
+
+        It 'does not derive role aliases from vetoed catalog entries' {
+            InModuleScope Copilot {
+                $oneMillion = [pscustomobject]@{ limits = [pscustomobject]@{ max_context_window_tokens = 1000000 } }
+                $catalog = [pscustomobject]@{ data = @(
+                    [pscustomobject]@{ id = 'gpt-5.6-sol'; capabilities = $oneMillion },
+                    [pscustomobject]@{ id = 'gpt-5.6-terra'; policy = [pscustomobject]@{ state = 'disabled' }; capabilities = $oneMillion },
+                    [pscustomobject]@{ id = 'gpt-5.6-luna'; model_picker_enabled = $false; capabilities = $oneMillion },
+                    [pscustomobject]@{ id = 'gpt-5.4-mini'; capabilities = [pscustomobject]@{ type = 'embeddings'; limits = $oneMillion.limits } }
+                ) }
+                $modelProfile = Get-CopilotModelProfile -Model 'gpt-5.6-sol' -Catalog $catalog
+                @($modelProfile.Values | Select-Object -Unique) | Should -Be @('gpt-5.6-sol[1m]')
             }
         }
 
@@ -499,6 +575,24 @@ Describe 'Copilot module' {
                 copilot-model --auto -ErrorAction SilentlyContinue -ErrorVariable +errors
                 $errors.Exception.Message | Should -Match 'needs a reachable proxy'
                 Test-Path $script:state | Should -BeFalse
+            }
+        }
+
+        It 'skips vetoed catalog entries during --auto selection' {
+            InModuleScope Copilot {
+                $script:state = Join-Path (Get-Location) 'state/model'
+                Mock Get-CopilotModelState { $script:state }
+                $catalog = [pscustomobject]@{ data = @(
+                    [pscustomobject]@{ id = 'claude-fable-5'; policy = [pscustomobject]@{ state = 'disabled' } },
+                    [pscustomobject]@{ id = 'gpt-5.6-sol'; model_picker_enabled = $false },
+                    [pscustomobject]@{ id = 'gpt-5.6-terra'; capabilities = [pscustomobject]@{ type = 'embeddings' } },
+                    [pscustomobject]@{ id = 'gpt-5.5' }
+                ) }
+                Mock Get-CopilotModelCatalog { $catalog }
+
+                copilot-model --auto
+
+                (Get-Content -Raw $script:state).Trim() | Should -BeExactly 'gpt-5.5'
             }
         }
 
@@ -899,6 +993,15 @@ Describe 'Copilot module' {
             }
         }
 
+        It 'uses only selectable ids for an automatic catalog fallback' {
+            InModuleScope Copilot {
+                $target = Resolve-CopilotDoctorTarget -ConfiguredMain 'claude-opus-5[1m]' `
+                    -RawModel @('claude-fable-5', 'gpt-5.5') -SelectableModel @('gpt-5.5')
+                $target.Model | Should -BeExactly 'gpt-5.5'
+                $target.Label | Should -BeExactly 'CatalogFallback'
+            }
+        }
+
         It 'refuses to probe an unrelated fallback when the active project main is missing' {
             InModuleScope Copilot {
                 $target = Resolve-CopilotDoctorTarget -ConfiguredMain '' -RawModel @('gpt-5.6-sol')
@@ -1037,12 +1140,15 @@ Describe 'Copilot module' {
     }
 
     Context 'Responses compatibility shim' {
-        It 'keeps the Unix and Windows shim implementations byte-identical' {
-            $unixShim = '/Users/david/.local/share/chezmoi/dot_config/shell/copilot-throttle-shim.js'
-            if (-not (Test-Path -LiteralPath $unixShim)) { Set-ItResult -Skipped -Because 'Unix sibling checkout is unavailable'; return }
+        It 'matches the reviewed Unix shim artifact without a sibling checkout' {
+            $shimContract = [ordered]@{
+                UnixSourceCommit = 'ee5612c57278df5540ac80ad28ede91b57c3f09c'
+                Sha256 = '8FBADA960E5A06E62F4B81CD873574DB85129C2FB7C7156E96CD5BDCE5F0E8BA'
+            }
             $windowsShim = Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-throttle-shim.js'
+            $shimContract.UnixSourceCommit | Should -Match '^[0-9a-f]{40}$'
             (Get-FileHash -Algorithm SHA256 $windowsShim).Hash |
-                Should -Be (Get-FileHash -Algorithm SHA256 $unixShim).Hash
+                Should -BeExactly $shimContract.Sha256
         }
 
         It 'fills blank MCP descriptions without adding one to a native tool' {
@@ -1061,6 +1167,133 @@ console.log(JSON.stringify({ r, p }));
                 $result.p.input[0].tools[0].description | Should -Be 'Tool alpha.'
                 $result.p.tools[0].PSObject.Properties.Name | Should -Not -Contain 'description'
             } finally { Remove-Item env:COPILOT_SHIM_TEST_PATH -ErrorAction SilentlyContinue }
+        }
+
+        It 'decodes zstd Responses bodies before normalization' {
+            if (-not (Get-Command bun -ErrorAction SilentlyContinue)) { Set-ItResult -Skipped -Because 'bun is unavailable'; return }
+            $env:COPILOT_SHIM_TEST_PATH = (Resolve-Path (Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-throttle-shim.js')).Path
+            try {
+                $json = & bun -e @'
+import { pathToFileURL } from "node:url";
+const { normalizeRequestBody: n } = await import(pathToFileURL(process.env.COPILOT_SHIM_TEST_PATH));
+const source = JSON.stringify({ input: [{ tools: [{ name: "compressed", description: "" }] }] });
+const compressed = Bun.zstdCompressSync(new TextEncoder().encode(source));
+const r = n("/responses", compressed, "zstd");
+console.log(JSON.stringify({ changed: r.changed, decoded: r.decoded, p: JSON.parse(r.body) }));
+'@
+                $LASTEXITCODE | Should -Be 0
+                $result = $json | ConvertFrom-Json
+                $result.changed | Should -Be 1
+                $result.decoded | Should -BeTrue
+                $result.p.input[0].tools[0].description | Should -BeExactly 'Tool compressed.'
+            } finally { Remove-Item env:COPILOT_SHIM_TEST_PATH -ErrorAction SilentlyContinue }
+        }
+
+        It 'classifies only an explicit stream true body as streaming' {
+            if (-not (Get-Command bun -ErrorAction SilentlyContinue)) { Set-ItResult -Skipped -Because 'bun is unavailable'; return }
+            $env:COPILOT_SHIM_TEST_PATH = (Resolve-Path (Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-throttle-shim.js')).Path
+            try {
+                $json = & bun -e @'
+import { pathToFileURL } from "node:url";
+const { wantsStream: w } = await import(pathToFileURL(process.env.COPILOT_SHIM_TEST_PATH));
+const enc = (o) => new TextEncoder().encode(JSON.stringify(o)).buffer;
+console.log(JSON.stringify({
+  yes: w(enc({ model: "m", stream: true })),
+  str: w(JSON.stringify({ model: "m", stream: true })),
+  no: w(enc({ model: "m", stream: false })),
+  missing: w(enc({ model: "m" })),
+  truthy: w(enc({ model: "m", stream: "true" })),
+  garbage: w(new TextEncoder().encode("not json").buffer),
+}));
+'@
+                $LASTEXITCODE | Should -Be 0
+                $result = $json | ConvertFrom-Json
+                $result.yes | Should -BeTrue
+                $result.str | Should -BeTrue
+                $result.no | Should -BeFalse
+                $result.missing | Should -BeFalse
+                $result.truthy | Should -BeFalse
+                $result.garbage | Should -BeFalse
+            } finally { Remove-Item env:COPILOT_SHIM_TEST_PATH -ErrorAction SilentlyContinue }
+        }
+
+        It 'keeps fast and non-streaming responses transparent while protecting slow streams' {
+            if (-not (Get-Command bun -ErrorAction SilentlyContinue)) { Set-ItResult -Skipped -Because 'bun is unavailable'; return }
+            $shim = (Resolve-Path (Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-throttle-shim.js')).Path
+            $testScript = Join-Path ([System.IO.Path]::GetTempPath()) "copilot-shim-keepalive-$([guid]::NewGuid()).mjs"
+            try {
+                [System.IO.File]::WriteAllText($testScript, @'
+import { pathToFileURL } from "node:url";
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const upstream = Bun.serve({
+  port: 0,
+  idleTimeout: 60,
+  async fetch(req) {
+    const url = new URL(req.url);
+    await sleep(Number(url.searchParams.get("delay") ?? 0));
+    if (url.searchParams.get("mode") === "status") {
+      return new Response('{"error":"nope"}', {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response("event: message_start\ndata: {}\n\nevent: message_stop\ndata: {}\n\n", {
+      headers: { "content-type": "text/event-stream" },
+    });
+  },
+});
+process.env.COPILOT_SHIM_PORT = "0";
+process.env.COPILOT_SHIM_UPSTREAM = `http://localhost:${upstream.port}`;
+process.env.COPILOT_SHIM_PING_MS = "150";
+process.env.COPILOT_SHIM_PING_AFTER_MS = "100";
+process.env.COPILOT_SHIM_STALL_MS = "5000";
+const { startServer } = await import(pathToFileURL(process.argv[2]).href);
+const shim = startServer();
+const call = async (query, stream = true) => {
+  const response = await fetch(`http://localhost:${shim.port}/v1/messages${query}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ model: "m", stream }),
+  });
+  const body = await response.text();
+  return {
+    status: response.status,
+    contentType: response.headers.get("content-type"),
+    body,
+    pings: (body.match(/^: /gm) ?? []).length,
+    events: (body.match(/^event: (\S+)/gm) ?? []).map((item) => item.slice(7)),
+  };
+};
+const result = {
+  slow: await call("?delay=800"),
+  fast: await call("?delay=0"),
+  plain: await call("?delay=800&mode=status", false),
+  lateError: await call("?delay=800&mode=status"),
+};
+console.log(JSON.stringify(result));
+shim.stop(true);
+upstream.stop(true);
+'@, [System.Text.UTF8Encoding]::new($false))
+
+                $output = & bun $testScript $shim
+                $LASTEXITCODE | Should -Be 0
+                $jsonLine = @($output | Where-Object { "$_" -like '{"slow"*' })[-1]
+                $jsonLine | Should -Not -BeNullOrEmpty
+                $result = $jsonLine | ConvertFrom-Json
+
+                $result.slow.pings | Should -BeGreaterThan 0
+                ($result.slow.events -join ',') | Should -BeExactly 'message_start,message_stop'
+                $result.fast.pings | Should -Be 0
+                ($result.fast.events -join ',') | Should -BeExactly 'message_start,message_stop'
+                $result.plain.status | Should -Be 400
+                $result.plain.contentType | Should -BeExactly 'application/json'
+                $result.plain.body | Should -BeExactly '{"error":"nope"}'
+                $result.plain.pings | Should -Be 0
+                $result.lateError.status | Should -Be 200
+                ($result.lateError.events -join ',') | Should -BeExactly 'error'
+            } finally {
+                if ([System.IO.File]::Exists($testScript)) { [System.IO.File]::Delete($testScript) }
+            }
         }
     }
 }

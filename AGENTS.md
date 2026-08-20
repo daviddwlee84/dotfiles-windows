@@ -74,6 +74,7 @@ chezmoi execute-template --config="$TMPD/c.toml" --source="$PWD" < some.ps1.tmpl
 - New init prompt → `.chezmoi.toml.tmpl` + `windows.yml` flags + `docs/setup.md`/`setup.zh-TW.md` tables + the "What's enabled" block in `.chezmoitemplates/dotfiles-windows-skill.md`.
 - New `docs/**/*.md` → its `.zh-TW.md` twin + `nav` + `nav_translations` in `mkdocs.yml`; `just docs-build` must stay green.
 - Any edit under `.chezmoitemplates/rime/` → copy the file verbatim into the parent repo's `.chezmoitemplates/rime/` (`chezmoi source-path` there, usually `~/.local/share/chezmoi`). They must stay byte-identical; verify with `diff -r`. Frontend-only changes (`weasel.custom.yaml`) do **not** cross over.
+- `dot_config/powershell/copilot-throttle-shim.js` is copied verbatim from the parent repo's `dot_config/shell/copilot-throttle-shim.js`. Update both in the same maintenance session, then update the reviewed Unix source commit + SHA-256 contract in `tests/Copilot.Tests.ps1`; the Windows test must remain runnable without a sibling checkout.
 - `core.autocrlf = input` has **two writers** — `bootstrap.ps1` (runs before chezmoi exists, so scoop's first bucket clone is protected) and `.chezmoitemplates/git/gitconfig` (the managed baseline). Change one → change the other.
 
 ### `scripts/*.sh` are wrappers, not implementations

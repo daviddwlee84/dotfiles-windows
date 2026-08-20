@@ -42,16 +42,24 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 ## copilot-proxy
 - Module at `~/.config/powershell/modules/Copilot`. Commands: `copilot-proxy`
   (`start`/`stop`/`restart`/`status`/`doctor`/`logs`/`shim`/`whoami`/`auth`/`reinstall`),
-  `copilot-run`, `claude-copilot`, `claude-copilot-once`, `copilot-here`,
-  `copilot-model` (incl. `--auto`), `copilot-embed`, `semsearch`.
+  `copilot-run`, `claude-copilot`, `claude-copilot-once`, `codex-copilot`,
+  `codex-copilot-once`, `copilot-here`, `copilot-model` (incl. `--auto`),
+  `copilot-embed`, `semsearch`.
 - Needs `bun`. Token: `~/.local/share/copilot-api/github_token`. Ports 4141 (proxy) /
   4142 (throttle shim). Default main model `gpt-5.6-sol[1m]`; the OpenAI role
   profile maps Fable/Opus to Sol, Sonnet to Terra, and Haiku/background to Luna.
-  `copilot-here` writes
-  only the gitignored `./.claude/settings.local.json`. The pinned copilot-api is
-  installed ONCE into `~/.local/share/copilot-api/pkg` (never `bunx` at launch);
-  `COPILOT_HTTP_PROXY` (auto|always|never|URL) controls whether Node fetches the
-  GitHub model catalog through the local proxy. Full guide: `docs/copilot-proxy.md`.
+  Automatic selection excludes policy-disabled, picker-hidden and embedding-only
+  entries. Claude `--auto` is Claude-first; Codex is OpenAI-first; both share the
+  named OpenAI order Sol > Terra > 5.5 > 5.4 > 5.3 Codex > Luna > mini.
+- The shim retries only the same buffered request/model, emits SSE keepalives for
+  silent streams, and has a stall watchdog; it never performs request-time
+  cross-model failover. Timing knobs: `COPILOT_SHIM_PING_AFTER_MS`,
+  `COPILOT_SHIM_PING_MS`, `COPILOT_SHIM_STALL_MS`.
+- `copilot-here` writes only the gitignored `./.claude/settings.local.json`. The
+  pinned copilot-api is installed ONCE into `~/.local/share/copilot-api/pkg`
+  (never `bunx` at launch); `COPILOT_HTTP_PROXY` (auto|always|never|URL) controls
+  whether Node fetches the GitHub model catalog through the local proxy. Full guide:
+  `docs/copilot-proxy.md`.
 
 ## Editors / terminal / tv
 - VSCode & Cursor settings + keybindings are deep-merged into `%APPDATA%\{Code,Cursor}\User`

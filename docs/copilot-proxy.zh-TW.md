@@ -85,14 +85,18 @@ runtime files，逐檔核對內建 SHA-256，再只透過目前 npm registry 解
 
 ## 模型選擇與 role profile
 
-`copilot-model --auto` 必須讀到 live `/v1/models`。先選 served Claude 家族
-（`Fable > Opus > Sonnet > Haiku`），沒有 Claude 時依能力排序：
+`copilot-model --auto` 必須讀到 live `/v1/models`，並在後續 inference request
+發生**之前**選好 profile。自動候選會排除 policy-disabled、picker-hidden 與
+embedding-only entries；raw 列表與明確手動選擇仍保留給使用者 override。它會先選 served
+Claude 家族（`Fable > Opus > Sonnet > Haiku`），再使用與 Codex launcher 相同的命名
+OpenAI tier 順序：
 
 ```text
 Sol > Terra > GPT-5.5 > GPT-5.4 > GPT-5.3 Codex > Luna > mini > Gemini
 ```
 
-Luna 雖是 5.6 世代，但屬於輕量 tier，所以排在舊旗艦後面。這個角色意圖依照 OpenAI 的
+Luna 雖是 5.6 世代，但屬於輕量 tier，所以排在舊旗艦後面。只有上面所有命名的 OpenAI
+tier 都不存在時，才會考慮未知的 future GPT id。這個角色意圖依照 OpenAI 的
 [current model guidance](https://developers.openai.com/api/docs/guides/latest-model)。
 一般沒有 Claude 的 Copilot catalog 會產生：
 
@@ -102,13 +106,24 @@ Luna 雖是 5.6 世代，但屬於輕量 tier，所以排在舊旗艦後面。�
 | Sonnet | `gpt-5.6-terra` |
 | Haiku / background / legacy small-fast | `gpt-5.6-luna` |
 
-若手動選另一個 OpenAI main，Main/Fable/Opus 會保留該主模型；有 served Terra/Luna 時
-分別供較低 role 使用。缺少 tier 時退回主模型，不會寫入不存在的硬編碼 id。原生 Claude
-profile 則在每個 Claude 家族中選最強 served model。
+若手動選另一個 OpenAI main，Main/Fable/Opus 會保留該主模型；只有 served 且 selectable
+的 Terra/Luna 才會供較低 role 使用。缺少或被 policy veto 的 tier 會退回主模型，不會寫入
+不存在的硬編碼 id。原生 Claude profile 也只會在每個家族中挑 selectable alternative。
 
 `[1m]` 是只給 Claude Code 的 context 提示；helper 依 live
 `max_context_window_tokens >= 1,000,000` 決定。Raw API client 必須用 plain id。離線時仍
 提供手動 discovery 清單，但 `--auto` 會拒絕寫入可能過期的 pin。
+
+### Selection、retry 與 failover 是不同概念
+
+- **Catalog auto-selection** 會在 launch/inference 前排序 eligible models：
+  `copilot-model --auto` 寫入 Claude Code profile，而 `codex-copilot` 為該次啟動選一個
+  model。這裡 ranking 中的「fallback」只代表下一個 catalog candidate，不代表失敗後重播。
+- **Same-model transport retry** 是 shim 在尚未把 upstream output 暴露給 client 前，遇到
+  eligible transient failure 時，以相同 `model` 重送同一份 buffered request。
+- **Request-time cross-model failover** 則是把同一個失敗的 logical request 改送另一個
+  model。目前 proxy **沒有**實作此行為；inference 失敗不會改寫 persisted profile，也不會
+  靜默切換模型。
 
 `copilot-run` 與 `copilot-here on` 會注入同一組變數：
 
@@ -150,8 +165,8 @@ ANTHROPIC_SMALL_FAST_MODEL
   預設 45 秒，因為 Clash/mihomo hop 可能讓首次 refresh 超過舊版的 20 秒。
 - GitHub 會依帳號、組織政策、rollout 與 egress 改變 catalog。`/v1/models` 裡的 Claude
   ID 因此只是**被刊登的 alias**，不代表 inference 已獲授權。沒有 Claude ID 不等於
-  proxy 壞掉；需要改選其他 served pin 時，明確執行 `copilot-model --auto`。請求失敗後
-  不會自動從 Claude replay 到 OpenAI。
+  proxy 壞掉；需要替後續 request 改選其他 served pin 時，明確執行
+  `copilot-model --auto`。這是 pre-request catalog selection，不是 failed-request replay。
 - `copilot-proxy doctor` 會比較 direct/proxied upstream catalog、驗證 main 與所有 role
   aliases，並找出 stale local pin。`--live` 也會比較遠端 ChatGPT `codex_apps`
   的 direct/proxied reachability，再對實際設定的 main model 送一個真實請求；只有該 pin
@@ -168,8 +183,20 @@ ANTHROPIC_SMALL_FAST_MODEL
   並一律把完整 command 交給 `specstory run claude -c`（包含零參數 session）。只建立一次的
   `~/.specstory/cli/config.toml` 仍由使用者擁有；直接執行 `specstory run claude` 仍遵循該
   user/project config。純 `claude` 不受影響。
-- Throttle shim 仍與 macOS/Linux 版本 byte-identical，會限制並行並重試暫時性的
-  403/429 burst。它刻意讓 HTTP 402 只通過一次；billing 設定不是 throttle failure。
+- Throttle shim 以 byte-for-byte 方式固定到已 review 的 macOS/Linux artifact。它會限制
+  concurrent requests，並在任何 upstream body 尚未暴露前，針對 network error 或 HTTP
+  403/429/502/503/504，以**相同 buffered request 與 model**重試。它絕不替換 model，且
+  刻意讓 HTTP 402 只通過一次；billing 設定不是 throttle failure。
+- 對可判讀的 literal `stream: true` JSON request，shim 先經過 10 秒 grace period，再進入
+  slow SSE path。第一個 comment frame（也就是 Bun 真正讓 headers/bytes 上線的時間）會在
+  下一個 15 秒 keepalive tick 抵達；request 排隊或 model silent reasoning 期間則持續依此
+  interval 發送。240 秒 watchdog 會限制 pre-header 靜默；啟用 ping 時也會限制 mid-stream
+  靜默。快速 stream 與所有 non-streaming response 都維持透明，包括真實 status code 與
+  body。若 upstream error 在 early SSE path 已送出 bytes 後才到，HTTP status 已無法改寫，
+  shim 會改送標準 SSE `error` event。可用 `COPILOT_SHIM_PING_AFTER_MS`、
+  `COPILOT_SHIM_PING_MS` 與 `COPILOT_SHIM_STALL_MS` 調整邊界；把 ping 設為 `0` 也會停用
+  目前的 mid-stream watchdog loop，但 pre-header watchdog 仍由
+  `COPILOT_SHIM_STALL_MS` 控制。
 
 狀態放在 `~/.local/state/copilot-proxy/`；device login 會把 GitHub token 存在
 `~/.local/share/copilot-api/github_token`，預設不印出內容。
@@ -179,9 +206,10 @@ ANTHROPIC_SMALL_FAST_MODEL
 `codex-copilot` 與完全相同的 `codex-copilot-once` alias 會啟動本機
 gateway/shim，並用本次啟動的 Codex `-c` overrides 傳入 `copilot_api`
 Responses provider。它們不改 user/project Codex config，所以 plain `codex` 不受影響。
-明確 `-m` / `--model` 永遠優先；否則從即時 raw catalog 依序選
+明確 `-m` / `--model` 永遠優先；否則從即時 catalog 依序選
 OpenAI/Codex（`Sol > Terra > GPT-5.5 > GPT-5.4 > GPT-5.3 Codex > Luna > mini`），
-再退到 Claude、Gemini 與其他 chat model；disabled/embedding model 會排除。
+再退到 Claude、Gemini 與其他 chat model；automatic selection 會排除 policy-disabled、
+picker-hidden 與 embedding-only entries。
 
 Codex 一律走 `localhost:4142` shim，即使持久化的 throttling 開關是 off。
 這一層除了限流，也會正規化 Codex `mcp_list_tools` Responses item 裡的空白
@@ -189,7 +217,9 @@ description。MCP server 與原生 Codex path 可以省略描述，但 GitHub Co
 `Invalid 'input[0].tools[0].description': empty string` 拒絕請求。shim 只補這些
 tool definition 欄位，不改 prompt、schema 或 tool name。
 目前 Codex 會以 zstd 壓縮這些請求；shim 只解壓需要修補的 Responses body，改以
-普通 JSON 轉送，並移除已不適用的 `content-encoding` header。
+普通 JSON 轉送，並移除已不適用的 `content-encoding` header。不需要 tool-description
+修補的 zstd body 對 stream classifier 仍是不透明資料，因此會走 transparent、沒有
+pre-header keepalive 的路徑；same-model transport retry 仍會套用。
 
 這是與 Claude Code `copilot-model --auto` 分開的 picker：後者保持
 Claude-first，只有 Codex launcher 是 OpenAI-first。

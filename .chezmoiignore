@@ -4,6 +4,7 @@
 README.md
 LICENSE
 .gitignore
+.gitattributes
 justfile
 bootstrap.ps1
 mkdocs.yml

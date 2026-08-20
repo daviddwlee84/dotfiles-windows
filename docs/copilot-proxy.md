@@ -92,14 +92,19 @@ tested exact pin with `latest`.
 
 ## Model selection and role profile
 
-`copilot-model --auto` requires the live `/v1/models` catalog. It prefers served
-Claude families (`Fable > Opus > Sonnet > Haiku`), then ranks OpenAI by capability:
+`copilot-model --auto` requires the live `/v1/models` catalog and chooses a
+profile **before any later inference request**. Automatic candidates exclude
+policy-disabled, picker-hidden and embedding-only entries; raw listing and explicit
+manual selection remain available as user overrides. It prefers served Claude
+families (`Fable > Opus > Sonnet > Haiku`), then uses the same named OpenAI tier
+order as the Codex launcher:
 
 ```text
 Sol > Terra > GPT-5.5 > GPT-5.4 > GPT-5.3 Codex > Luna > mini > Gemini
 ```
 
-Luna follows the older flagships because it is the lightweight tier. This role
+Luna follows the older flagships because it is the lightweight tier. Unknown future
+GPT ids are considered only after every named OpenAI tier above is absent. This role
 intent follows OpenAI's [current model guidance](https://developers.openai.com/api/docs/guides/latest-model).
 For the normal Claude-less Copilot catalog, the generated profile is:
 
@@ -110,14 +115,27 @@ For the normal Claude-less Copilot catalog, the generated profile is:
 | Haiku / background / legacy small-fast | `gpt-5.6-luna` |
 
 A manually selected OpenAI main remains Main/Fable/Opus; Terra and Luna are used
-for the lower roles when served. Missing tiers fall back to the selected main,
-never to an unserved hard-coded id. Native Claude profiles select the strongest
-served model in each Claude family.
+for the lower roles only when served and selectable. Missing or policy-vetoed tiers
+fall back to the selected main, never to an unserved hard-coded id. Native Claude
+profiles likewise choose only selectable alternatives in each Claude family.
 
 The `[1m]` suffix is a Claude Code-only context hint. It is derived from each
 model's live `max_context_window_tokens` metadata when the value is at least one
 million. Raw API clients must use the plain id. Offline manual discovery remains
 available, but offline `--auto` refuses to write a potentially stale pin.
+
+### Selection, retry and failover are different
+
+- **Catalog auto-selection** ranks eligible models before launch/inference:
+  `copilot-model --auto` persists a Claude Code profile, while `codex-copilot`
+  chooses one model for that invocation. “Fallback” in those rankings means the
+  next catalog candidate, not replaying a failed request.
+- **Same-model transport retry** is the shim resending the same buffered request
+  with the same `model` after an eligible transient failure, before upstream output
+  has been exposed.
+- **Request-time cross-model failover** would replay one failed logical request on
+  a different model. This proxy does **not** implement that behavior; a failed
+  inference never changes the persisted profile or silently moves to another model.
 
 Both `copilot-run` and `copilot-here on` inject the same variables:
 
@@ -162,8 +180,8 @@ See Claude Code's [feature availability](https://code.claude.com/docs/en/feature
 - GitHub can vary the catalog by account, organization policy, rollout and egress.
   Claude IDs in `/v1/models` are therefore **advertised aliases**, not proof that
   inference is authorized. No Claude IDs is not by itself a broken proxy; use
-  `copilot-model --auto` when you explicitly want to select another served pin.
-  There is no automatic Claude-to-OpenAI replay after a failed request.
+  `copilot-model --auto` when you explicitly want to select another served pin for
+  later requests. That is pre-request catalog selection, not failed-request replay.
 - `copilot-proxy doctor` compares direct and proxied upstream catalogs, validates
   the main model plus every role alias, and reports stale local pins. `--live`
   also compares direct/proxied reachability of remote ChatGPT `codex_apps`, then
@@ -186,9 +204,24 @@ See Claude Code's [feature availability](https://code.claude.com/docs/en/feature
   create-seeded `~/.specstory/cli/config.toml` remains user-owned, and direct
   `specstory run claude` still follows that user/project configuration. Plain
   `claude` is unaffected.
-- The throttle shim remains byte-identical to the macOS/Linux copy and retries
-  transient 403/429 bursts while limiting concurrent requests. It deliberately
-  passes HTTP 402 through once; billing configuration is not a throttle failure.
+- The throttle shim is pinned byte-for-byte to the reviewed macOS/Linux artifact.
+  It limits concurrent requests and retries the **same buffered request and model**
+  on network errors or HTTP 403/429/502/503/504 before any upstream body is exposed.
+  It never substitutes a model, and deliberately passes HTTP 402 through once;
+  billing configuration is not a throttle failure.
+- For an inspectable literal `stream: true` JSON request, the shim waits through a
+  10-second grace period, then enters its slow SSE path. The first comment frame—and
+  therefore the first bytes/headers visible through Bun—arrives on the next
+  15-second keepalive tick; later comments continue at that interval while the
+  request is queued or the model is silently reasoning. The 240-second watchdog
+  bounds pre-header silence and, while pings are enabled, mid-stream silence. Fast
+  streams and every non-streaming response remain transparent, including their real
+  status code and body. If an upstream error arrives only after the early SSE path
+  has emitted bytes, the HTTP status is already spent, so the shim emits a standard
+  SSE `error` event. Tune these boundaries with `COPILOT_SHIM_PING_AFTER_MS`,
+  `COPILOT_SHIM_PING_MS` and `COPILOT_SHIM_STALL_MS`; setting ping to `0` also
+  disables the current mid-stream watchdog loop, while the pre-header watchdog
+  remains controlled by `COPILOT_SHIM_STALL_MS`.
 
 State lives under `~/.local/state/copilot-proxy/`; device login stores the GitHub
 token at `~/.local/share/copilot-api/github_token` without printing it by default.
@@ -200,8 +233,8 @@ gateway/shim and pass a `copilot_api` Responses provider through one-invocation
 Codex `-c` overrides. They do not edit user or project Codex config, so plain
 `codex` is unaffected. An explicit `-m` / `--model` wins; otherwise the live raw
 catalog is ranked OpenAI/Codex first (`Sol > Terra > GPT-5.5 > GPT-5.4 > GPT-5.3
-Codex > Luna > mini`), then Claude, Gemini and other chat models. Disabled and
-embedding models are excluded.
+Codex > Luna > mini`), then Claude, Gemini and other chat models. Policy-disabled,
+picker-hidden and embedding-only entries are excluded from automatic selection.
 
 Codex always uses the shim on `localhost:4142`, even when the persisted
 throttling toggle is off. Besides throttling, that boundary normalizes blank
@@ -209,9 +242,11 @@ descriptions in Codex `mcp_list_tools` Responses items. GitHub Copilot rejects
 those with `Invalid 'input[0].tools[0].description': empty string`, while MCP
 servers and the native Codex path may omit them. The shim fills only those tool
 definition fields and leaves prompts, schemas, and tool names unchanged.
-Codex currently zstd-compresses these requests; the shim decodes only the
-Responses body it must repair, forwards ordinary JSON, and removes the stale
-`content-encoding` header.
+Codex currently zstd-compresses these requests; the shim decodes only a Responses
+body it must repair, forwards ordinary JSON, and removes the stale
+`content-encoding` header. A zstd body that needs no tool-description repair remains
+opaque to stream classification and therefore stays on the transparent,
+no-pre-header-keepalive path; same-model transport retries still apply.
 
 This is a separate picker from Claude Code's `copilot-model --auto`: that path
 remains Claude-first, while only the Codex launcher is OpenAI-first.

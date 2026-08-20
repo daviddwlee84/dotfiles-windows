@@ -37,6 +37,14 @@
 #   COPILOT_PROXY_PORT   default 4141    - port the proxy listens on
 #   COPILOT_PROXY_START_TIMEOUT default 45 - seconds allowed for model refresh
 #   COPILOT_SHIM_PORT    default 4142    - throttle shim port
+#   COPILOT_SHIM_MAX     default 4       - concurrent in-flight upstream POSTs
+#   COPILOT_SHIM_RETRIES default 3       - same-model transient retry attempts
+#   COPILOT_SHIM_BACKOFF_MS default 500  - base retry backoff (doubles per try)
+#   COPILOT_SHIM_PING_MS default 15000   - SSE ping interval; 0 also disables the
+#                                          mid-stream watchdog loop
+#   COPILOT_SHIM_PING_AFTER_MS default 10000 - grace before the slow SSE path
+#   COPILOT_SHIM_STALL_MS default 240000 - pre-header watchdog, plus mid-stream
+#                                          when pings are enabled; 0 disables
 #   COPILOT_API_PKG      default @jeffreycao/copilot-api@2.1.0 - registry spec
 #                          (name or @scope/name + optional version/tag/range;
 #                           aliases/local/git/URL specs are rejected before cleanup)
@@ -750,16 +758,31 @@ function script:Get-CopilotCatalogIds {
     @($Catalog.data | ForEach-Object { $_.id } | Where-Object { $_ } | Sort-Object -Unique)
 }
 
+# Automatic selection must respect Copilot's catalog policy without hiding raw ids
+# from diagnostics or explicit/manual selection. Missing policy metadata is allowed,
+# matching the gateway and the previous Codex-only filter.
+function script:Get-CopilotSelectableModelIds {
+    param($Catalog)
+    if (-not $Catalog) { return @() }
+    @($Catalog.data | Where-Object {
+        $_ -and ($_.policy.state -ne 'disabled') -and
+        ($_.model_picker_enabled -ne $false) -and
+        ($_.capabilities.type -ne 'embeddings')
+    } | ForEach-Object { $_.id } | Where-Object { $_ } | Sort-Object -Unique)
+}
+
 function script:Remove-CopilotContextHint {
     param([string] $Model)
     $Model -replace '\[1m\]$', ''
 }
 
-# Pick exactly one live inference target. The configured main wins only when its
-# raw id is advertised; otherwise the catalog-ranked fallback is explicit.
+# Pick exactly one live inference target. The configured main wins when its raw id
+# is advertised; only the automatic catalog fallback is eligibility-filtered.
 function script:Resolve-CopilotDoctorTarget {
-    param([string] $ConfiguredMain, [string[]] $RawModel)
+    param([string] $ConfiguredMain, [string[]] $RawModel, [string[]] $SelectableModel)
     $RawModel = @($RawModel | Where-Object { $_ -and $_ -notmatch 'embedding' } | Sort-Object -Unique)
+    if (-not $PSBoundParameters.ContainsKey('SelectableModel')) { $SelectableModel = $RawModel }
+    $SelectableModel = @($SelectableModel | Where-Object { $_ -and $_ -notmatch 'embedding' } | Sort-Object -Unique)
     $rawConfigured = Remove-CopilotContextHint $ConfiguredMain
     if (-not $rawConfigured) {
         return [pscustomobject]@{
@@ -776,7 +799,7 @@ function script:Resolve-CopilotDoctorTarget {
         }
     }
 
-    $fallback = Select-CopilotBestModel -Model $RawModel
+    $fallback = Select-CopilotBestModel -Model $SelectableModel
     [pscustomobject]@{
         Model  = $fallback
         Label  = 'CatalogFallback'
@@ -910,7 +933,9 @@ function script:Select-CopilotFirstServed {
 function script:Get-CopilotModelProfile {
     param([string] $Model = (Get-CopilotDefaultModel), $Catalog)
     if (-not $PSBoundParameters.ContainsKey('Catalog')) { $Catalog = Get-CopilotModelCatalog }
-    $models = Get-CopilotCatalogIds $Catalog
+    # The selected main may be an explicit override; only automatically derived
+    # alternative roles are constrained by the selectable catalog policy.
+    $models = Get-CopilotSelectableModelIds $Catalog
     $raw = Remove-CopilotContextHint $Model
     $main = ConvertTo-CopilotClaudeModel -Model $Model -Catalog $Catalog
 
@@ -1385,6 +1410,7 @@ function script:Invoke-CopilotDoctor {
     # The one local catalog snapshot drives raw ids, aliases, role checks and the
     # live target. Do not mix decisions from several /v1/models responses.
     $rawIds = Get-CopilotCatalogIds $catalog
+    $selectableIds = Get-CopilotSelectableModelIds $catalog
     $served = @(Get-CopilotServedModels -Catalog $catalog)
     if ($served.Count -gt 0) {
         $claude = @($rawIds | Where-Object { $_ -match '^claude' })
@@ -1508,7 +1534,8 @@ function script:Invoke-CopilotDoctor {
 
     Write-Host "`nLive probe"
     $effective = (Get-CopilotEffectiveModel) -split '\|', 2
-    $probeTarget = Resolve-CopilotDoctorTarget -ConfiguredMain $effective[0] -RawModel $rawIds
+    $probeTarget = Resolve-CopilotDoctorTarget -ConfiguredMain $effective[0] -RawModel $rawIds `
+        -SelectableModel $selectableIds
     if (-not $Live) { SKIP 'skipped' 'pass --live to send one real request (consumes 1 quota unit)' }
     elseif (-not $proxyAlive) { SKIP 'skipped' 'proxy is not running' }
     elseif ($probeTarget.Label -eq 'MissingConfiguredMain') { SKIP 'skipped' $probeTarget.Reason }
@@ -1574,10 +1601,10 @@ function copilot-run {
     }
 }
 
-# Codex prefers a native Responses-capable OpenAI model. Claude/Gemini are
-# Responses Lite fallbacks only, unlike Select-CopilotBestModel (Claude Code),
-# where native Claude remains the first choice.
-function script:Select-CopilotBestCodexModel {
+# One OpenAI tier policy for both Claude Code and Codex. Known model roles beat
+# lexical guesses about future ids; only then consider unknown flagship/coding/
+# lightweight GPT variants.
+function script:Select-CopilotBestOpenAIModel {
     param([string[]] $Model)
     if (-not $Model -or $Model.Count -eq 0) { return $null }
     $Model = @($Model | ForEach-Object { Remove-CopilotContextHint $_ } | Sort-Object -Unique)
@@ -1594,8 +1621,23 @@ function script:Select-CopilotBestCodexModel {
     if ($r) { return $r }
     $r = & $pick 'codex' $null
     if ($r) { return $r }
-    $r = & $pick '^gpt-' $null
+    & $pick '^gpt-' $null
+}
+
+# Codex prefers a native Responses-capable OpenAI model. Claude/Gemini are
+# Responses Lite fallbacks only, unlike Select-CopilotBestModel (Claude Code),
+# where native Claude remains the first choice.
+function script:Select-CopilotBestCodexModel {
+    param([string[]] $Model)
+    if (-not $Model -or $Model.Count -eq 0) { return $null }
+    $Model = @($Model | ForEach-Object { Remove-CopilotContextHint $_ } | Sort-Object -Unique)
+
+    $r = Select-CopilotBestOpenAIModel -Model $Model
     if ($r) { return $r }
+    $pick = { param($re, $exclude)
+        $c = @($Model | Where-Object { $_ -match $re -and (-not $exclude -or $_ -notmatch $exclude) } | Sort-Object)
+        if ($c.Count -gt 0) { $c[-1] } else { $null }
+    }
 
     foreach ($preferred in 'claude-fable-5',
                            'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6',
@@ -1659,10 +1701,7 @@ function codex-copilot {
     $explicitModel = Test-CopilotExplicitCodexModel -Argv $Argv
     $model = $null
     if (-not $explicitModel) {
-        $models = @($catalog.data | Where-Object {
-            ($_.policy.state -ne 'disabled') -and ($_.model_picker_enabled -ne $false) -and
-            ($_.capabilities.type -ne 'embeddings')
-        } | ForEach-Object { $_.id } | Where-Object { $_ } | Sort-Object -Unique)
+        $models = Get-CopilotSelectableModelIds $catalog
         $model = Select-CopilotBestCodexModel -Model $models
         if (-not $model) { Write-Error 'codex-copilot: no usable chat model in the live gateway catalog'; return }
         $Argv = @('-m', $model) + @($Argv)
@@ -1972,20 +2011,10 @@ function script:Select-CopilotBestModel {
     $r = & $pick '^claude-' $null
     if ($r) { return $r }
 
-    foreach ($preferred in 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.5', 'gpt-5.4', 'gpt-5.3-codex') {
-        if ($Model -contains $preferred) { return $preferred }
-    }
+    $r = Select-CopilotBestOpenAIModel -Model $Model
+    if ($r) { return $r }
 
-    foreach ($try in @(@('^gpt-', 'mini|nano|luna'), @('codex', $null))) {
-        $r = & $pick $try[0] $try[1]
-        if ($r) { return $r }
-    }
-
-    foreach ($preferred in 'gpt-5.6-luna', 'gpt-5.4-mini', 'gpt-5-mini') {
-        if ($Model -contains $preferred) { return $preferred }
-    }
-
-    foreach ($try in @(@('^gpt-', $null), @('^gemini-', 'flash'), @('^gemini-', $null))) {
+    foreach ($try in @(@('^gemini-', 'flash'), @('^gemini-', $null))) {
         $r = & $pick $try[0] $try[1]
         if ($r) { return $r }
     }
@@ -2056,10 +2085,14 @@ function copilot-model {
     if ($arg -in '--auto', '-a') {
         # Never silently choose from the static list while the proxy is down: that
         # recreates the stale model_not_supported pin this command is meant to fix.
-        if (-not $catalog -or -not $models) {
+        if (-not $catalog) {
             Write-Error 'copilot-model: --auto needs a reachable proxy and live /v1/models catalog'; return
         }
-        $raw = Select-CopilotBestModel -Model $models
+        $selectableModels = @(Get-CopilotSelectableModelIds $catalog)
+        if ($selectableModels.Count -eq 0) {
+            Write-Error 'copilot-model: --auto found no selectable chat model in the live catalog'; return
+        }
+        $raw = Select-CopilotBestModel -Model $selectableModels
         if (-not $raw) { Write-Error "copilot-model: --auto could not pick a model"; return }
         $resolved = ConvertTo-CopilotClaudeModel -Model $raw -Catalog $catalog
         $why = switch -Regex ($resolved) {
