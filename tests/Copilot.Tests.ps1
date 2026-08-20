@@ -680,6 +680,18 @@ Describe 'Copilot module' {
                 Get-SpecstoryClaudeCmd | Should -Be 'claude --verbose'
             }
         }
+        It 'decodes escaped quotes in a TOML basic string without truncating the command' {
+            InModuleScope Copilot {
+                'claude_cmd = "C:/Tools/claude.cmd --append-system-prompt \"review only\""' |
+                    Set-Content '.specstory/cli/config.toml'
+                Get-SpecstoryClaudeCmd | Should -Be 'C:/Tools/claude.cmd --append-system-prompt "review only"'
+                New-SpecstoryClaudeCommand | Should -BeExactly 'C:/Tools/claude.cmd --append-system-prompt "review only" --dangerously-skip-permissions'
+            }
+        }
+        It 'ships an active bypass command in the create-seeded user config' {
+            $seed = Get-Content -Raw (Join-Path $PSScriptRoot '..' 'private_dot_specstory' 'private_cli' 'create_config.toml')
+            $seed | Should -Match '(?m)^claude_cmd\s*=\s*"claude --dangerously-skip-permissions"\s*$'
+        }
     }
 
     Context 'specstory -c argument quoting' {
@@ -688,6 +700,99 @@ Describe 'Copilot module' {
         }
         It 'escapes an embedded single quote POSIX-style' {
             InModuleScope Copilot { ConvertTo-CopilotShQuote "it's" | Should -Be "'it'\''s'" }
+        }
+    }
+
+    Context 'specstory Claude command policy' {
+        It 'adds bypass to a plain configured command' {
+            InModuleScope Copilot {
+                Mock Get-SpecstoryClaudeCmd { 'claude' }
+                New-SpecstoryClaudeCommand | Should -BeExactly 'claude --dangerously-skip-permissions'
+            }
+        }
+        It 'preserves configured flags and adds bypass once' {
+            InModuleScope Copilot {
+                Mock Get-SpecstoryClaudeCmd { 'claude --verbose' }
+                $command = New-SpecstoryClaudeCommand -Argv @('--resume', 'session-id')
+                $command | Should -BeExactly "claude --verbose --dangerously-skip-permissions '--resume' 'session-id'"
+                ([regex]::Matches($command, '--dangerously-skip-permissions')).Count | Should -Be 1
+            }
+        }
+        It 'does not duplicate bypass from the configured command or wrapper arguments' {
+            InModuleScope Copilot {
+                Mock Get-SpecstoryClaudeCmd { 'claude --dangerously-skip-permissions' }
+                $command = New-SpecstoryClaudeCommand -Argv @('--dangerously-skip-permissions', '--verbose')
+                ([regex]::Matches($command, '--dangerously-skip-permissions')).Count | Should -Be 1
+                $command | Should -BeExactly "claude --dangerously-skip-permissions '--verbose'"
+            }
+        }
+        It 'preserves argument order, duplicates, spaces, and embedded quotes' {
+            InModuleScope Copilot {
+                Mock Get-SpecstoryClaudeCmd { 'claude' }
+                New-SpecstoryClaudeCommand -Argv @('--tag', 'two words', '--tag', "it's") |
+                    Should -BeExactly "claude --dangerously-skip-permissions '--tag' 'two words' '--tag' 'it'\''s'"
+            }
+        }
+    }
+
+    Context 'claude-copilot launch routing' {
+        It 'always passes an explicit bypass-enabled command to SpecStory with zero arguments' {
+            InModuleScope Copilot {
+                Mock Get-Command { [pscustomobject]@{ Name = 'specstory' } } -ParameterFilter { $Name -eq 'specstory' }
+                Mock Get-SpecstoryClaudeCmd { 'claude' }
+                Mock copilot-run { $script:capturedLaunch = @($Argv) }
+
+                claude-copilot
+
+                $script:capturedLaunch | Should -HaveCount 5
+                $script:capturedLaunch | Should -Be @('specstory', 'run', 'claude', '-c', 'claude --dangerously-skip-permissions')
+            }
+        }
+        It 'consumes a lone --specstory control without leaking it to Claude' {
+            InModuleScope Copilot {
+                Mock Get-Command { [pscustomobject]@{ Name = 'specstory' } } -ParameterFilter { $Name -eq 'specstory' }
+                Mock Get-SpecstoryClaudeCmd { 'claude --verbose' }
+                Mock copilot-run { $script:capturedLaunch = @($Argv) }
+
+                claude-copilot --specstory
+
+                ($script:capturedLaunch -join ' ') | Should -Not -Match -- '--specstory'
+                $script:capturedLaunch[-1] | Should -BeExactly 'claude --verbose --dangerously-skip-permissions'
+            }
+        }
+        It 'consumes a lone --no-specstory control and uses the direct bypass path' {
+            InModuleScope Copilot {
+                Mock copilot-run { $script:capturedLaunch = @($Argv) }
+
+                claude-copilot --no-specstory
+
+                $script:capturedLaunch | Should -Be @('claude', '--dangerously-skip-permissions')
+                ($script:capturedLaunch -join ' ') | Should -Not -Match -- '--no-specstory'
+            }
+        }
+        It 'uses the direct bypass path when SpecStory is unavailable' {
+            InModuleScope Copilot {
+                Mock Get-Command { $null } -ParameterFilter { $Name -eq 'specstory' }
+                Mock copilot-run { $script:capturedLaunch = @($Argv) }
+
+                claude-copilot --model custom-model
+
+                $script:capturedLaunch | Should -Be @('claude', '--dangerously-skip-permissions', '--model', 'custom-model')
+            }
+        }
+        It 'keeps claude-copilot-once as a single delegating policy layer' {
+            InModuleScope Copilot {
+                Mock Test-CopilotAlive { $true }
+                Mock Test-Path { $false } -ParameterFilter { $Path -eq '.claude/settings.local.json' }
+                Mock copilot-here {}
+                Mock claude-copilot { $script:delegated = @($Argv) }
+                Mock Get-CopilotBase { 'http://127.0.0.1:4141' }
+
+                claude-copilot-once --specstory --resume session-id
+
+                $script:delegated | Should -Be @('--specstory', '--resume', 'session-id')
+                Should -Invoke claude-copilot -Times 1 -Exactly
+            }
         }
     }
 

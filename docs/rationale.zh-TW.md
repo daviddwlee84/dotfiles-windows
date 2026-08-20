@@ -112,8 +112,9 @@ macOS/Linux dotfiles 有一大層 POSIX `shell/*.sh`。把它機械式翻成 Pow
 ## JSON 設定用 `run_onchange` pwsh 合併器，而非 `modify_` 腳本
 
 有些 JSON 設定面是**由工具在執行期擁有**的 —— Claude Code 會改寫
-`~/.claude/settings.json`（它安裝的外掛、你授予的權限），VSCode/Cursor 會改寫各自的
-`settings.json`。直接部署一份靜態受管副本會蓋掉這些即時狀態，所以它們是用**合併**、
+`~/.claude/settings.json`（它安裝的外掛、你授予的權限），`/claude-hud:configure` 會改寫
+`~/.claude/plugins/claude-hud/config.json`，VSCode/Cursor 也會改寫各自的
+`settings.json`。直接部署靜態受管副本會蓋掉這些即時狀態，所以它們是用**合併**、
 而非覆寫。macOS/Linux repo 用 chezmoi 的 **`modify_` 腳本**來合併（一個 `sh` + `jq`
 過濾器：從 stdin 讀入 live 檔，把合併結果吐到 stdout）。在 Windows 上這行不通：
 
@@ -127,15 +128,21 @@ macOS/Linux dotfiles 有一大層 POSIX `shell/*.sh`。把它機械式翻成 Pow
   就算改寫成 pwsh 也還是撞上上面的路由問題。
 
 所以每個合併改成放在 `.chezmoiscripts/` 的 **`run_onchange_after_*.ps1.tmpl`**：一個
-真正的 `.ps1`，乾淨地走 `[interpreters.ps1] = pwsh`、原生執行、零外部依賴，並把一份
-chezmoi 忽略的 overlay（`editors/*.json`、`claude/settings-overlay.json`，經
-`{{ include }}` 內嵌）遞迴深度合併進 live 檔 —— 保留工具寫入的每個 key。這就是
-`AGENTS.md` 的 invariant #5。
+真正的 `.ps1`，乾淨地走 `[interpreters.ps1] = pwsh`、原生執行、零外部依賴，並把
+chezmoi 忽略的 overlays（`editors/*.json`、`claude/settings-overlay.json`、
+`claude/hud-full-overlay.json`，經 `{{ include }}` 內嵌）遞迴深度合併進 live 檔 ——
+除了明確受管的 leaves 外，都保留工具寫入的 key。Claude merger 會把 settings 與 HUD
+config 當成兩個彼此獨立、fail-closed 的 transaction，先驗證 BOM-free JSON，再透過同一
+目錄、保留 Windows metadata 的 atomic replacement 提交。byte precondition 會拒絕 stale
+read-modify-write 結果；其中一個 target 的輸入損壞、同時發生的 live edit 或寫入失敗，
+不會破壞或阻擋另一個。
+這就是 `AGENTS.md` 的 invariant #5。
 
 **取捨：** `modify_` 過濾器每次 apply 都會重新套用；`run_onchange` 只在其 render 後
 內容（即 overlay）改變時才重跑。若工具之後覆蓋了某個受管 key，它不會被還原，直到
-overlay 改變或你重置狀態（`chezmoi state delete-bucket --bucket=entryState`）。父 repo
-需要每次 apply 都強制，是因為 CodeIsland / workmux 會一直改寫
+overlay 改變或你重置狀態（`chezmoi state delete-bucket --bucket=entryState`）；透過
+`/claude-hud:configure` 改掉受管的 Full-preset HUD leaf 也一樣。父 repo 需要每次 apply
+都強制，是因為 CodeIsland / workmux 會一直改寫
 `~/.claude/settings.json`；Windows 沒有這種對手，所以較輕的觸發就夠了。
 
 ## XDG 路徑，而非 `%APPDATA%`

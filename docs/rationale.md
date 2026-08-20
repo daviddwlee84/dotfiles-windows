@@ -134,7 +134,8 @@ to the original bash. Only the Bun throttle shim (pure JS) is reused verbatim. S
 
 Some JSON config surfaces are **owned by the tool at runtime** — Claude Code
 rewrites `~/.claude/settings.json` (plugins it installs, permissions you grant),
-VSCode/Cursor rewrite their `settings.json`. Deploying a static managed copy
+`/claude-hud:configure` rewrites `~/.claude/plugins/claude-hud/config.json`, and
+VSCode/Cursor rewrite their `settings.json`. Deploying static managed copies
 would clobber that live state, so these are **merged**, not overwritten. The
 macOS/Linux repo merges with a chezmoi **`modify_` script** (a `sh` + `jq`
 filter: read the live file on stdin, emit the merged result on stdout). On
@@ -153,15 +154,21 @@ Windows that doesn't hold up:
 
 So each merge is a **`run_onchange_after_*.ps1.tmpl`** in `.chezmoiscripts/`
 instead: a real `.ps1` that routes cleanly through `[interpreters.ps1] = pwsh`,
-runs natively with no external deps, and recursively deep-merges a
-chezmoi-ignored overlay (`editors/*.json`, `claude/settings-overlay.json`,
-embedded via `{{ include }}`) into the live file — preserving every key the tool
-wrote. This is invariant #5 in `AGENTS.md`.
+runs natively with no external deps, and recursively deep-merges
+chezmoi-ignored overlays (`editors/*.json`, `claude/settings-overlay.json`,
+`claude/hud-full-overlay.json`, embedded via `{{ include }}`) into live files —
+preserving every key the tool wrote outside the managed leaves. The Claude
+merger handles settings and HUD config as two independent, fail-closed
+transactions and commits validated BOM-free JSON through same-directory atomic
+replacement while preserving Windows metadata. A byte precondition rejects stale
+read-modify-write results, so malformed input, a concurrent live edit, or a failed
+write on one target cannot damage or block the other. This is invariant #5 in `AGENTS.md`.
 
 **Tradeoff:** a `modify_` filter re-asserts on *every* apply; `run_onchange` only
 re-fires when its rendered content (the overlay) changes. If the tool later
-overwrites a managed key, it isn't restored until the overlay changes or you
-reset state (`chezmoi state delete-bucket --bucket=entryState`). The parent needs
+overwrites a managed key (including a Full-preset HUD leaf changed through
+`/claude-hud:configure`), it isn't restored until the overlay changes or you reset
+state (`chezmoi state delete-bucket --bucket=entryState`). The parent needs
 every-apply enforcement because CodeIsland / workmux keep rewriting
 `~/.claude/settings.json`; Windows has no such contenders, so the lighter trigger
 is fine.

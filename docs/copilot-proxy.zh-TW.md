@@ -163,7 +163,11 @@ ANTHROPIC_SMALL_FAST_MODEL
 - `copilot-here` 只寫入 gitignored `.claude/settings.local.json`，不碰 committed project
   settings；`off` 只移除 helper 擁有的 env keys，保留其他設定。
 - `claude-copilot` / `claude-copilot-once` 保留 Windows port 的 trusted
-  `--dangerously-skip-permissions` 與 optional SpecStory 行為，純 `claude` 不受影響。
+  `--dangerously-skip-permissions` 與 optional SpecStory 行為。走 SpecStory 時會先解析
+  project/user `claude_cmd` 作為 base、強制只留一個 bypass flag、逐一 quote 使用者參數，
+  並一律把完整 command 交給 `specstory run claude -c`（包含零參數 session）。只建立一次的
+  `~/.specstory/cli/config.toml` 仍由使用者擁有；直接執行 `specstory run claude` 仍遵循該
+  user/project config。純 `claude` 不受影響。
 - Throttle shim 仍與 macOS/Linux 版本 byte-identical，會限制並行並重試暫時性的
   403/429 burst。它刻意讓 HTTP 402 只通過一次；billing 設定不是 throttle failure。
 

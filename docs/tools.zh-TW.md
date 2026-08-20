@@ -147,13 +147,17 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
   [Codex status line](codex-status-line.zh-TW.md)。
 - **OpenCode Desktop** —— `opencode-ai` CLI 的 GUI 版，由 scoop 安裝
   （`extras/opencode-desktop`）。
-- **claude-hud** —— 顯示在 Claude Code 輸入框下方的狀態列 HUD。由 `run_onchange`
-  合併腳本（`.chezmoiscripts/run_onchange_after_25_claude_settings.ps1.tmpl`）以
-  疊加方式深度合併進 `~/.claude/settings.json`，保留你原有的設定。外掛會在首次啟動
-  時自其 marketplace 自動安裝，並以 scoop 的 `bun`/`node` runtime 執行；合併腳本
-  同時啟用 `pyright-lsp` 外掛，並設定 `permissions.defaultMode: auto` 與
-  `skipDangerousModePermissionPrompt`。執行 `chezmoi apply` 後請**重啟 Claude
-  Code** 才會看到 HUD。參見[同時執行多個代理](claude-code-agents.zh-TW.md)。
+- **claude-hud** —— 顯示在 Claude Code 輸入框下方的狀態列 HUD。同一個
+  `run_onchange` 合併腳本（`.chezmoiscripts/run_onchange_after_25_claude_settings.ps1.tmpl`）
+  會彼此獨立地深度合併 `~/.claude/settings.json` 與穩定路徑
+  `~/.claude/plugins/claude-hud/config.json`，各自保留只存在於 live 檔的狀態。後者會
+  強制套用 **claude-hud 0.7.1 所定義的 Full preset**（活動、token/usage/cost、session、
+  memory/cache/version 等資訊），但色彩、版面、threshold、provider/auth 與未來新增的 key
+  仍由使用者擁有。外掛會在首次啟動時從 marketplace 自動安裝；受 guard 保護的 Git Bash
+  status-line command 使用 scoop 的 `node`，在 plugin cache 尚未出現前會安靜地 no-op。
+  settings overlay 也會啟用 `pyright-lsp`，並設定 `permissions.defaultMode: auto` 與
+  `skipDangerousModePermissionPrompt`。執行 `chezmoi apply` 後請**重啟 Claude Code**以載入
+  新安裝的外掛。參見[同時執行多個代理](claude-code-agents.zh-TW.md)。
 - **桌面通知** —— `apprise`（`uv tool install --with pywin32 apprise`）在 Claude
   Code 的 **Notification**（需要你注意）與 **Stop**（任務完成）事件時，透過原生
   pwsh hook（`~/.claude/hooks/notify.ps1`，由 settings overlay 寫入 `hooks`）

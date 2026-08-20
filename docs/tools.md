@@ -154,14 +154,19 @@ Enabled by **Install coding agents**:
   [Codex status line](codex-status-line.md).
 - **OpenCode Desktop** — GUI companion to the `opencode-ai` CLI, via scoop
   (`extras/opencode-desktop`).
-- **claude-hud** — a statusline HUD that renders below the Claude Code prompt.
-  Enabled in `~/.claude/settings.json` by a `run_onchange` merger
-  (`.chezmoiscripts/run_onchange_after_25_claude_settings.ps1.tmpl`) that
-  additively deep-merges an overlay, preserving your live settings. The plugin
-  self-installs from its marketplace on first launch and runs on the scoop
-  `bun`/`node` runtime; the merger also enables the `pyright-lsp` plugin and sets
-  `permissions.defaultMode: auto` + `skipDangerousModePermissionPrompt`. **Restart
-  Claude Code** after `chezmoi apply` to see the HUD. See
+- **claude-hud** — a statusline HUD below the Claude Code prompt. One
+  `run_onchange` merger (`.chezmoiscripts/run_onchange_after_25_claude_settings.ps1.tmpl`)
+  independently deep-merges `~/.claude/settings.json` and the stable
+  `~/.claude/plugins/claude-hud/config.json`, preserving live-only state in each.
+  The latter enforces the documented **Full preset as of claude-hud 0.7.1**
+  (activity plus token/usage/cost/session/memory/cache/version indicators) while
+  leaving advanced colors, layout, thresholds, provider/auth fields and future
+  keys user-owned. The plugin self-installs from its marketplace on first launch;
+  its guarded Git Bash status-line command runs with scoop's `node` and silently
+  no-ops until the plugin cache exists. The settings overlay also enables
+  `pyright-lsp` and sets `permissions.defaultMode: auto` plus
+  `skipDangerousModePermissionPrompt`. **Restart Claude Code** after
+  `chezmoi apply` to load a newly installed plugin. See
   [running multiple agents](claude-code-agents.md).
 - **Desktop notifications** — `apprise` (`uv tool install --with pywin32 apprise`)
   fires native Windows toasts on Claude Code's **Notification** (needs your

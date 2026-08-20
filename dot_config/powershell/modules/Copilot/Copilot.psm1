@@ -1716,19 +1716,14 @@ function codex-copilot-once {
     codex-copilot @Argv
 }
 
-# --- specstory `-c` passthrough (why the base command must come from config) ---
+# --- specstory `-c` passthrough (configured base + wrapper policy) -----------
 #
 # specstory's `-c/--command` REPLACES the provider's configured command — it does
-# NOT append to it. The shipped config says as much: "Use of these is equivalent
-# to -c \"custom command\"" — same slot, last write wins. So a hardcoded
-# `-c "claude $args"` silently drops every flag in `claude_cmd` the moment
-# claude-copilot has args to pass through, which made these two disagree:
-#
-#   claude-copilot-once             -> bypass-permissions  (no -c branch)
-#   claude-copilot-once --resume X  -> ~/.claude defaultMode "auto"
-#
-# Deriving the base command from the config keeps specstory the single source of
-# truth for BOTH branches. `--no-specstory` deliberately does NOT inherit it.
+# NOT append to it. Build the complete command from the effective `claude_cmd`,
+# then enforce claude-copilot's own bypass-permissions contract and append each
+# user argument with shell-safe quoting. This keeps configured wrapper flags while
+# making zero-argument and argument-bearing sessions behave identically.
+# `--no-specstory` deliberately does not inherit the configured base command.
 
 # Effective `claude_cmd`, honouring specstory's own precedence:
 #   project ./.specstory/cli/config.toml > user ~/.specstory/cli/config.toml > `claude`
@@ -1739,10 +1734,15 @@ function script:Get-SpecstoryClaudeCmd {
     foreach ($f in '.specstory/cli/config.toml', (Join-Path $HOME '.specstory/cli/config.toml')) {
         if (-not (Test-Path -LiteralPath $f)) { continue }
         foreach ($line in (Get-Content -LiteralPath $f -ErrorAction SilentlyContinue)) {
-            if ($line -match '^\s*claude_cmd\s*=\s*(?:"([^"]*)"|''([^'']*)'')') {
-                $v = if ($Matches[1]) { $Matches[1] } else { $Matches[2] }
-                if ($v) { return $v }
+            if ($line -notmatch '^\s*claude_cmd\s*=\s*("(?:\\.|[^"\\])*"|''[^'']*'')\s*(?:#.*)?$') { continue }
+            $raw = $Matches[1]
+            if ($raw[0] -eq '"') {
+                try { $value = $raw | ConvertFrom-Json -ErrorAction Stop }
+                catch { continue }
+            } else {
+                $value = $raw.Substring(1, $raw.Length - 2)
             }
+            if ($value) { return $value }
         }
     }
     'claude'
@@ -1757,28 +1757,44 @@ function script:ConvertTo-CopilotShQuote {
     "'" + ($Value -replace "'", "'\''") + "'"
 }
 
+# Build the complete command string passed to `specstory run claude -c`.
+# Recognize the normal unquoted/fully quoted bypass token without pretending to
+# parse arbitrary shell syntax. Exact duplicate wrapper arguments are suppressed;
+# every other argument keeps its original order and multiplicity.
+function script:New-SpecstoryClaudeCommand {
+    param([string[]] $Argv)
+
+    $bypass = '--dangerously-skip-permissions'
+    $command = (Get-SpecstoryClaudeCmd).Trim()
+    $escaped = [regex]::Escape($bypass)
+    $hasBypass = $command -cmatch "(?:^|\s)(?:$escaped|'$escaped'|`"$escaped`")(?=\s|$)"
+    if (-not $hasBypass) { $command = "$command $bypass" }
+    if ($null -ne $Argv) {
+        foreach ($argument in $Argv) {
+            if ($argument -ceq $bypass) { continue }
+            $command = "$command $(ConvertTo-CopilotShQuote $argument)"
+        }
+    }
+    $command
+}
+
 # --------------------------------------------------------- claude-copilot -----
 function claude-copilot {
     [CmdletBinding()]
     param([Parameter(ValueFromRemainingArguments)] [string[]] $Argv)
     $ss = 'auto'
-    if ($Argv -and $Argv[0] -eq '--no-specstory') { $ss = 'never'; $Argv = $Argv[1..($Argv.Count - 1)] }
-    elseif ($Argv -and $Argv[0] -eq '--specstory') { $Argv = $Argv[1..($Argv.Count - 1)] }
-    elseif ($Argv -and $Argv[0] -in '-h', '--help') {
+    if ($Argv -and $Argv[0] -in '--no-specstory', '--specstory') {
+        if ($Argv[0] -eq '--no-specstory') { $ss = 'never' }
+        $Argv = @($Argv | Select-Object -Skip 1)
+    } elseif ($Argv -and $Argv[0] -in '-h', '--help') {
         Write-Host "Usage: claude-copilot [--no-specstory] [claude args...]"
         Write-Host "  One-off Claude Code session on the Copilot proxy. Sticky: copilot-here on"
         Write-Host "  Runs claude with --dangerously-skip-permissions (hands-off proxy flow)."
         return
     }
     if ($ss -eq 'auto' -and (Get-Command specstory -ErrorAction SilentlyContinue)) {
-        if ($Argv -and $Argv.Count -gt 0) {
-            # Rebuild what `-c` clobbers: the configured base command (ITS flags left
-            # unquoted so specstory splits them normally) + each of our args quoted.
-            $cc = Get-SpecstoryClaudeCmd
-            foreach ($a in $Argv) { $cc = "$cc $(ConvertTo-CopilotShQuote $a)" }
-            copilot-run specstory run claude -c $cc
-        }
-        else { copilot-run specstory run claude }
+        $command = New-SpecstoryClaudeCommand -Argv $Argv
+        copilot-run specstory run claude -c $command
     } else {
         # No specstory on PATH (the Windows default — no native CLI yet): run claude
         # directly, still bypassing permission prompts so behaviour matches the

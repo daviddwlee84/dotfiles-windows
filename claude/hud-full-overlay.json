@@ -1,0 +1,39 @@
+{
+  "display": {
+    "showModel": true,
+    "showProject": true,
+    "showAddedDirs": true,
+    "showContextBar": true,
+    "showConfigCounts": true,
+    "showTokenBreakdown": true,
+    "showUsage": true,
+    "showResetLabel": true,
+    "showCost": true,
+    "showDuration": true,
+    "showTools": true,
+    "showSkills": true,
+    "showMcp": true,
+    "showAgents": true,
+    "showTodos": true,
+    "showSessionName": true,
+    "showSessionTokens": true,
+    "showEffortLevel": true,
+    "showOutputStyle": true,
+    "showMemoryUsage": true,
+    "showPromptCache": true,
+    "showClaudeCodeVersion": true,
+    "showCompactions": true,
+    "showAdvisor": true
+  },
+  "gitStatus": {
+    "enabled": true,
+    "showDirty": true,
+    "showAheadBehind": false,
+    "showFileStats": false
+  },
+  "jjStatus": {
+    "enabled": true,
+    "showDirty": true,
+    "showConflicts": true
+  }
+}

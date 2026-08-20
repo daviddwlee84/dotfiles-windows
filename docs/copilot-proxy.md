@@ -179,8 +179,13 @@ See Claude Code's [feature availability](https://code.claude.com/docs/en/feature
   committed project settings. `off` removes every env key owned by the helper and
   preserves unrelated settings.
 - `claude-copilot` and `claude-copilot-once` retain the Windows port's trusted
-  `--dangerously-skip-permissions` and optional SpecStory behavior. Plain `claude`
-  is unaffected.
+  `--dangerously-skip-permissions` and optional SpecStory behavior. On the
+  SpecStory path they resolve the project/user `claude_cmd` as the base, enforce
+  one bypass flag, quote all user arguments, and always pass the complete command
+  through `specstory run claude -c` (including zero-argument sessions). The
+  create-seeded `~/.specstory/cli/config.toml` remains user-owned, and direct
+  `specstory run claude` still follows that user/project configuration. Plain
+  `claude` is unaffected.
 - The throttle shim remains byte-identical to the macOS/Linux copy and retries
   transient 403/429 bursts while limiting concurrent requests. It deliberately
   passes HTTP 402 through once; billing configuration is not a throttle failure.

@@ -1,173 +1,290 @@
 #Requires -Version 7
-# run_onchange_after_25_claude_settings.ps1 — merge a managed overlay into
-# ~/.claude/settings.json so claude-hud (statusline HUD), the pyright-lsp
-# plugin, and a couple of safe defaults deploy on Windows. Companion to the
-# parent (macOS/Linux) repo's dot_claude/modify_settings.json; that repo uses a
-# `modify_` + jq merge, which is unreliable on Windows (invariant #5), so we use
-# the same run_onchange pwsh-merger idiom as the editor overlays instead.
+# run_onchange_after_25_claude_settings.ps1 — merge managed overlays into
+# ~/.claude/settings.json and ~/.claude/plugins/claude-hud/config.json.
+# Companion to the parent (macOS/Linux) repo's dot_claude/modify_settings.json;
+# that repo uses a `modify_` + jq merge, which is unreliable on Windows
+# (invariant #5), so we use the editor-overlay run_onchange pwsh idiom instead.
 #
-# Why a merge (not a managed dot_claude/settings.json)? Claude Code rewrites
-# this file at runtime (plugins it installs, permissions the user grants). A
-# static managed file would clobber all of that on every apply. We instead
-# recursively deep-merge only our keys in, preserving every live key.
+# Why merges (not managed files)? Claude Code rewrites settings.json at runtime,
+# and /claude-hud:configure rewrites the HUD config. Static managed files would
+# clobber live-only state. Each transaction recursively merges only our owned
+# leaves and fails closed independently, so one malformed file cannot block the
+# other or be overwritten.
 #
-# Gated on installCodingAgents — no Claude Code, nothing to configure. Re-runs
-# when the embedded overlay (claude/settings-overlay.json) changes.
+# Gated on installCodingAgents. Re-runs when either embedded overlay changes.
 {{ if .installCodingAgents -}}
 $ErrorActionPreference = 'Continue'   # best-effort; never abort the apply
 
-# Embedded at render time from the (chezmoi-ignored) claude/ source, so this
-# script is self-contained and re-fires when the overlay changes.
-$overlayJson = @'
+# Embedded from chezmoi-ignored claude/ sources. Embedding makes this script
+# self-contained and includes both overlays in the run_onchange content hash.
+$settingsOverlayJson = @'
 {{ include "claude/settings-overlay.json" }}
 '@
+$hudOverlayJson = @'
+{{ include "claude/hud-full-overlay.json" }}
+'@
 
-$overlay = $overlayJson | ConvertFrom-Json -AsHashtable
-
-# --- Completion-feedback hooks, gated on `agentSounds` -----------------------
-#
-# Built here rather than in claude/settings-overlay.json because that file is
-# `include`d verbatim and so cannot carry Go-template conditionals.
-#
-# `notify` wires notify.ps1 (apprise -> Windows toast); `peon` wires peon-ping's
-# game voice lines. Values lifted from a real peon-ping install.ps1 (verified
-# against upstream source, NOT its README — the README's documented command
-# shape is wrong on the POSIX side too). Windows specifics that differ from the
-# macOS/Linux parent repo:
-#   - command is `powershell -NoProfile -NonInteractive -File "<peon.ps1>"`
-#   - `timeout = 10`, and there is NO `async` field
-#   - the event set includes PreToolUse and has NO UserPromptSubmit
-# Parent repo equivalent: dot_claude/modify_settings.json.tmpl.
-{{- $peon   := or (eq .agentSounds "peon")   (eq .agentSounds "both") }}
-{{- $notify := or (eq .agentSounds "notify") (eq .agentSounds "both") }}
-$notifyCmd = 'exec pwsh -NoProfile -File "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/notify.ps1"'
-# peon-ping is installed with `-OpenPeon`, which reroots its whole tree at the
-# tool-agnostic ~/.openpeon — so peon.ps1 is NOT under ~/.claude/hooks/.
-# Wrapped in a Test-Path guard so the hook is a silent no-op on a box where the
-# install hasn't run (or failed): an unguarded `-File <missing>` makes Claude
-# Code surface a hook error on every event. Mirrors the mandatory
-# `command -v workmux` / `[ -x ... ]` guards in the parent repo.
-$peonPs1   = Join-Path $HOME '.openpeon\hooks\peon-ping\peon.ps1'
-$peonCmd   = "powershell -NoProfile -NonInteractive -Command `"if (Test-Path '$peonPs1') { & '$peonPs1' }`""
-
-# Event -> the commands that should be wired for the current tier.
-$soundHooks = @{}
-{{- if $notify }}
-foreach ($evt in @('Notification', 'Stop')) {
-    $soundHooks[$evt] = @(@{ matcher = ''; hooks = @(@{ type = 'command'; command = $notifyCmd }) })
-}
-{{- end }}
-{{- if $peon }}
-foreach ($evt in @('SessionStart', 'SessionEnd', 'SubagentStart', 'Stop',
-                   'Notification', 'PermissionRequest', 'PreToolUse',
-                   'PostToolUseFailure', 'PreCompact')) {
-    $entry = @{ matcher = ''; hooks = @(@{ type = 'command'; command = $peonCmd; timeout = 10 }) }
-    if ($soundHooks.ContainsKey($evt)) { $soundHooks[$evt] = @($soundHooks[$evt] + $entry) }
-    else                               { $soundHooks[$evt] = @($entry) }
-}
-{{- end }}
-if ($soundHooks.Count -gt 0) {
-    if ($overlay['hooks'] -isnot [hashtable]) { $overlay['hooks'] = @{} }
-    foreach ($evt in $soundHooks.Keys) { $overlay['hooks'][$evt] = $soundHooks[$evt] }
+# Parse a JSON string as an object. Arrays/scalars are not valid roots for either
+# managed surface, because merging them would replace rather than preserve state.
+function ConvertFrom-JsonObjectText {
+    param(
+        [Parameter(Mandatory)] [string] $Text,
+        [Parameter(Mandatory)] [string] $Label
+    )
+    try { $value = $Text | ConvertFrom-Json -AsHashtable -ErrorAction Stop }
+    catch { throw "$Label is invalid JSON: $($_.Exception.Message)" }
+    if ($value -isnot [System.Collections.IDictionary]) {
+        throw "$Label root is not a JSON object"
+    }
+    $value
 }
 
-# Commands the CURRENT tier disables — pruned from the live file below. Without
-# this the additive merge makes agentSounds a one-way ratchet: switching
-# notify -> none would leave notify.ps1 wired forever, so `none` would not
-# actually silence a machine that previously had sound. Only OUR OWN
-# fingerprints are listed, so foreign hook entries can never be touched.
-# (Upstream's own install.ps1 strips `peon\.(ps1|sh)` / `notify\.sh` the same
-# way before re-adding, so this matches its behaviour.)
-$prunePatterns = @(
-{{- if not $notify }}
-    'notify\.ps1'
-{{- end }}
-{{- if not $peon }}
-    'peon\.ps1'
-{{- end }}
-)
+# Follow a file symlink without requiring its target to exist yet. This keeps a
+# create-time link intact and lets the managed transaction initialize its target.
+function Resolve-JsonTargetPath {
+    param([Parameter(Mandatory)] [string] $Path)
 
-# Recursive deep-merge: overlay leaves win; live-only keys are preserved. Unlike
-# the editor overlay's shallow top-level assign, this keeps the user's nested
-# state (e.g. permissions.allow/deny arrays, other enabledPlugins) intact.
-#
-# The `hooks` object gets special, ADDITIVE handling (see Merge-ClaudeHooks) so
-# our Notification/Stop notify entries are appended without clobbering hook
-# entries the user or other tools added. Every other array value is still
-# replaced wholesale (overlay wins), which is what we want for scalars/plugins.
-function Merge-Hashtable([hashtable]$base, [hashtable]$overlay) {
-    foreach ($k in $overlay.Keys) {
-        if ($k -eq 'hooks' -and ($overlay[$k] -is [hashtable])) {
-            if ($base[$k] -isnot [hashtable]) { $base[$k] = @{} }
-            Merge-ClaudeHooks $base[$k] $overlay[$k]
+    $targetPath = $Path
+    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    while ($true) {
+        $item = Get-Item -LiteralPath $targetPath -Force -ErrorAction SilentlyContinue
+        if (-not $item -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) {
+            return $targetPath
         }
-        elseif ($base.ContainsKey($k) -and ($base[$k] -is [hashtable]) -and ($overlay[$k] -is [hashtable])) {
-            Merge-Hashtable $base[$k] $overlay[$k]
-        }
-        else {
-            $base[$k] = $overlay[$k]
+        if (-not $seen.Add($item.FullName)) { throw "symbolic-link cycle while resolving $Path" }
+        $resolved = $item.ResolveLinkTarget($false)
+        if (-not $resolved) { throw "could not resolve link target for $Path" }
+        $targetPath = $resolved.FullName
+    }
+}
+
+# Read strict UTF-8 without normalizing the live bytes first. A single UTF-8 BOM
+# is accepted for compatibility; successful writes normalize to BOM-free UTF-8.
+function Read-JsonObject {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) { return @{} }
+    [byte[]] $bytes = [IO.File]::ReadAllBytes($Path)
+    if ($bytes.Length -eq 0) { return @{} }
+
+    $offset = 0
+    if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+        $offset = 3
+    }
+    try {
+        $utf8 = [Text.UTF8Encoding]::new($false, $true)
+        $text = $utf8.GetString($bytes, $offset, $bytes.Length - $offset)
+    } catch {
+        throw "$Path is not valid UTF-8: $($_.Exception.Message)"
+    }
+    if ([string]::IsNullOrWhiteSpace($text)) { return @{} }
+    ConvertFrom-JsonObjectText -Text $text -Label $Path
+}
+
+# Recursive object merge: overlay leaves win; live-only/unknown leaves survive.
+# settings.json opts into its special additive hook merge; HUD config does not.
+function Merge-JsonObject {
+    param(
+        [Parameter(Mandatory)] [System.Collections.IDictionary] $Base,
+        [Parameter(Mandatory)] [System.Collections.IDictionary] $Overlay
+    )
+    foreach ($key in $Overlay.Keys) {
+        if ($Base.Contains($key) -and
+            $Base[$key] -is [System.Collections.IDictionary] -and
+            $Overlay[$key] -is [System.Collections.IDictionary]) {
+            Merge-JsonObject -Base ($Base[$key]) -Overlay ($Overlay[$key])
+        } else {
+            $Base[$key] = $Overlay[$key]
         }
     }
 }
 
-# Additive per-event hook merge, mirroring the parent repo's jq reduce in
-# dot_claude/modify_settings.json: for each event, append only the overlay
-# entries whose .hooks[0].command isn't already present in the live array,
-# preserving live entries verbatim. Wholesale-replacing the arrays (the old
-# behavior) would drop hooks the user / other tools add at runtime. @(...) also
-# forces array shape so ConvertTo-Json emits a JSON array even for a single
-# entry (Claude requires hooks.<event> to be an array).
-function Merge-ClaudeHooks([hashtable]$base, [hashtable]$overlay) {
-    foreach ($evt in $overlay.Keys) {
-        # NB: plain two-line assign, NOT `$live = if (...) { @(..) } else { @() }`.
-        # A single-element @() flowing out of an if-EXPRESSION gets unwrapped back
-        # to a scalar (here a hashtable), so `$live + $additions` then throws
-        # "A hash table can only be added to another hash table". Direct `= @(...)`
-        # keeps the array shape.
+# Additive per-event hook merge. Append only entries whose first hook command is
+# not already present, preserving foreign live entries and forcing array shape.
+function Merge-ClaudeHooks {
+    param(
+        [Parameter(Mandatory)] [System.Collections.IDictionary] $Base,
+        [Parameter(Mandatory)] [System.Collections.IDictionary] $Overlay
+    )
+    foreach ($eventName in $Overlay.Keys) {
         $live = @()
-        if ($null -ne $base[$evt]) { $live = @($base[$evt]) }
-        $liveCmds = @($live | ForEach-Object { $_.hooks[0].command })
-        $additions = @($overlay[$evt] | Where-Object {
-            $cmd = $_.hooks[0].command
-            (-not $cmd) -or ($liveCmds -notcontains $cmd)
+        if ($null -ne $Base[$eventName]) { $live = @($Base[$eventName]) }
+        $liveCommands = @($live | ForEach-Object { $_.hooks[0].command })
+        $additions = @($Overlay[$eventName] | Where-Object {
+            $command = $_.hooks[0].command
+            (-not $command) -or ($liveCommands -notcontains $command)
         })
-        $base[$evt] = @($live + $additions)
+        $Base[$eventName] = @($live + $additions)
     }
 }
 
-# Respect CLAUDE_CONFIG_DIR (matches the statusLine command + claude-hud setup).
+# Serialize once, validate the candidate, then replace through a same-directory
+# temporary file. Existing normalized bytes are left untouched for idempotence.
+function Write-JsonObjectAtomically {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [System.Collections.IDictionary] $Value,
+        [Parameter(Mandatory)] [bool] $ExpectedExists,
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [byte[]] $ExpectedBytes
+    )
+
+    $json = $Value | ConvertTo-Json -Depth 32 -ErrorAction Stop
+    $json = $json.Replace("`r`n", "`n").Replace("`r", "`n").TrimEnd([char[]] "`r`n") + "`n"
+    $utf8 = [Text.UTF8Encoding]::new($false, $true)
+    [byte[]] $candidate = $utf8.GetBytes($json)
+
+    $targetPath = Resolve-JsonTargetPath -Path $Path
+
+    $directory = Split-Path -Parent $targetPath
+    New-Item -ItemType Directory -Force -Path $directory -ErrorAction Stop | Out-Null
+    $temporary = Join-Path $directory ('.' + [IO.Path]::GetFileName($targetPath) + '.tmp.' + [guid]::NewGuid().ToString('N'))
+    $backup = "$temporary.backup"
+    $guard = $null
+    try {
+        [IO.File]::WriteAllBytes($temporary, $candidate)
+        $null = Read-JsonObject -Path $temporary
+
+        $currentExists = Test-Path -LiteralPath $targetPath
+        if ($currentExists -ne $ExpectedExists) {
+            throw "$Path changed while the managed overlay was being prepared"
+        }
+        if ($currentExists) {
+            # Deny ordinary readers/writers while allowing ReplaceFile's rename.
+            # Compare through the held handle, then keep it open through the
+            # atomic replacement so the precondition and commit share one guard.
+            $guard = [IO.File]::Open($targetPath, [IO.FileMode]::Open,
+                [IO.FileAccess]::Read, [IO.FileShare]::Delete)
+            $stream = [IO.MemoryStream]::new()
+            try {
+                $guard.CopyTo($stream)
+                [byte[]] $current = $stream.ToArray()
+            } finally {
+                $stream.Dispose()
+            }
+            if ([Convert]::ToBase64String($current) -cne [Convert]::ToBase64String($ExpectedBytes)) {
+                throw "$Path changed while the managed overlay was being prepared"
+            }
+            if ($current.Length -eq $candidate.Length -and
+                [Convert]::ToBase64String($current) -ceq [Convert]::ToBase64String($candidate)) {
+                return $false
+            }
+            # ReplaceFile preserves the destination target's Windows ACLs and
+            # attributes. A real backup path avoids null binding as an empty path.
+            [IO.File]::Replace($temporary, $targetPath, $backup)
+        } else {
+            # Move without overwrite is a create-time precondition: a concurrent
+            # creator makes this fail closed instead of losing the new file.
+            [IO.File]::Move($temporary, $targetPath)
+        }
+    } finally {
+        if ($guard) { $guard.Dispose() }
+        Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue
+    }
+    $true
+}
+
+function Update-ClaudeSettings {
+    param(
+        [Parameter(Mandatory)] [string] $ClaudeDir,
+        [Parameter(Mandatory)] [string] $OverlayJson
+    )
+
+    $overlay = ConvertFrom-JsonObjectText -Text $OverlayJson -Label 'managed Claude settings overlay'
+
+    # Completion-feedback hooks are built here because the embedded JSON cannot
+    # carry Go-template conditionals. notify = apprise toast; peon = voice lines.
+    {{- $peon   := or (eq .agentSounds "peon")   (eq .agentSounds "both") }}
+    {{- $notify := or (eq .agentSounds "notify") (eq .agentSounds "both") }}
+    $notifyCommand = 'exec pwsh -NoProfile -File "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/notify.ps1"'
+    $peonPs1 = Join-Path $HOME '.openpeon\hooks\peon-ping\peon.ps1'
+    $peonCommand = "powershell -NoProfile -NonInteractive -Command `"if (Test-Path '$peonPs1') { & '$peonPs1' }`""
+    $soundHooks = @{}
+    {{- if $notify }}
+    foreach ($eventName in @('Notification', 'Stop')) {
+        $soundHooks[$eventName] = @(@{ matcher = ''; hooks = @(@{ type = 'command'; command = $notifyCommand }) })
+    }
+    {{- end }}
+    {{- if $peon }}
+    foreach ($eventName in @('SessionStart', 'SessionEnd', 'SubagentStart', 'Stop',
+                              'Notification', 'PermissionRequest', 'PreToolUse',
+                              'PostToolUseFailure', 'PreCompact')) {
+        $entry = @{ matcher = ''; hooks = @(@{ type = 'command'; command = $peonCommand; timeout = 10 }) }
+        if ($soundHooks.ContainsKey($eventName)) { $soundHooks[$eventName] = @($soundHooks[$eventName] + $entry) }
+        else                                      { $soundHooks[$eventName] = @($entry) }
+    }
+    {{- end }}
+    if ($soundHooks.Count -gt 0) {
+        if ($overlay['hooks'] -isnot [System.Collections.IDictionary]) { $overlay['hooks'] = @{} }
+        foreach ($eventName in $soundHooks.Keys) { $overlay['hooks'][$eventName] = $soundHooks[$eventName] }
+    }
+
+    # Prune only repository-owned hooks disabled by the current sound tier.
+    $prunePatterns = @(
+    {{- if not $notify }}
+        'notify\.ps1'
+    {{- end }}
+    {{- if not $peon }}
+        'peon\.ps1'
+    {{- end }}
+    )
+
+    $settingsPath = Join-Path $ClaudeDir 'settings.json'
+    $settingsTargetPath = Resolve-JsonTargetPath -Path $settingsPath
+    $settingsExisted = Test-Path -LiteralPath $settingsTargetPath
+    [byte[]] $settingsBytes = [byte[]]::new(0)
+    if ($settingsExisted) { $settingsBytes = [IO.File]::ReadAllBytes($settingsTargetPath) }
+    $settings = Read-JsonObject -Path $settingsTargetPath
+    if ($overlay['hooks'] -is [System.Collections.IDictionary]) {
+        if ($settings['hooks'] -isnot [System.Collections.IDictionary]) { $settings['hooks'] = @{} }
+        Merge-ClaudeHooks -Base ($settings['hooks']) -Overlay ($overlay['hooks'])
+        $overlay.Remove('hooks')
+    }
+    Merge-JsonObject -Base $settings -Overlay $overlay
+
+    if ($prunePatterns.Count -gt 0 -and $settings['hooks'] -is [System.Collections.IDictionary]) {
+        foreach ($eventName in @($settings['hooks'].Keys)) {
+            $kept = @(@($settings['hooks'][$eventName]) | Where-Object {
+                $command = $_.hooks[0].command
+                if (-not $command) { return $true }
+                foreach ($pattern in $prunePatterns) {
+                    if ($command -match $pattern) { return $false }
+                }
+                $true
+            })
+            if ($kept.Count -gt 0) { $settings['hooks'][$eventName] = $kept }
+            else                   { $settings['hooks'].Remove($eventName) }
+        }
+    }
+
+    $changed = Write-JsonObjectAtomically -Path $settingsPath -Value $settings `
+        -ExpectedExists $settingsExisted -ExpectedBytes $settingsBytes
+    if ($changed) { Write-Host "claude overlay -> $settingsPath" }
+}
+
+function Update-ClaudeHudConfig {
+    param(
+        [Parameter(Mandatory)] [string] $ClaudeDir,
+        [Parameter(Mandatory)] [string] $OverlayJson
+    )
+
+    $overlay = ConvertFrom-JsonObjectText -Text $OverlayJson -Label 'managed claude-hud Full 0.7.1 overlay'
+    $hudPath = Join-Path $ClaudeDir 'plugins\claude-hud\config.json'
+    $hudTargetPath = Resolve-JsonTargetPath -Path $hudPath
+    $hudExisted = Test-Path -LiteralPath $hudTargetPath
+    [byte[]] $hudBytes = [byte[]]::new(0)
+    if ($hudExisted) { $hudBytes = [IO.File]::ReadAllBytes($hudTargetPath) }
+    $config = Read-JsonObject -Path $hudTargetPath
+    Merge-JsonObject -Base $config -Overlay $overlay
+    $changed = Write-JsonObjectAtomically -Path $hudPath -Value $config `
+        -ExpectedExists $hudExisted -ExpectedBytes $hudBytes
+    if ($changed) { Write-Host "claude-hud Full overlay -> $hudPath" }
+}
+
+# Respect CLAUDE_CONFIG_DIR for both targets, matching Claude Code and claude-hud.
 $claudeDir = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOME '.claude' }
-$settingsPath = Join-Path $claudeDir 'settings.json'
-
-$settings = @{}
-if (Test-Path $settingsPath) {
-    $raw = Get-Content -Raw $settingsPath
-    if ($raw.Trim()) {
-        try { $settings = $raw | ConvertFrom-Json -AsHashtable }
-        catch { Write-Warning "could not parse $settingsPath; not overwriting"; return }
-    }
-}
-
-Merge-Hashtable $settings $overlay
-
-# Prune our own now-disabled entries (see $prunePatterns above). Runs AFTER the
-# additive merge so a tier that re-enables something wins. Foreign entries are
-# never matched. Event keys whose array empties out are removed so turning
-# everything off doesn't leave `"SessionStart": []` litter behind.
-if ($prunePatterns.Count -gt 0 -and $settings['hooks'] -is [hashtable]) {
-    foreach ($evt in @($settings['hooks'].Keys)) {
-        $kept = @(@($settings['hooks'][$evt]) | Where-Object {
-            $cmd = $_.hooks[0].command
-            if (-not $cmd) { return $true }
-            foreach ($p in $prunePatterns) { if ($cmd -match $p) { return $false } }
-            return $true
-        })
-        if ($kept.Count -gt 0) { $settings['hooks'][$evt] = $kept }
-        else                   { $settings['hooks'].Remove($evt) }
-    }
-}
-
-New-Item -ItemType Directory -Force -Path $claudeDir | Out-Null
-$settings | ConvertTo-Json -Depth 12 | Set-Content -Path $settingsPath -Encoding utf8
-Write-Host "claude overlay -> $settingsPath"
+try { Update-ClaudeSettings -ClaudeDir $claudeDir -OverlayJson $settingsOverlayJson }
+catch { Write-Warning "Claude settings overlay skipped; not overwriting: $($_.Exception.Message)" }
+try { Update-ClaudeHudConfig -ClaudeDir $claudeDir -OverlayJson $hudOverlayJson }
+catch { Write-Warning "claude-hud overlay skipped; not overwriting: $($_.Exception.Message)" }
 {{ end -}}
