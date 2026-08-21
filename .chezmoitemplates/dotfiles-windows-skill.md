@@ -82,7 +82,8 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 - tmux / zellij are Unix-only and intentionally absent; **WezTerm** (installed) is
   the stable native tmux-like multiplexer, or use Windows Terminal panes. **herdr**
   is an opt-in (`installHerdr`) native-Windows multiplexer in preview beta —
-  installed via herdr.dev's `irm|iex` script, config at `~/.config/herdr/config.toml`.
+  installed via herdr.dev's `irm|iex` script, config at `~/.config/herdr/config.toml`,
+  with its official global skill exported from the installed binary on each apply.
   Runtimes are native via scoop (node/bun/go/rust/ruby) + uv for Python — no mise on Windows.
 - **Rime input method** (opt-in `installInputMethod`): Weasel/小狼毫 via winget
   `Rime.Weasel`. Machine-scope NSIS, so applying raises UAC; and a bare silent

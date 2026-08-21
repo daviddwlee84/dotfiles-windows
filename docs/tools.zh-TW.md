@@ -185,7 +185,7 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
 | Tunnel tools | ngrok、cloudflared（scoop） |
 | IaC tools | Terraform、OpenTofu（scoop）+ Azure CLI 與 `azure-devops` 擴充（`az devops`/`az repos`,winget） |
 | OpenSSH server | Microsoft OpenSSH Server（sshd）：Windows capability + 自動啟動服務 + inbound TCP 22 防火牆規則，並以 pwsh 為預設 shell。需系統管理員 —— 用提升權限的 `chezmoi apply`，或在提升權限的 pwsh 執行 `just enable-sshd`。 |
-| herdr multiplexer | herdr，原生 Windows 終端多工器（**preview beta**）。沒有 scoop/winget manifest —— 透過 herdr.dev 的 `irm \| iex` 腳本安裝；設定受管於 `~/.config/herdr/config.toml`（以 pwsh 為預設 shell）。同時會安裝 [herdr-plus](https://github.com/cloudmanic/herdr-plus) 外掛，支撐 `prefix+y`（Quick Actions）與 `prefix+O`（Projects）—— 它**需要 `go`**（Windows 端用 `go build` 編譯），沒有 go 時會顯示訊息並跳過（`scoop install go`，或開啟「Extra runtimes」）。見 [rationale](rationale.zh-TW.md#wezterm-herdr-beta)。 |
+| herdr multiplexer | herdr，原生 Windows 終端多工器（**preview beta**）。沒有 scoop/winget manifest —— 透過 herdr.dev 的 `irm \| iex` 腳本安裝；設定受管於 `~/.config/herdr/config.toml`（以 pwsh 為預設 shell）。每次 apply 也會從目前 binary 的 `herdr --skill` 輸出官方 skill，寫入 `~/.agents/skills/herdr/` 與 `~/.claude/skills/herdr/`，確保 preview 版本的指令一致。同時會安裝 [herdr-plus](https://github.com/cloudmanic/herdr-plus) 外掛，支撐 `prefix+y`（Quick Actions）與 `prefix+O`（Projects）—— 它**需要 `go`**（Windows 端用 `go build` 編譯），沒有 go 時會顯示訊息並跳過（`scoop install go`，或開啟「Extra runtimes」）。見 [rationale](rationale.zh-TW.md#wezterm-herdr-beta)。 |
 | Clink (cmd.exe) | [Clink](https://chrisant996.github.io/clink/)（scoop `main`）—— cmd.exe 的 Bash 風格行編輯，讓 **starship** + **zoxide** + **fzf** 也能用在 DOS 提示字元。沿用共用的 `starship.toml`；註冊使用者層級 cmd AutoRun、部署我們的 `starship.lua`，並把社群的 `clink-zoxide` / `clink-fzf` 橋接抓進 `%LocalAppData%\clink`。pwsh 仍是預設 —— 這是選用的次要 shell，只有 prompt + 導覽對等。見 [rationale](rationale.zh-TW.md#powershell-7-cmdexe-clink) 與 [Shell](shell.zh-TW.md#cmdexe-via-clink)。 |
 | try（暫時性 workspace） | [`try`](https://github.com/tobi/try)，透過 `gem install try-cli` 安裝（若無 ruby 會一併裝）。建立以日期命名的 `~/src/tries/YYYY-MM-DD-name` 試驗目錄 + 模糊選擇器；`tri <git-url>` 會 clone 進其中一個。pwsh 指令是 **`tri`**（`try` 是保留字 —— 裸打 `try` 無法 parse；`& try` 可用）。見 [Shell](shell.zh-TW.md#try)。 |
 | translate（workstation 預設開） | [`translate`](https://github.com/daviddwlee84/translate) —— 終端機翻譯工具（CLI + TUI），走 copilot-proxy / Ollama / Google，另有離線的 CC-CEDICT + ECDICT 辭典。它沒有 scoop/winget manifest，也沒有預先編譯的 Windows release，所以用 `go install` 從原始碼編進 `~\.local\bin`（go 由該區塊自己裝，不必開「Extra runtimes」）；**第一次編譯要好幾分鐘**。附帶 pwsh tab 補全與 `translate` tv channel。見 [translate](translate.zh-TW.md)。 |
@@ -227,5 +227,6 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
 ```powershell
 just upgrade-scoop     # scoop update *
 just upgrade-winget    # winget upgrade --all
+just upgrade-herdr     # herdr update --handoff + 對應版本的全域 skill
 just upgrade-translate # go install …/translate@latest（選用工具，不含在 `just upgrade` 裡）
 ```

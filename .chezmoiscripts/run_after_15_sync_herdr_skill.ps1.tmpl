@@ -1,0 +1,24 @@
+#Requires -Version 7
+# Keep both Windows agent-discovery copies aligned with the installed Herdr
+# binary. Real copies are intentional: symlinks/junctions require Developer Mode
+# or elevation on Windows.
+
+$ErrorActionPreference = 'Continue'
+if (Test-Path variable:PSNativeCommandUseErrorActionPreference) { $PSNativeCommandUseErrorActionPreference = $false }
+
+{{ if .installHerdr -}}
+{{ include "scripts/herdr-skill-sync.ps1" }}
+
+$destinations = @(
+    (Join-Path $HOME '.agents\skills\herdr\SKILL.md'),
+    (Join-Path $HOME '.claude\skills\herdr\SKILL.md')
+)
+if (Sync-HerdrSkill -Destinations $destinations) {
+    Write-Output '==> Herdr agent skill is aligned with the installed binary'
+} else {
+    Write-Warning 'Herdr agent skill sync was skipped or failed; the next chezmoi apply will retry'
+}
+{{- end }}
+
+# Run-scripts must never abort the rest of chezmoi apply.
+exit 0
