@@ -23,6 +23,7 @@
 | `35_yazi.ps1` | `y` —— 開 yazi,離開時 cd 到你停下的目錄 |
 | `40_copilot.ps1` | 匯入 `copilot-proxy` PowerShell 模組 |
 | `90_psreadline.ps1` | PSReadLine（vi 模式、歷史） |
+| `96_ssh_setup.ps1` | `ssh-setup-remote`（`Set-RemoteSshKey`）—— 互動式、支援 ProxyJump 的 SSH 金鑰設定精靈 |
 
 `~/.config/powershell/modules` 底下的模組會被 loader 前置到
 `$env:PSModulePath`,所以能直接以名稱匯入(例如 `Copilot`)。
@@ -232,3 +233,42 @@ SpecStory 自動包裝只有在 PATH 上真的有 `specstory` CLI 時才啟用�
     herdr 的 Windows 版本是可選的（`installHerdr`）且僅 preview；這些輔助指令驅動它的
     CLI scripting 介面（`herdr workspace|tab|pane`），只能在真正的 Windows 機器上驗證，
     CI 不涵蓋。
+
+## SSH 金鑰設定 (`ssh-setup-remote`)
+
+`profile.d/96_ssh_setup.ps1` 是 macOS/Linux dotfiles 那份 `96_ssh_setup.sh` 的原生 pwsh
+移植版 —— 同樣的指令名稱、同樣的流程，刻意沿用相同的片段編號。`Set-RemoteSshKey` 是
+函式本體；`ssh-setup-remote` 是一個全域別名，讓兩個平台下的指令完全一致：
+
+```powershell
+ssh-setup-remote user@hostname
+```
+
+它會選擇或建立金鑰、把公鑰裝到遠端、可選擇把金鑰對複製過去（供遠端使用 GitHub），最後
+把金鑰接進本機 `~/.ssh/config` —— 若別名已設定過就就地編輯既有的 `Host` 區塊（遞迴沿著
+`Include` 找到正確檔案，萬用字元 `Host` pattern 永遠不會被當成配對——與 Unix 版
+`_ssh_cfg_py` helper 相同規則，但改用純 PowerShell 重新實作，不依賴 `python3`），否則就
+附加一個全新的別名區塊。
+
+**會先解析 ProxyJump 鏈。** `ssh(1)` 會透明地穿過跳板 (jump host)，所以只設定最終目標
+會讓跳板永遠都要求密碼。精靈會遞迴解析 `ssh -G <target>` 的 `proxyjump`（跳板本身也可能
+有自己的 `ProxyJump`），然後對每一跳都由外而內重跑一次整套流程——跳板只需要「安裝金鑰」
+與「接進本機設定」這兩步，永遠不需要複製金鑰對，因為 ProxyJump 的驗證是從這台機器對最終
+目標端對端完成的，跳板完全不會碰到私鑰。
+
+**私鑰旁邊缺 `.pub` 不是致命錯誤，而是可修復的。** 選到一把遺失公鑰的金鑰（部分複製、
+只從 agent 匯入過）時，精靈會當場提議執行 `ssh-keygen -y`，而不是讓安裝步驟深處才失敗。
+
+有兩件事和 POSIX 那一側真的不一樣，原因都是 Windows OpenSSH 沒有內建 `ssh-copy-id`：
+
+- 公鑰是透過 `ssh … -EncodedCommand …`（base64 UTF-16LE）在遠端執行一小段 PowerShell
+  程式附加上去的，這樣沿途不會有任何環節把引號搞亂。
+- **也會偵測遠端是不是 Windows**（先試 `uname -s` 失敗，再用 PowerShell 探測回答）。
+  若該帳號屬於遠端的 Administrators 群組，sshd 預設的 `Match Group administrators`
+  規則**只會**讀取 `C:\ProgramData\ssh\administrators_authorized_keys`——寫進
+  `~/.ssh/authorized_keys` 的金鑰會被悄悄忽略——所以精靈會先詢問才寫入該檔案，並把它的
+  ACL 重設為僅 Administrators+SYSTEM（sshd 會拒絕權限更寬鬆的檔案）。
+
+環境變數（與 Unix 側同名）：`SSH_SETUP_ASSUME_YES=1` 讓每個提示都取預設值、
+`SSH_SETUP_KEY=<path>` 跳過金鑰選擇、`SSH_CFG_ROOT`／`SSH_SETUP_HOME` 可改指到別的設定
+樹／金鑰目錄（給 `tests/SshSetup.Tests.ps1` 用，日常操作不需要）。

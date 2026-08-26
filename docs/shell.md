@@ -24,6 +24,7 @@ logic lives in the fragments; the loader stays boring.
 | `35_yazi.ps1` | `y` — launch yazi, cd to where you quit |
 | `40_copilot.ps1` | import the `copilot-proxy` PowerShell module |
 | `90_psreadline.ps1` | PSReadLine (vi mode, history) |
+| `96_ssh_setup.ps1` | `ssh-setup-remote` (`Set-RemoteSshKey`) — interactive, ProxyJump-aware SSH key setup wizard |
 
 Modules under `~/.config/powershell/modules` are prepended to
 `$env:PSModulePath` by the loader, so they import by name (e.g. `Copilot`).
@@ -251,3 +252,53 @@ is on PATH (no Windows build yet, so agents run raw).
     herdr's Windows build is opt-in (`installHerdr`) and preview-only; these
     helpers drive its CLI scripting surface (`herdr workspace|tab|pane`), which is
     validated on a real Windows box, not in CI.
+
+## SSH key setup (`ssh-setup-remote`)
+
+`profile.d/96_ssh_setup.ps1` is a native pwsh port of the macOS/Linux dotfiles'
+`96_ssh_setup.sh` — same command name, same flow, deliberately carrying the same
+fragment number. `Set-RemoteSshKey` is the function; `ssh-setup-remote` is a
+global alias so both platforms take the identical command:
+
+```powershell
+ssh-setup-remote user@hostname
+```
+
+It picks or creates a key, installs the public half on the remote, optionally
+copies the key pair over (for GitHub access on the remote), and wires the key
+into local `~/.ssh/config` — editing an existing `Host` block in place when the
+alias is already configured (following `Include` recursively, wildcard `Host`
+patterns never matched — the same rules as the Unix `_ssh_cfg_py` helper, but
+reimplemented in pure PowerShell so there is no `python3` dependency), or
+appending a fresh alias block otherwise.
+
+**ProxyJump chains are resolved first.** `ssh(1)` tunnels transparently through
+a jump host, so setting up only the final target leaves the jump host asking for
+a password forever. The wizard walks `ssh -G <target>`'s `proxyjump` recursively
+(a jump host can have its own `ProxyJump`) and repeats the whole flow for every
+hop, outermost first — a jump hop only needs the key-install and local-config
+steps, never the key-pair copy, since ProxyJump authenticates end-to-end from
+this machine and the jump host never touches the private key.
+
+**A missing `.pub` next to a private key is repaired, not fatal.** Selecting a
+key that lost its public half (a partial copy, an agent-only import) offers
+`ssh-keygen -y` on the spot instead of failing deep inside the install step.
+
+Two things genuinely differ from the POSIX side, both because Windows OpenSSH
+ships no `ssh-copy-id`:
+
+- The public key is appended by a small PowerShell program run on the remote
+  over `ssh … -EncodedCommand …` (base64 UTF-16LE, so nothing en route can
+  mangle the quoting).
+- **A Windows remote is detected too** (`uname -s` fails, then a PowerShell
+  probe answers). For an account in the remote Administrators group, sshd's
+  default `Match Group administrators` rule reads *only*
+  `C:\ProgramData\ssh\administrators_authorized_keys` — a key appended to
+  `~/.ssh/authorized_keys` there is silently ignored — so the wizard asks
+  before writing there and resets that file's ACL to Administrators+SYSTEM
+  (sshd refuses a more permissive one).
+
+Env knobs (same names as the Unix side): `SSH_SETUP_ASSUME_YES=1` takes every
+prompt's default, `SSH_SETUP_KEY=<path>` skips the key picker,
+`SSH_CFG_ROOT`/`SSH_SETUP_HOME` redirect the config tree / key directory
+(used by `tests/SshSetup.Tests.ps1`, not meant for daily use).

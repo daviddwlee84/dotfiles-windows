@@ -77,6 +77,10 @@ Authentication Agent** service (`Set-Service ssh-agent -StartupType Automatic`;
 `Start-Service ssh-agent`; `ssh-add`). The client uses the
 `//./pipe/openssh-ssh-agent` named pipe by default — no `SSH_AUTH_SOCK` needed.
 
+To get a key onto a remote (including a ProxyJump chain, or another Windows
+sshd box), run `ssh-setup-remote <host>` — see
+[docs/shell.md § SSH key setup](docs/shell.md#ssh-key-setup-ssh-setup-remote).
+
 ## Manual dotfiles ops
 
 **First-time install** (fresh machine — no chezmoi yet): run the
