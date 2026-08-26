@@ -1146,11 +1146,13 @@ Describe 'Copilot module' {
                 Mock Test-CopilotShimAlive { $true }
                 Mock Stop-Process {}
                 Mock Start-Process { throw 'must not spawn' }
-                # These helpers are plain `script:` functions (no [CmdletBinding()]),
-                # so -ErrorVariable is never bound — merge the streams instead.
-                $captured = @(Start-CopilotShim 2>&1)
-                $captured[-1] | Should -BeFalse
-                ($captured -join "`n") | Should -Match 'held by another process.*4242\(python\.exe\)'
+                Mock Write-Error {}
+
+                Start-CopilotShim | Should -BeFalse
+
+                Should -Invoke Write-Error -Times 1 -Exactly -ParameterFilter {
+                    $Message -match 'held by another process.*4242\(python\.exe\)'
+                }
                 Should -Invoke Stop-Process -Times 0 -Exactly
                 Should -Invoke Start-Process -Times 0 -Exactly
             }
@@ -1224,9 +1226,13 @@ Describe 'Copilot module' {
             InModuleScope Copilot {
                 Mock Get-CopilotShimEnabled { $true }
                 Mock Start-CopilotShim { $false }
-                $captured = @(Assert-CopilotShim 2>&1)
-                $captured[-1] | Should -BeFalse
-                ($captured -join "`n") | Should -Match 'refused to bypass the enabled metrics shim'
+                Mock Write-Error {}
+
+                Assert-CopilotShim | Should -BeFalse
+
+                Should -Invoke Write-Error -Times 1 -Exactly -ParameterFilter {
+                    $Message -match 'refused to bypass the enabled metrics shim'
+                }
             }
         }
         It 'client base stays on the shim when it is enabled but down' {
