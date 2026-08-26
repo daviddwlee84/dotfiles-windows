@@ -37,6 +37,11 @@ Describe 'Pueue daemon bootstrap' {
             return 'Invoke-FakePueued'
         }
         Mock Test-PueueAdministrator { return $false }
+        Mock Test-PueuedReady {
+            $script:ClientCalls++
+            return ($script:ClientCalls -ge $script:ReadyAfter)
+        }
+        Mock Start-Process {}
         Mock Start-Sleep {}
     }
 
@@ -47,15 +52,21 @@ Describe 'Pueue daemon bootstrap' {
         }
     }
 
-    It 'starts detached daemon mode when the client is not ready' {
+    It 'starts detached daemon mode without waiting on inherited stdio' {
         Start-PueuedIfNeeded -Quiet -ReadyTimeoutMilliseconds 100 | Should -BeTrue
-        $script:DaemonCalls | Should -HaveCount 1
-        $script:DaemonCalls[0] | Should -Be '--daemonize'
+        Should -Invoke Start-Process -Times 1 -Exactly -ParameterFilter {
+            $FilePath -eq 'Invoke-FakePueued' -and
+            $ArgumentList -eq '--daemonize' -and
+            $WindowStyle -eq 'Hidden' -and
+            -not $Wait
+        }
+        $script:DaemonCalls | Should -HaveCount 0
     }
 
     It 'does nothing when the daemon is already ready' {
         $script:ReadyAfter = 1
         Start-PueuedIfNeeded -Quiet -ReadyTimeoutMilliseconds 100 | Should -BeTrue
+        Should -Invoke Start-Process -Times 0 -Exactly
         $script:DaemonCalls | Should -HaveCount 0
     }
 
@@ -71,6 +82,37 @@ Describe 'Pueue daemon bootstrap' {
         $script:DaemonCalls | Should -HaveCount 2
         $script:DaemonCalls[0] | Should -Be 'service install'
         $script:DaemonCalls[1] | Should -Be 'service start'
+    }
+
+    It 'does not race a successfully started service with a detached daemon' {
+        Mock Test-PueueAdministrator { return $true }
+        Mock Get-Service { [pscustomobject]@{ Name = 'pueued' } }
+        Mock Wait-PueuedReady { $false }
+
+        Start-PueuedIfNeeded -InstallService -Quiet -ReadyTimeoutMilliseconds 100 | Should -BeFalse
+        $script:DaemonCalls | Should -Be @('service start')
+        Should -Invoke Start-Process -Times 0 -Exactly
+    }
+}
+
+Describe 'Pueue readiness process timeout' {
+    BeforeEach { . $Bootstrap }
+
+    It 'bounds a hung native status probe and terminates only the probe tree' {
+        $client = Join-Path $TestDrive 'hung-pueue.cmd'
+        "@ping -n 6 127.0.0.1 >nul`r`n@exit /b 0" | Set-Content -LiteralPath $client
+        $clock = [System.Diagnostics.Stopwatch]::StartNew()
+
+        Test-PueuedReady -ClientPath $client -TimeoutMilliseconds 100 | Should -BeFalse
+
+        $clock.ElapsedMilliseconds | Should -BeLessThan 1500
+    }
+
+    It 'accepts a native status probe that exits successfully' {
+        $client = Join-Path $TestDrive 'ready-pueue.cmd'
+        '@exit /b 0' | Set-Content -LiteralPath $client
+
+        Test-PueuedReady -ClientPath $client -TimeoutMilliseconds 500 | Should -BeTrue
     }
 }
 

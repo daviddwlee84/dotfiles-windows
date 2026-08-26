@@ -38,15 +38,25 @@ function Test-PueueAdministrator {
 }
 
 function Test-PueuedReady {
-    param([AllowNull()][string]$ClientPath)
+    param(
+        [AllowNull()][string]$ClientPath,
+        [int]$TimeoutMilliseconds = 500
+    )
 
     if (-not $ClientPath) { $ClientPath = Resolve-PueueCommand -Name pueue }
     if (-not $ClientPath) { return $false }
+    $process = $null
     try {
-        & $ClientPath status *> $null
-        return ($LASTEXITCODE -eq 0)
+        $process = Start-Process -FilePath $ClientPath -ArgumentList 'status' -WindowStyle Hidden -PassThru
+        if (-not $process.WaitForExit([Math]::Max(1, $TimeoutMilliseconds))) {
+            try { $process.Kill($true) } catch { $null = $_ }
+            return $false
+        }
+        return ($process.ExitCode -eq 0)
     } catch {
         return $false
+    } finally {
+        if ($process) { $process.Dispose() }
     }
 }
 
@@ -56,12 +66,18 @@ function Wait-PueuedReady {
         [int]$TimeoutMilliseconds = 3000
     )
 
-    $attempts = [Math]::Max(1, [Math]::Ceiling($TimeoutMilliseconds / 100))
-    foreach ($attempt in 1..$attempts) {
-        if (Test-PueuedReady -ClientPath $ClientPath) { return $true }
-        if ($attempt -lt $attempts) { Start-Sleep -Milliseconds 100 }
+    $timeout = [Math]::Max(1, $TimeoutMilliseconds)
+    $clock = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($clock.ElapsedMilliseconds -lt $timeout) {
+        $remaining = $timeout - [int]$clock.ElapsedMilliseconds
+        if (Test-PueuedReady -ClientPath $ClientPath -TimeoutMilliseconds ([Math]::Min(500, $remaining))) {
+            return $true
+        }
+        $remaining = $timeout - [int]$clock.ElapsedMilliseconds
+        if ($remaining -le 0) { break }
+        Start-Sleep -Milliseconds ([Math]::Min(100, $remaining))
     }
-    return $false
+    return (Test-PueuedReady -ClientPath $ClientPath -TimeoutMilliseconds 1)
 }
 
 function Start-PueuedIfNeeded {
@@ -103,11 +119,14 @@ function Start-PueuedIfNeeded {
                 if (-not $Quiet) { Write-Host '==> pueued: starting Windows service' -ForegroundColor Cyan }
                 if ($Quiet) { & $daemonPath service start *> $null }
                 else { & $daemonPath service start 2>&1 | Out-Host }
-                if ($LASTEXITCODE -ne 0 -and -not $Quiet) {
-                    Write-Warning 'pueued service start failed; falling back to daemon mode'
-                }
-                if (Wait-PueuedReady -ClientPath $clientPath -TimeoutMilliseconds $ReadyTimeoutMilliseconds) {
+                $serviceStartExitCode = $LASTEXITCODE
+                if ($serviceStartExitCode -ne 0) {
+                    if (-not $Quiet) { Write-Warning 'pueued service start failed; falling back to daemon mode' }
+                } elseif (Wait-PueuedReady -ClientPath $clientPath -TimeoutMilliseconds $ReadyTimeoutMilliseconds) {
                     return $true
+                } else {
+                    if (-not $Quiet) { Write-Warning 'pueued service started but did not become ready' }
+                    return $false
                 }
             }
         } catch {
@@ -117,12 +136,9 @@ function Start-PueuedIfNeeded {
 
     if (-not $Quiet) { Write-Host '==> pueued: starting detached daemon' -ForegroundColor Cyan }
     try {
-        if ($Quiet) { & $daemonPath --daemonize *> $null }
-        else { & $daemonPath --daemonize 2>&1 | Out-Host }
-        if ($LASTEXITCODE -ne 0) {
-            if (-not $Quiet) { Write-Warning "pueued --daemonize failed (exit $LASTEXITCODE)" }
-            return $false
-        }
+        # Pueue's daemonized child inherits stdio. PowerShell native redirection
+        # therefore waits forever for pipe EOF even after the launcher exits.
+        Start-Process -FilePath $daemonPath -ArgumentList '--daemonize' -WindowStyle Hidden
     } catch {
         if (-not $Quiet) { Write-Warning "pueued --daemonize failed: $_" }
         return $false
