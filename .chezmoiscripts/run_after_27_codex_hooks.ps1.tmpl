@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Continue'
 if (Test-Path variable:PSNativeCommandUseErrorActionPreference) { $PSNativeCommandUseErrorActionPreference = $false }
 
-{{- if .installCodingAgents }}
+{{ if .installCodingAgents }}
 {{ include "scripts/codex-hooks-merge.ps1" }}
 try {
     $enablePeon = {{ if or (eq .agentSounds "peon") (eq .agentSounds "both") }}$true{{ else }}$false{{ end }}
@@ -10,6 +10,6 @@ try {
 } catch {
     Write-Warning "Codex hook convergence failed; keeping existing configuration: $_"
 }
-{{- end }}
+{{ end }}
 
 exit 0

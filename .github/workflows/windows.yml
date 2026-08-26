@@ -106,10 +106,15 @@ jobs:
       - name: Parse-check rendered .ps1.tmpl scripts
         shell: pwsh
         run: |
+          $utf8 = [System.Text.UTF8Encoding]::new($false)
+          [Console]::InputEncoding = $utf8
+          [Console]::OutputEncoding = $utf8
+          $OutputEncoding = $utf8
           $failed = $false
           Get-ChildItem -Recurse -Filter *.ps1.tmpl | ForEach-Object {
-            $rendered = Get-Content -Raw $_.FullName | chezmoi execute-template --source .
-            if ($LASTEXITCODE -ne 0 -or -not $rendered) { Write-Host "RENDER FAIL: $($_.Name)"; $failed = $true; return }
+            $renderedLines = @(Get-Content -Raw $_.FullName | chezmoi execute-template --source .)
+            if ($LASTEXITCODE -ne 0 -or -not $renderedLines) { Write-Host "RENDER FAIL: $($_.Name)"; $failed = $true; return }
+            $rendered = $renderedLines -join "`n"
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseInput($rendered, [ref]$null, [ref]$errors) | Out-Null
             if ($errors) { Write-Host "PARSE FAIL: $($_.Name)"; $errors | ForEach-Object { Write-Host "  $_" }; $failed = $true }

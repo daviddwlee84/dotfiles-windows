@@ -112,5 +112,12 @@ status_line = ["model"]
         $enabled | Should -Match 'Sync-CodexHooks'
         $enabled | Should -Match '\$enablePeon = \$true'
         $disabled | Should -Not -Match 'Sync-CodexHooks'
+
+        $rendered = Get-Content -Raw -LiteralPath $TemplatePath |
+            & chezmoi execute-template --source $RepoRoot --override-data '{"installCodingAgents":true,"agentSounds":"peon"}'
+        $LASTEXITCODE | Should -Be 0
+        $parseErrors = $null
+        [Management.Automation.Language.Parser]::ParseInput(($rendered -join "`n"), [ref]$null, [ref]$parseErrors) | Out-Null
+        $parseErrors | Should -BeNullOrEmpty
     }
 }
