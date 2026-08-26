@@ -46,8 +46,8 @@ upgrade: upgrade-scoop upgrade-winget
 upgrade-translate:
     $env:GOBIN = (Join-Path $HOME '.local\bin'); $env:GOPATH = (Join-Path $HOME '.local\share\go'); go install github.com/daviddwlee84/translate@latest
 
-# Pane-preserving Herdr update plus binary-matched global skill refresh.
-# Run outside Herdr after detaching from the session.
+# Verified official-installer Herdr update plus binary-matched global skill refresh.
+# Run outside Herdr after detaching; restart Herdr deliberately after completion.
 upgrade-herdr:
     pwsh -NoProfile -File ./scripts/upgrade-herdr.ps1
 

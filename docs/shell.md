@@ -249,8 +249,8 @@ than a bash `trap`; and SpecStory auto-wrapping only engages if a `specstory` CL
 is on PATH (no Windows build yet, so agents run raw).
 
 !!! warning "herdr is preview/beta"
-    herdr's Windows build is opt-in (`installHerdr`) and preview-only; these
-    helpers drive its CLI scripting surface (`herdr workspace|tab|pane`), which is
+    herdr is opt-in (`installHerdr`), and this machine intentionally follows its
+    preview channel. These helpers drive its CLI scripting surface (`herdr workspace|tab|pane`), which is
     validated on a real Windows box, not in CI.
 
 ## SSH key setup (`ssh-setup-remote`)

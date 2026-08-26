@@ -238,6 +238,6 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
 just upgrade-scoop     # scoop update *
 just upgrade-winget    # winget upgrade --all
 just upgrade-npm-agents # 請先關閉 OpenCode/Codex/Copilot（Windows 會鎖住執行中的 executable）
-just upgrade-herdr     # herdr update --handoff + 對應版本的全域 skill
+just upgrade-herdr     # 驗證過的官方 installer + 對應版本全域 skill（需在 Herdr 外執行）
 just upgrade-translate # go install …/translate@latest（選用工具，不含在 `just upgrade` 裡）
 ```

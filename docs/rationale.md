@@ -103,8 +103,9 @@ differs), but it's the closest stable native experience.
 **herdr** (opt-in, `installHerdr`) is the newer, closest-to-tmux/zellij answer: a
 mouse-first native multiplexer (ConPTY) with panes, splits, persistent sessions,
 and detach/attach. It has no scoop/winget manifest — it installs via herdr.dev's
-`irm | iex` script (Windows is preview-only), and its config is managed at
-`~/.config/herdr/config.toml` (pwsh as the default shell). It's beta, so it stays
+official installer, and this machine intentionally follows the preview channel.
+Its config is managed at `~/.config/herdr/config.toml` (pwsh as the default shell).
+It's beta, so it stays
 off by default. Windows Terminal stays installed for its panes/tabs; Alacritty
 stays as the fast minimal option.
 

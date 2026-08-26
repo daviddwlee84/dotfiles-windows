@@ -258,6 +258,6 @@ upgrades are explicit:
 just upgrade-scoop     # scoop update *
 just upgrade-winget    # winget upgrade --all
 just upgrade-npm-agents # close OpenCode/Codex/Copilot first (Windows locks live executables)
-just upgrade-herdr     # herdr update --handoff + matching global skill
+just upgrade-herdr     # verified official installer + matching global skill (run outside Herdr)
 just upgrade-translate # go install …/translate@latest (opt-in tool; not in `just upgrade`)
 ```

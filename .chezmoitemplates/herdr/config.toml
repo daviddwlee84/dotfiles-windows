@@ -24,7 +24,7 @@
 # Prefix is ctrl+b (herdr default, same as tmux).
 
 [update]
-# Windows builds are preview-only; the installer rejects "stable" here.
+# This machine intentionally follows the preview channel.
 # Re-asserted by the overlay as a single key so herdr's own [update] bookkeeping
 # (last-check timestamps etc.) survives an apply.
 channel = "preview"
