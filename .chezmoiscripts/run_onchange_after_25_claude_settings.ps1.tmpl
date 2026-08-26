@@ -206,9 +206,9 @@ function Update-ClaudeSettings {
     }
     {{- end }}
     {{- if $peon }}
-    foreach ($eventName in @('SessionStart', 'SessionEnd', 'SubagentStart', 'Stop',
-                              'Notification', 'PermissionRequest', 'PreToolUse',
-                              'PostToolUseFailure', 'PreCompact')) {
+    foreach ($eventName in @('SessionStart', 'SessionEnd', 'Stop', 'Notification',
+                              'PermissionRequest', 'PreToolUse', 'PostToolUseFailure',
+                              'PreCompact')) {
         $entry = @{ matcher = ''; hooks = @(@{ type = 'command'; command = $peonCommand; timeout = 10 }) }
         if ($soundHooks.ContainsKey($eventName)) { $soundHooks[$eventName] = @($soundHooks[$eventName] + $entry) }
         else                                      { $soundHooks[$eventName] = @($entry) }
@@ -220,6 +220,7 @@ function Update-ClaudeSettings {
     }
 
     # Prune only repository-owned hooks disabled by the current sound tier.
+    # SubagentStart is a retired peon event and is removed even when peon remains enabled.
     $prunePatterns = @(
     {{- if not $notify }}
         'notify\.ps1'
@@ -242,7 +243,7 @@ function Update-ClaudeSettings {
     }
     Merge-JsonObject -Base $settings -Overlay $overlay
 
-    if ($prunePatterns.Count -gt 0 -and $settings['hooks'] -is [System.Collections.IDictionary]) {
+    if ($settings['hooks'] -is [System.Collections.IDictionary]) {
         foreach ($eventName in @($settings['hooks'].Keys)) {
             $kept = @(@($settings['hooks'][$eventName]) | Where-Object {
                 $command = $_.hooks[0].command
@@ -250,6 +251,7 @@ function Update-ClaudeSettings {
                 foreach ($pattern in $prunePatterns) {
                     if ($command -match $pattern) { return $false }
                 }
+                if ($eventName -eq 'SubagentStart' -and $command -match 'peon\.ps1') { return $false }
                 $true
             })
             if ($kept.Count -gt 0) { $settings['hooks'][$eventName] = $kept }

@@ -15,7 +15,7 @@ that for the "what is this" part; this page covers what differs here.
 |---|---|---|
 | `none` | nothing | silence |
 | `notify` | `notify.ps1` → apprise → `windows://` toast | Windows toast |
-| `peon` | peon-ping's 9 hook events | game voice lines + peon's overlay |
+| `peon` | peon-ping on 8 user-facing hook events | game voice lines + peon's overlay |
 | `both` | both of the above | toast + voice (two banners) |
 
 Default is `notify` on the `workstation` role and `none` on `minimal`. It gates
@@ -37,9 +37,12 @@ The design is the same; three implementation details are not.
 
 **1. The event set differs.** peon-ping's Windows adapter registers
 `PreToolUse` and does **not** register `UserPromptSubmit` — the reverse of the
-POSIX side. Both are 9 events. Taken from upstream's `install.ps1`, not its
-README (the README's documented command shape is wrong on the POSIX side, so it
-isn't trusted here either).
+POSIX side. This repo wires 8 of the adapter's 9 events: `SubagentStart` is
+intentionally omitted because workflow fan-out is an internal implementation
+detail, not a user-facing state transition. Starting many workers must not play
+one acknowledgement per worker. The remaining event set comes from upstream's
+`install.ps1`, not its README (the README's documented command shape is wrong on
+the POSIX side, so it isn't trusted here either).
 
 **2. The hook command shape.** Windows entries carry `timeout = 10` and no
 `async` field:
@@ -79,13 +82,17 @@ Go-template conditionals the tiers need.
 ## The one place we subtract
 
 The merge is additive so foreign hook entries (CodeIsland, anything you add by
-hand) survive. One exception: entries matching **our own** command fingerprints
-(`notify\.ps1`, `peon\.ps1`) are pruned when the current tier disables them.
+hand) survive. Two narrow exceptions apply to entries matching **our own**
+command fingerprints (`notify\.ps1`, `peon\.ps1`): they are pruned when the
+current tier disables them, and the retired peon `SubagentStart` entry is pruned
+even while peon remains enabled. Other commands on `SubagentStart` survive.
 
-Without it `agentSounds` is a one-way ratchet — switching `notify` → `none`
-would leave `notify.ps1` wired forever, so `none` wouldn't actually silence a
-machine that previously had sound. Upstream's own `install.ps1` strips the same
-two fingerprints before re-adding, so this matches its behaviour.
+Without the first rule `agentSounds` is a one-way ratchet — switching `notify` →
+`none` would leave `notify.ps1` wired forever. Without the second, machines that
+previously used peon would keep acknowledging every workflow worker after the
+default event set changed. Upstream's own `install.ps1` strips its fingerprints
+before re-adding; these rules keep the same convergence while preserving foreign
+entries.
 
 ## peon's config is deliberately unmanaged
 

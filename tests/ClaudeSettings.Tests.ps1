@@ -86,6 +86,11 @@ Describe 'Claude settings and HUD overlays' {
         $settings = Read-StrictJson $settingsPath
         $settings.enabledPlugins.'claude-hud@claude-hud' | Should -BeTrue
         $settings.statusLine.type | Should -BeExactly 'command'
+        @($settings.hooks.Keys).Count | Should -Be 2
+        $settings.hooks.Contains('Notification') | Should -BeTrue
+        $settings.hooks.Contains('Stop') | Should -BeTrue
+        $settings.hooks.Contains('SubagentStart') | Should -BeFalse
+        $settings.hooks.Contains('SubagentStop') | Should -BeFalse
 
         $hud = Read-StrictJson $hudPath
         foreach ($key in @(
@@ -171,6 +176,42 @@ Describe 'Claude settings and HUD overlays' {
         $settings.enabledPlugins.'foreign@example' | Should -BeTrue
         @($settings.hooks.Stop.hooks.command) | Should -Contain $foreignCommand
         @($settings.hooks.Stop.hooks.command) | Should -Contain 'exec pwsh -NoProfile -File "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/notify.ps1"'
+    }
+
+    It 'wires peon only to user-facing events' {
+        $peonRenderedPath = Join-Path $TestDrive 'run_onchange_after_25_claude_settings_peon.ps1'
+        $renderData = @{ installCodingAgents = $true; agentSounds = 'peon' } | ConvertTo-Json -Compress
+        $rendered = & chezmoi execute-template --source $RepoRoot --override-data $renderData --file $TemplatePath
+        $LASTEXITCODE | Should -Be 0
+        [IO.File]::WriteAllText($peonRenderedPath, ($rendered -join "`n"), [Text.UTF8Encoding]::new($false))
+
+        $configDir = New-TestConfigDir
+        $result = Invoke-ClaudeSettingsScript -ConfigDir $configDir -ScriptPath $peonRenderedPath
+        $result.ExitCode | Should -Be 0
+        $result.Stderr | Should -BeNullOrEmpty
+        $settings = Read-StrictJson (Join-Path $configDir 'settings.json')
+
+        @($settings.hooks.Keys).Count | Should -Be 8
+        $settings.hooks.Contains('SubagentStart') | Should -BeFalse
+        foreach ($eventName in @(
+            'SessionStart', 'SessionEnd', 'Stop', 'Notification',
+            'PermissionRequest', 'PreToolUse', 'PostToolUseFailure', 'PreCompact'
+        )) {
+            $settings.hooks.Contains($eventName) | Should -BeTrue
+        }
+
+        $foreignCommand = 'pwsh -NoProfile -File foreign-subagent.ps1'
+        $settings.hooks['SubagentStart'] = @(
+            @{ matcher = ''; hooks = @(@{ type = 'command'; command = 'powershell -File peon.ps1' }) }
+            @{ matcher = ''; hooks = @(@{ type = 'command'; command = $foreignCommand }) }
+        )
+        $settings | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath (Join-Path $configDir 'settings.json') -Encoding utf8
+
+        (Invoke-ClaudeSettingsScript -ConfigDir $configDir -ScriptPath $peonRenderedPath).ExitCode | Should -Be 0
+        $settings = Read-StrictJson (Join-Path $configDir 'settings.json')
+        @($settings.hooks.SubagentStart).Count | Should -Be 1
+        @($settings.hooks.SubagentStart.hooks.command) | Should -Contain $foreignCommand
+        @($settings.hooks.SubagentStart.hooks.command) | Should -Not -Match 'peon\.ps1'
     }
 
     It 'preserves Windows attributes when atomically replacing an existing file' {
