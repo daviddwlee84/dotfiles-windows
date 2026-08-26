@@ -153,6 +153,13 @@ Enabled by **Install coding agents**:
   status line (model/reasoning, fast mode, branch, context, tasks, directory)
   into `~/.codex/config.toml`. No fork or PATH shim; see
   [Codex status line](codex-status-line.md).
+- **Codex lifecycle hooks** — every apply converges Herdr and optional peon-ping
+  hooks into the inline `config.toml` representation. Legacy `hooks.json` is
+  backed up and retired only when every entry is Herdr-owned; foreign hooks fail
+  closed and remain untouched. Commands use PowerShell `-EncodedCommand` because
+  Codex 0.144 on Windows wraps the whole hook through `cmd.exe /C`, which breaks
+  nested quoted `-File "..."` paths. Review newly generated identities once with
+  Codex `/hooks`; chezmoi never writes hook trust hashes.
 - **OpenCode Desktop** — GUI companion to the `opencode-ai` CLI, via scoop
   (`extras/opencode-desktop`).
 - **claude-hud** — a statusline HUD below the Claude Code prompt. One

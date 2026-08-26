@@ -146,6 +146,12 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
   status line（model/reasoning、fast mode、branch、context、tasks、directory）合併到
   `~/.codex/config.toml`；不裝 fork 或 PATH shim。見
   [Codex status line](codex-status-line.zh-TW.md)。
+- **Codex lifecycle hooks** —— 每次 apply 都把 Herdr 與選用的 peon-ping hooks
+  收斂到 inline `config.toml`。只有在所有 entry 都屬於 Herdr 時，才會先備份再停用 legacy
+  `hooks.json`；遇到 foreign hooks 會 fail closed、完全保留。Command 使用 PowerShell
+  `-EncodedCommand`，因為 Windows 上 Codex 0.144 會再以 `cmd.exe /C` 包住整條 hook，含
+  nested quotes 的 `-File "..."` path 會被破壞。新 command identity 需在 Codex `/hooks`
+  review 一次；chezmoi 不會寫入 trust hash。
 - **OpenCode Desktop** —— `opencode-ai` CLI 的 GUI 版，由 scoop 安裝
   （`extras/opencode-desktop`）。
 - **claude-hud** —— 顯示在 Claude Code 輸入框下方的狀態列 HUD。同一個
