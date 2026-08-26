@@ -18,7 +18,7 @@ GUI 應用程式。
 | delta | git diff 分頁器 |
 | jq | JSON 處理器 |
 | yazi、btop | 檔案管理員 / 系統監控 |
-| pueue | 背景命令佇列（`pueue` client + `pueued` daemon） |
+| pueue | 背景命令佇列（`pueue` client + `pueued` daemon）。以系統管理員 apply 時會安裝並啟動內建 Windows service；未提權時則啟動 detached daemon，之後第一個 pwsh 也會靜默補起。 |
 | television（`tv`） | 模糊選擇器 / channel 啟動器 |
 | tldr（tlrc） | 社群 man page 速查表；`tldrf` 加上 `zh_TW → zh → en` fallback |
 | gh dash | GitHub PR/issue 儀表板 TUI（gh 擴充；`gh` 登入後才會安裝） |
@@ -228,6 +228,7 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
 ```powershell
 just upgrade-scoop     # scoop update *
 just upgrade-winget    # winget upgrade --all
+just upgrade-npm-agents # 請先關閉 OpenCode/Codex/Copilot（Windows 會鎖住執行中的 executable）
 just upgrade-herdr     # herdr update --handoff + 對應版本的全域 skill
 just upgrade-translate # go install …/translate@latest（選用工具，不含在 `just upgrade` 裡）
 ```

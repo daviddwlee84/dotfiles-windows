@@ -18,7 +18,7 @@ tools; **winget** handles GUI apps.
 | delta | git diff pager |
 | jq | JSON processor |
 | yazi, btop | file manager / system monitor |
-| pueue | background command queue (`pueue` client + `pueued` daemon) |
+| pueue | background command queue (`pueue` client + `pueued` daemon). An elevated apply installs and starts its built-in Windows service; without elevation, apply starts detached daemon mode and the first future pwsh silently recovers it. |
 | television (`tv`) | fuzzy picker / channel launcher |
 | tldr (tlrc) | community man-page cheatsheets; `tldrf` adds `zh_TW → zh → en` fallback |
 | gh dash | GitHub PR/issue dashboard TUI (gh extension; installs once `gh` is authenticated) |
@@ -246,6 +246,7 @@ upgrades are explicit:
 ```powershell
 just upgrade-scoop     # scoop update *
 just upgrade-winget    # winget upgrade --all
+just upgrade-npm-agents # close OpenCode/Codex/Copilot first (Windows locks live executables)
 just upgrade-herdr     # herdr update --handoff + matching global skill
 just upgrade-translate # go install …/translate@latest (opt-in tool; not in `just upgrade`)
 ```

@@ -1,0 +1,22 @@
+# 12_pueue.ps1 — silently ensure the per-user command queue daemon is ready.
+# Elevated package applies install Pueue's built-in Windows service; this is the
+# no-admin fallback and also recovers from a daemon that exited unexpectedly.
+
+{{ include "scripts/pueue-bootstrap.ps1" }}
+
+$pueuePreviousNativeExitCode = $global:LASTEXITCODE
+try {
+    [void](Start-PueuedIfNeeded -Quiet)
+} finally {
+    $global:LASTEXITCODE = $pueuePreviousNativeExitCode
+    foreach ($functionName in @(
+        'Resolve-PueueCommand',
+        'Test-PueueAdministrator',
+        'Test-PueuedReady',
+        'Wait-PueuedReady',
+        'Start-PueuedIfNeeded'
+    )) {
+        Remove-Item -LiteralPath "Function:\$functionName" -Force -ErrorAction SilentlyContinue
+    }
+    Remove-Variable pueuePreviousNativeExitCode, functionName -ErrorAction SilentlyContinue
+}

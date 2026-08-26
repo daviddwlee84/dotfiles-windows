@@ -32,6 +32,10 @@ upgrade-scoop:
 upgrade-winget:
     winget upgrade --all --accept-source-agreements --accept-package-agreements
 
+# upgrade npm coding agents (close OpenCode/Codex/Copilot first; Windows locks live executables)
+upgrade-npm-agents:
+    npm update -g opencode-ai @openai/codex @github/copilot
+
 # upgrade everything
 upgrade: upgrade-scoop upgrade-winget
 

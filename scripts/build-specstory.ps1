@@ -36,8 +36,13 @@ if (-not (Test-Path (Join-Path $repo '.git'))) {
 Push-Location $repo
 try {
     Info "fetching PR #$Pr"
-    git fetch origin "${Ref}:pr-$Pr" --force
-    git checkout --force "pr-$Pr"
+    $remoteRef = "refs/remotes/origin/pr-$Pr"
+    git fetch origin "${Ref}:$remoteRef" --force
+    if ($LASTEXITCODE -ne 0) { throw "git fetch of SpecStory PR #$Pr failed" }
+    # Keep the cache detached so a later fetch never tries to update the
+    # currently checked-out local branch (which Git correctly refuses).
+    git checkout --detach --force $remoteRef
+    if ($LASTEXITCODE -ne 0) { throw "git checkout of SpecStory PR #$Pr failed" }
 
     $out = Join-Path $bin 'specstory.exe'
     Push-Location (Join-Path $repo 'specstory-cli')

@@ -41,6 +41,10 @@ function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 function Have($n) { [bool](Get-Command $n -ErrorAction SilentlyContinue) }
 function Register-Failure($what) { $script:Failures.Add($what); Write-Warning "FAILED (skipped): $what" }
 
+# Shared with profile.d/12_pueue.ps1: install-time service setup plus the
+# no-admin detached-daemon fallback use the same readiness checks.
+{{ include "scripts/pueue-bootstrap.ps1" }}
+
 # --- scoop -----------------------------------------------------------------
 function Test-Admin {
     # $true when this pwsh is running elevated (member of the Administrators role).
@@ -126,7 +130,21 @@ function Winget-InstallStore([string]$id) {
 # --- npm CLI agents --------------------------------------------------------
 function Npm-InstallGlobal([string[]]$pkgs) {
     if (-not (Have npm)) { foreach ($p in $pkgs) { Register-Failure "npm:$p (npm unavailable)" }; return }
+    $npmRootOutput = @(npm root -g 2>$null)
+    if ($LASTEXITCODE -ne 0 -or -not $npmRootOutput) {
+        foreach ($p in $pkgs) { Register-Failure "npm:$p (cannot resolve global npm root)" }
+        return
+    }
+    $npmRoot = ([string]$npmRootOutput[-1]).Trim()
     foreach ($p in $pkgs) {
+        # Apply is install-only. Re-running `npm install -g` as an implicit
+        # upgrade fails with EBUSY/EPERM whenever an agent executable is live on
+        # Windows. A package.json is a cheap, registry-independent presence test.
+        $packageManifest = Join-Path (Join-Path $npmRoot $p) 'package.json'
+        if (Test-Path -LiteralPath $packageManifest) {
+            Info "npm: $p already installed -- skipping (upgrade: just upgrade-npm-agents)"
+            continue
+        }
         Info "npm i -g $p"
         npm install -g $p 2>&1 | Out-Host
         if ($LASTEXITCODE -ne 0) { Register-Failure "npm:$p" }
@@ -252,6 +270,13 @@ Scoop-Install @(
     # the Windows clipboard. (Leaner gcc alt: scoop `mingw` = niXman MinGW-w64 UCRT.)
     'gcc', 'tree-sitter', 'win32yank'
 )
+
+# Make the newly installed client immediately usable. Elevated applies install
+# Pueue 4's built-in Windows service (autostart at login); non-elevated applies
+# start detached daemon mode. profile.d/12_pueue.ps1 covers future shell starts.
+if (-not (Start-PueuedIfNeeded -InstallService)) {
+    Register-Failure 'pueued:auto-start'
+}
 
 # gh-dash: GitHub PR/issue dashboard TUI (`gh dash`). It's a gh extension, not a
 # scoop package, so it needs gh to be authenticated -- this no-ops on a fresh
@@ -430,8 +455,13 @@ if ((Have git) -and (Have go)) {
         Push-Location $ssRepo
         try {
             Info 'specstory: fetching PR #191'
-            git fetch origin 'pull/191/head:pr-191' --force
-            git checkout --force 'pr-191'
+            $ssRemoteRef = 'refs/remotes/origin/pr-191'
+            git fetch origin "pull/191/head:$ssRemoteRef" --force
+            if ($LASTEXITCODE -ne 0) { throw 'git fetch of SpecStory PR #191 failed' }
+            # Detached checkout leaves no local branch checked out, so the next
+            # apply can safely force-refresh the remote-tracking ref above.
+            git checkout --detach --force $ssRemoteRef
+            if ($LASTEXITCODE -ne 0) { throw 'git checkout of SpecStory PR #191 failed' }
             $ssOut = Join-Path $ssBin 'specstory.exe'
             Push-Location (Join-Path $ssRepo 'specstory-cli')
             try { Info "specstory: go build -> $ssOut"; go build -o $ssOut . } finally { Pop-Location }
