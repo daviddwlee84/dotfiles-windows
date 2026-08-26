@@ -432,6 +432,151 @@ Describe 'Copilot module' {
         }
     }
 
+    Context 'Codex Copilot provider and SpecStory startup' {
+        It 'distinguishes zero arguments from one explicit empty argument' {
+            InModuleScope Copilot {
+                Mock codex-copilot {
+                    $script:delegatedCodexWasNull = $null -eq $Argv
+                    $script:delegatedCodexArgs = @($Argv)
+                }
+
+                codex-copilot-once
+                $script:delegatedCodexWasNull | Should -BeTrue
+
+                codex-copilot-once ''
+                $script:delegatedCodexWasNull | Should -BeFalse
+                $script:delegatedCodexArgs | Should -HaveCount 1
+                $script:delegatedCodexArgs[0] | Should -BeExactly ''
+                Should -Invoke codex-copilot -Times 2 -Exactly
+            }
+        }
+
+        It 'uses provider authentication without requiring Codex account credentials' {
+            InModuleScope Copilot {
+                $providerArgs = @(Get-CodexCopilotProviderArgs -Base 'http://127.0.0.1:4142')
+                $providerArgs | Should -Contain 'model_providers.copilot_api.env_key="GITHUB_COPILOT_API_KEY"'
+                $providerArgs | Should -Contain 'model_providers.copilot_api.requires_openai_auth=false'
+                $providerArgs | Should -Not -Contain 'model_providers.copilot_api.requires_openai_auth=true'
+            }
+        }
+
+        It 'passes the provider auth override to the direct Codex child' {
+            InModuleScope Copilot {
+                function script:codex { $script:capturedCodexLaunch = @($args) }
+                try {
+                    Mock Test-CopilotAlive { $true }
+                    Mock Start-CopilotShim { $true }
+                    Mock Get-CopilotModelCatalog { [pscustomobject]@{ data = @() } }
+                    Mock Get-CopilotShimBase { 'http://127.0.0.1:4142' }
+
+                    codex-copilot --no-specstory --model custom-model
+
+                    $script:capturedCodexLaunch | Should -Contain 'model_providers.copilot_api.requires_openai_auth=false'
+                    $script:capturedCodexLaunch | Should -Not -Contain 'model_providers.copilot_api.requires_openai_auth=true'
+                } finally {
+                    Remove-Item Function:\codex -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
+
+        It 'creates a missing SpecStory sessions root under CODEX_HOME' {
+            $codexHome = Join-Path $TestDrive 'missing-codex-home'
+            InModuleScope Copilot -Parameters @{ CodexHome = $codexHome } {
+                param($CodexHome)
+                $savedCodexHome = $env:CODEX_HOME
+                try {
+                    $env:CODEX_HOME = $CodexHome
+                    $sessionsRoot = Join-Path $CodexHome 'sessions'
+                    Test-Path -LiteralPath $sessionsRoot | Should -BeFalse
+                    Initialize-SpecstoryCodexSessionsRoot | Should -BeTrue
+                    Get-CodexSessionsRoot | Should -BeExactly $sessionsRoot
+                    Test-Path -LiteralPath $sessionsRoot -PathType Container | Should -BeTrue
+                } finally {
+                    if ($null -eq $savedCodexHome) { Remove-Item env:CODEX_HOME -ErrorAction SilentlyContinue }
+                    else { $env:CODEX_HOME = $savedCodexHome }
+                }
+            }
+        }
+
+        It 'reports an invalid sessions root' {
+            $blockedCodexHome = Join-Path $TestDrive 'blocked-codex-home'
+            'not a directory' | Set-Content -LiteralPath $blockedCodexHome
+            InModuleScope Copilot -Parameters @{ CodexHome = $blockedCodexHome } {
+                param($CodexHome)
+                $savedCodexHome = $env:CODEX_HOME
+                try {
+                    $env:CODEX_HOME = $CodexHome
+                    $errors = @()
+                    Initialize-SpecstoryCodexSessionsRoot -ErrorAction SilentlyContinue -ErrorVariable +errors |
+                        Should -BeFalse
+                    ($errors.Exception.Message -join "`n") |
+                        Should -Match 'could not initialize SpecStory sessions root'
+                } finally {
+                    if ($null -eq $savedCodexHome) { Remove-Item env:CODEX_HOME -ErrorAction SilentlyContinue }
+                    else { $env:CODEX_HOME = $savedCodexHome }
+                }
+            }
+        }
+
+        It 'stops before either child process when SpecStory initialization fails' {
+            InModuleScope Copilot {
+                $savedKey = $env:GITHUB_COPILOT_API_KEY
+                function script:specstory { $script:specstoryCalled = $true }
+                function script:codex { $script:codexCalled = $true }
+                try {
+                    $script:specstoryCalled = $false
+                    $script:codexCalled = $false
+                    Mock Test-CopilotAlive { $true }
+                    Mock Start-CopilotShim { $true }
+                    Mock Get-CopilotModelCatalog { [pscustomobject]@{ data = @() } }
+                    Mock Get-CopilotShimBase { 'http://127.0.0.1:4142' }
+                    Mock Get-Command { [pscustomobject]@{ Name = 'specstory' } } -ParameterFilter { $Name -eq 'specstory' }
+                    Mock Initialize-SpecstoryCodexSessionsRoot { $false }
+
+                    codex-copilot --model custom-model
+
+                    Should -Invoke Initialize-SpecstoryCodexSessionsRoot -Times 1 -Exactly
+                    $script:specstoryCalled | Should -BeFalse
+                    $script:codexCalled | Should -BeFalse
+                    $env:GITHUB_COPILOT_API_KEY | Should -Be $savedKey
+                } finally {
+                    Remove-Item Function:\specstory, Function:\codex -Force -ErrorAction SilentlyContinue
+                    if ($null -eq $savedKey) { Remove-Item env:GITHUB_COPILOT_API_KEY -ErrorAction SilentlyContinue }
+                    else { $env:GITHUB_COPILOT_API_KEY = $savedKey }
+                }
+            }
+        }
+
+        It 'restores the API key without masking a direct Codex failure' {
+            InModuleScope Copilot {
+                $savedKey = $env:GITHUB_COPILOT_API_KEY
+                function script:codex { & cmd.exe /d /c 'exit 8' }
+                try {
+                    $env:GITHUB_COPILOT_API_KEY = 'original'
+                    Mock Test-CopilotAlive { $true }
+                    Mock Start-CopilotShim { $true }
+                    Mock Get-CopilotModelCatalog { [pscustomobject]@{ data = @() } }
+                    Mock Get-CopilotShimBase { 'http://127.0.0.1:4142' }
+                    Mock Get-Command { $null } -ParameterFilter { $Name -eq 'specstory' }
+
+                    $errors = @()
+                    codex-copilot -ErrorAction SilentlyContinue -ErrorVariable +errors --model custom-model
+                    $succeeded = $?
+                    $exitCode = $LASTEXITCODE
+
+                    $succeeded | Should -BeFalse
+                    $exitCode | Should -Be 8
+                    $env:GITHUB_COPILOT_API_KEY | Should -BeExactly 'original'
+                    ($errors.Exception.Message -join "`n") | Should -Match 'exited with code 8'
+                } finally {
+                    Remove-Item Function:\codex -Force -ErrorAction SilentlyContinue
+                    if ($null -eq $savedKey) { Remove-Item env:GITHUB_COPILOT_API_KEY -ErrorAction SilentlyContinue }
+                    else { $env:GITHUB_COPILOT_API_KEY = $savedKey }
+                }
+            }
+        }
+    }
+
     Context 'catalog eligibility policy' {
         It 'excludes every veto while retaining entries with absent metadata' {
             InModuleScope Copilot {
@@ -829,6 +974,52 @@ Describe 'Copilot module' {
         }
     }
 
+    Context 'copilot-run argument forwarding' {
+        It 'keeps one child argument intact and preserves multiple arguments' {
+            InModuleScope Copilot {
+                function script:Invoke-CopilotArgProbe { $script:capturedChildArgs = @($args) }
+                try {
+                    Mock Test-CopilotAlive { $true }
+                    Mock Get-CopilotShimEnabled { $false }
+                    Mock Get-CopilotEnvBlock { @{} }
+
+                    copilot-run Invoke-CopilotArgProbe --version
+                    $script:capturedChildArgs | Should -Be @('--version')
+
+                    copilot-run Invoke-CopilotArgProbe --model 'two words' --verbose
+                    $script:capturedChildArgs | Should -Be @('--model', 'two words', '--verbose')
+                } finally {
+                    Remove-Item Function:\Invoke-CopilotArgProbe -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
+
+        It 'restores the environment without masking a native child failure' {
+            InModuleScope Copilot {
+                $savedProbe = $env:COPILOT_RUN_TEST
+                try {
+                    Mock Test-CopilotAlive { $true }
+                    Mock Get-CopilotShimEnabled { $false }
+                    Mock Get-CopilotEnvBlock { @{ COPILOT_RUN_TEST = 'injected' } }
+                    $env:COPILOT_RUN_TEST = 'original'
+
+                    $errors = @()
+                    copilot-run -ErrorAction SilentlyContinue -ErrorVariable +errors cmd.exe /d /c 'exit 7'
+                    $succeeded = $?
+                    $exitCode = $LASTEXITCODE
+
+                    $succeeded | Should -BeFalse
+                    $exitCode | Should -Be 7
+                    $env:COPILOT_RUN_TEST | Should -BeExactly 'original'
+                    ($errors.Exception.Message -join "`n") | Should -Match 'exited with code 7'
+                } finally {
+                    if ($null -eq $savedProbe) { Remove-Item env:COPILOT_RUN_TEST -ErrorAction SilentlyContinue }
+                    else { $env:COPILOT_RUN_TEST = $savedProbe }
+                }
+            }
+        }
+    }
+
     Context 'claude-copilot launch routing' {
         It 'always passes an explicit bypass-enabled command to SpecStory with zero arguments' {
             InModuleScope Copilot {
@@ -886,6 +1077,51 @@ Describe 'Copilot module' {
 
                 $script:delegated | Should -Be @('--specstory', '--resume', 'session-id')
                 Should -Invoke claude-copilot -Times 1 -Exactly
+            }
+        }
+
+        It 'distinguishes zero arguments from one explicit empty argument' {
+            InModuleScope Copilot {
+                Mock Test-CopilotAlive { $true }
+                Mock Test-Path { $false } -ParameterFilter { $Path -eq '.claude/settings.local.json' }
+                Mock copilot-here {}
+                Mock claude-copilot {
+                    $script:delegatedWasNull = $null -eq $Argv
+                    $script:delegated = @($Argv)
+                }
+                Mock Get-CopilotBase { 'http://127.0.0.1:4141' }
+
+                claude-copilot-once
+                $script:delegatedWasNull | Should -BeTrue
+
+                claude-copilot-once ''
+                $script:delegatedWasNull | Should -BeFalse
+                $script:delegated | Should -HaveCount 1
+                $script:delegated[0] | Should -BeExactly ''
+                Should -Invoke claude-copilot -Times 2 -Exactly
+            }
+        }
+
+        It 'does not mask a delegated session failure during cleanup' {
+            InModuleScope Copilot {
+                Mock Test-CopilotAlive { $true }
+                Mock Test-Path { $false } -ParameterFilter { $Path -eq '.claude/settings.local.json' }
+                Mock copilot-here {}
+                Mock claude-copilot {
+                    $global:LASTEXITCODE = 9
+                    Write-Error 'delegated failure'
+                }
+                Mock Get-CopilotBase { 'http://127.0.0.1:4141' }
+
+                $errors = @()
+                claude-copilot-once -ErrorAction SilentlyContinue -ErrorVariable +errors
+                $succeeded = $?
+                $exitCode = $LASTEXITCODE
+
+                $succeeded | Should -BeFalse
+                $exitCode | Should -Be 9
+                ($errors.Exception.Message -join "`n") | Should -Match 'session exited with code 9'
+                Should -Invoke copilot-here -Times 2 -Exactly
             }
         }
     }

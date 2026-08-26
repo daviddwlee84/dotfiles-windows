@@ -247,7 +247,9 @@ token at `~/.local/share/copilot-api/github_token` without printing it by defaul
 
 `codex-copilot` and its identical `codex-copilot-once` alias start the local
 gateway/shim and pass a `copilot_api` Responses provider through one-invocation
-Codex `-c` overrides. They do not edit user or project Codex config, so plain
+Codex `-c` overrides. That provider supplies its own authentication, so the
+launcher does not require a Codex/ChatGPT login; an existing login is neither
+removed nor changed. They do not edit user or project Codex config, so plain
 `codex` is unaffected. An explicit `-m` / `--model` wins; otherwise the live raw
 catalog is ranked OpenAI/Codex first (`Sol > Terra > GPT-5.5 > GPT-5.4 > GPT-5.3
 Codex > Luna > mini`), then Claude, Gemini and other chat models. Policy-disabled,
@@ -268,9 +270,15 @@ no-pre-header-keepalive path; same-model transport retries still apply.
 This is a separate picker from Claude Code's `copilot-model --auto`: that path
 remains Claude-first, while only the Codex launcher is OpenAI-first.
 
-SpecStory is automatic when installed. The wrapper preserves the effective
-`codex_cmd` (project config > user config > bare `codex`) before appending
-provider/model/user arguments; `--no-specstory` runs Codex directly. Claude and
+SpecStory is automatic when installed. Before starting its watcher, the wrapper
+creates the Codex `sessions` directory under `CODEX_HOME` (or `~/.codex`); if
+that initialization fails, it stops with an actionable error before launching
+either child process. A first run therefore cannot reach SpecStory with a missing
+watch root. The wrapper preserves the effective `codex_cmd` (project config >
+user config > bare `codex`) before appending provider/model/user arguments;
+`--no-specstory` runs Codex directly. SpecStory's own sync policy still applies
+to automatic sessions and may upload captured history to SpecStory Cloud and
+update the project's `.specstory/statistics.json`. Claude and
 Gemini fallback through Responses Lite, which does not support Responses
 `tool_search`, so native Responses OpenAI models stay ahead of Anthropic.
 The launcher also enables gateway-backed remote compaction and excludes the

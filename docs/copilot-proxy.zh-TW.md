@@ -217,8 +217,9 @@ ANTHROPIC_SMALL_FAST_MODEL
 
 `codex-copilot` 與完全相同的 `codex-copilot-once` alias 會啟動本機
 gateway/shim，並用本次啟動的 Codex `-c` overrides 傳入 `copilot_api`
-Responses provider。它們不改 user/project Codex config，所以 plain `codex` 不受影響。
-明確 `-m` / `--model` 永遠優先；否則從即時 catalog 依序選
+Responses provider。該 provider 自行提供 authentication，因此 launcher 不要求
+Codex/ChatGPT login；既有 login 也不會被移除或改寫。它們不改 user/project Codex
+config，所以 plain `codex` 不受影響。明確 `-m` / `--model` 永遠優先；否則從即時 catalog 依序選
 OpenAI/Codex（`Sol > Terra > GPT-5.5 > GPT-5.4 > GPT-5.3 Codex > Luna > mini`），
 再退到 Claude、Gemini 與其他 chat model；automatic selection 會排除 policy-disabled、
 picker-hidden 與 embedding-only entries。
@@ -236,9 +237,13 @@ pre-header keepalive 的路徑；same-model transport retry 仍會套用。
 這是與 Claude Code `copilot-model --auto` 分開的 picker：後者保持
 Claude-first，只有 Codex launcher 是 OpenAI-first。
 
-有安裝 SpecStory 時自動整合。Wrapper 會保留生效的 `codex_cmd`（project config >
-user config > 裸 `codex`），再附加 provider/model/user arguments；
-`--no-specstory` 直接執行 Codex。Claude/Gemini fallback 經 Responses Lite，不支援
+有安裝 SpecStory 時自動整合。啟動 watcher 前，wrapper 會在 `CODEX_HOME`（或
+`~/.codex`）下建立 `sessions` 目錄；若初始化失敗，會在啟動任一 child process 前以
+明確錯誤停止。Wrapper 會保留生效的 `codex_cmd`（project config > user config > 裸
+`codex`），再附加 provider/model/user arguments；`--no-specstory` 直接執行 Codex。
+SpecStory 自身的 sync policy 仍會套用；自動整合可能把 session history 上傳到
+SpecStory Cloud，並更新 project 的 `.specstory/statistics.json`。Claude/Gemini fallback
+經 Responses Lite，不支援
 Responses `tool_search`，因此 native Responses OpenAI models 排在 Anthropic 前。
 Launcher 也會啟用 gateway-backed remote compaction，並排除依賴不可用
 `tool_search` 的 `mcp__codex_apps__sites` namespace；後續明確傳入的 `-c`

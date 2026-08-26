@@ -1703,14 +1703,30 @@ function copilot-run {
     # Scope env to the child process: set, run, restore (equivalent to `env VAR=..`).
     $saved = @{}
     foreach ($k in $inject.Keys) { $saved[$k] = [Environment]::GetEnvironmentVariable($k); Set-Item "env:$k" $inject[$k] }
+    $childSucceeded = $true
+    $childExitCode = 0
     try {
-        $exe = $Argv[0]; $rest = if ($Argv.Count -gt 1) { $Argv[1..($Argv.Count - 1)] } else { @() }
+        $exe = $Argv[0]
+        $rest = @($Argv | Select-Object -Skip 1)
+        $global:LASTEXITCODE = 0
         & $exe @rest
+        $invocationSucceeded = $?
+        $childExitCode = $LASTEXITCODE
+        $childSucceeded = $invocationSucceeded -and ($childExitCode -eq 0)
     } finally {
         foreach ($k in $inject.Keys) {
             if ($null -eq $saved[$k]) { Remove-Item "env:$k" -ErrorAction SilentlyContinue }
             else { Set-Item "env:$k" $saved[$k] }
         }
+    }
+    if (-not $childSucceeded) {
+        $global:LASTEXITCODE = $childExitCode
+        $PSCmdlet.WriteError([System.Management.Automation.ErrorRecord]::new(
+            [Exception]::new("copilot-run: '$exe' exited with code $childExitCode"),
+            'CopilotChildFailed',
+            [System.Management.Automation.ErrorCategory]::OperationStopped,
+            $exe
+        ))
     }
 }
 
@@ -1788,6 +1804,42 @@ function script:Test-CopilotExplicitCodexModel {
     $false
 }
 
+function script:Get-CodexCopilotProviderArgs {
+    param([Parameter(Mandatory)] [string] $Base)
+    @(
+        '-c', 'model_provider="copilot_api"',
+        '-c', 'model_providers.copilot_api.name="OpenAI"',
+        '-c', "model_providers.copilot_api.base_url=`"$Base`"",
+        '-c', 'model_providers.copilot_api.env_key="GITHUB_COPILOT_API_KEY"',
+        '-c', 'model_providers.copilot_api.requires_openai_auth=false',
+        '-c', 'model_providers.copilot_api.supports_websockets=false',
+        '-c', 'model_providers.copilot_api.wire_api="responses"',
+        '-c', 'model_providers.copilot_api.request_max_retries=3',
+        '-c', 'model_providers.copilot_api.stream_max_retries=1',
+        '-c', 'model_providers.copilot_api.stream_idle_timeout_ms=300000',
+        '-c', 'features.remote_compaction_v2=true',
+        '-c', 'features.code_mode.excluded_tool_namespaces=["mcp__codex_apps__sites"]'
+    )
+}
+
+function script:Get-CodexSessionsRoot {
+    $codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME '.codex' }
+    Join-Path $codexHome 'sessions'
+}
+
+function script:Initialize-SpecstoryCodexSessionsRoot {
+    [CmdletBinding()]
+    param()
+    $root = Get-CodexSessionsRoot
+    try {
+        [System.IO.Directory]::CreateDirectory($root) | Out-Null
+        $true
+    } catch {
+        Write-Error "codex-copilot: could not initialize SpecStory sessions root '$root': $($_.Exception.Message)"
+        $false
+    }
+}
+
 function codex-copilot {
     [CmdletBinding()]
     param([Parameter(ValueFromRemainingArguments)] [string[]] $Argv)
@@ -1826,20 +1878,7 @@ function codex-copilot {
     }
 
     $base = Get-CopilotShimBase
-    $providerArgs = @(
-        '-c', 'model_provider="copilot_api"',
-        '-c', 'model_providers.copilot_api.name="OpenAI"',
-        '-c', "model_providers.copilot_api.base_url=`"$base`"",
-        '-c', 'model_providers.copilot_api.env_key="GITHUB_COPILOT_API_KEY"',
-        '-c', 'model_providers.copilot_api.requires_openai_auth=true',
-        '-c', 'model_providers.copilot_api.supports_websockets=false',
-        '-c', 'model_providers.copilot_api.wire_api="responses"',
-        '-c', 'model_providers.copilot_api.request_max_retries=3',
-        '-c', 'model_providers.copilot_api.stream_max_retries=1',
-        '-c', 'model_providers.copilot_api.stream_idle_timeout_ms=300000',
-        '-c', 'features.remote_compaction_v2=true',
-        '-c', 'features.code_mode.excluded_tool_namespaces=["mcp__codex_apps__sites"]'
-    )
+    $providerArgs = @(Get-CodexCopilotProviderArgs -Base $base)
     if ($model) {
         $entry = $catalog.data | Where-Object { $_.id -eq $model } | Select-Object -First 1
         if ($entry.capabilities.limits.max_context_window_tokens) {
@@ -1852,22 +1891,39 @@ function codex-copilot {
 
     $savedKey = $env:GITHUB_COPILOT_API_KEY
     $env:GITHUB_COPILOT_API_KEY = 'dummy'
+    $childSucceeded = $true
+    $childExitCode = 0
     try {
-        if ($ss -eq 'auto' -and (Get-Command specstory -ErrorAction SilentlyContinue)) {
+        $useSpecstory = $ss -eq 'auto' -and (Get-Command specstory -ErrorAction SilentlyContinue)
+        if ($useSpecstory -and -not (Initialize-SpecstoryCodexSessionsRoot)) { return }
+        $global:LASTEXITCODE = 0
+        if ($useSpecstory) {
             $cc = Get-SpecstoryCodexCmd
             foreach ($a in @($providerArgs) + @($Argv)) { $cc = "$cc $(ConvertTo-CopilotShQuote $a)" }
             specstory run codex -c $cc
         } else { codex @providerArgs @Argv }
+        $invocationSucceeded = $?
+        $childExitCode = $LASTEXITCODE
+        $childSucceeded = $invocationSucceeded -and ($childExitCode -eq 0)
     } finally {
         if ($null -eq $savedKey) { Remove-Item env:GITHUB_COPILOT_API_KEY -ErrorAction SilentlyContinue }
         else { $env:GITHUB_COPILOT_API_KEY = $savedKey }
+    }
+    if (-not $childSucceeded) {
+        $global:LASTEXITCODE = $childExitCode
+        $PSCmdlet.WriteError([System.Management.Automation.ErrorRecord]::new(
+            [Exception]::new("codex-copilot: child exited with code $childExitCode"),
+            'CodexCopilotChildFailed',
+            [System.Management.Automation.ErrorCategory]::OperationStopped,
+            'codex'
+        ))
     }
 }
 
 function codex-copilot-once {
     [CmdletBinding()]
     param([Parameter(ValueFromRemainingArguments)] [string[]] $Argv)
-    codex-copilot @Argv
+    if ($Argv.Count -gt 0) { codex-copilot @Argv } else { codex-copilot }
 }
 
 # --- specstory `-c` passthrough (configured base + wrapper policy) -----------
@@ -1988,11 +2044,26 @@ function claude-copilot-once {
             Write-Host "claude-copilot-once: copilot-here already ON here — leaving the pin in place on exit."
         }
     }
+    $sessionSucceeded = $true
+    $sessionExitCode = 0
     try {
-        claude-copilot @Argv
+        $global:LASTEXITCODE = 0
+        if ($Argv.Count -gt 0) { claude-copilot @Argv } else { claude-copilot }
+        $invocationSucceeded = $?
+        $sessionExitCode = $LASTEXITCODE
+        $sessionSucceeded = $invocationSucceeded -and ($sessionExitCode -eq 0)
     } finally {
         if (-not $wasOn) { copilot-here off }
         Write-Host "claude-copilot-once: session ended. Proxy still running on $(Get-CopilotBase)."
+    }
+    if (-not $sessionSucceeded) {
+        $global:LASTEXITCODE = $sessionExitCode
+        $PSCmdlet.WriteError([System.Management.Automation.ErrorRecord]::new(
+            [Exception]::new("claude-copilot-once: session exited with code $sessionExitCode"),
+            'ClaudeCopilotSessionFailed',
+            [System.Management.Automation.ErrorCategory]::OperationStopped,
+            'claude'
+        ))
     }
 }
 
