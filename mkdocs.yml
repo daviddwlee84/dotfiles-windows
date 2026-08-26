@@ -46,6 +46,7 @@ plugins:
             translate: translate
             Input method: 輸入法
             Multi-agent workflow: 多 Agent 工作流
+            PowerShell testing with Pester: 使用 Pester 測試 PowerShell
 
 markdown_extensions:
   - admonition
@@ -71,3 +72,4 @@ nav:
   - Input method: input-method.md
   - Multi-agent workflow: claude-code-agents.md
   - Agent completion sounds: agent-sounds.md
+  - PowerShell testing with Pester: powershell-testing.md
