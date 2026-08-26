@@ -1130,6 +1130,126 @@ Describe 'Copilot module' {
         }
     }
 
+    # The shim has no /_shim/health on this build, so Test-CopilotShimAlive only
+    # proves that SOMETHING answers HTTP on the port (-SkipHttpErrorCheck accepts
+    # a 404 too). Everything below is about not letting that weak signal decide
+    # port state or client routing.
+    # pitfalls/copilot-proxy-shim-port-held-by-another-process.md
+    Context 'shim port ownership' {
+        It 'refuses to spawn when the port is held by a foreign process' {
+            InModuleScope Copilot {
+                Mock Get-CopilotPortOwner {
+                    [pscustomobject]@{ Owner = 'foreign'; Pids = @(4242); Labels = @('4242(python.exe)') }
+                }
+                # Alive on purpose: a foreign HTTP listener passes this probe, and
+                # that is exactly the case the ownership check has to catch.
+                Mock Test-CopilotShimAlive { $true }
+                Mock Stop-Process {}
+                Mock Start-Process { throw 'must not spawn' }
+                # These helpers are plain `script:` functions (no [CmdletBinding()]),
+                # so -ErrorVariable is never bound — merge the streams instead.
+                $captured = @(Start-CopilotShim 2>&1)
+                $captured[-1] | Should -BeFalse
+                ($captured -join "`n") | Should -Match 'held by another process.*4242\(python\.exe\)'
+                Should -Invoke Stop-Process -Times 0 -Exactly
+                Should -Invoke Start-Process -Times 0 -Exactly
+            }
+        }
+        It 'reclaims the port from one of our own stale shims' {
+            InModuleScope Copilot {
+                $script:ownerCalls = 0
+                Mock Get-CopilotPortOwner {
+                    $script:ownerCalls++
+                    if ($script:ownerCalls -eq 1) {
+                        [pscustomobject]@{ Owner = 'ours'; Pids = @(4242); Labels = @() }
+                    } else {
+                        [pscustomobject]@{ Owner = 'free'; Pids = @(); Labels = @() }
+                    }
+                }
+                # Not alive: an OLDER shim build answers nothing we recognise, which
+                # is what used to be misread as "port free" -> EADDRINUSE forever.
+                Mock Test-CopilotShimAlive { $script:ownerCalls -gt 1 }
+                Mock Get-Command { [pscustomobject]@{ Source = 'bun' } } -ParameterFilter { $Name -eq 'bun' }
+                Mock Test-Path { $true }
+                Mock Stop-Process {}
+                Mock Start-Process { [pscustomobject]@{ Id = 9001 } }
+                Mock Set-Content {}
+                Start-CopilotShim | Should -BeTrue
+                Should -Invoke Stop-Process -Times 1 -Exactly -ParameterFilter { $Id -eq 4242 }
+                Should -Invoke Start-Process -Times 1 -Exactly
+            }
+        }
+        It 'scopes COPILOT_SHIM_* to the child instead of leaking into the session' {
+            InModuleScope Copilot {
+                Mock Get-CopilotPortOwner { [pscustomobject]@{ Owner = 'free'; Pids = @(); Labels = @() } }
+                Mock Test-CopilotShimAlive { $script:spawned -eq $true }
+                Mock Get-Command { [pscustomobject]@{ Source = 'bun' } } -ParameterFilter { $Name -eq 'bun' }
+                Mock Test-Path { $true }
+                Mock Set-Content {}
+                $script:spawned = $false
+                $script:seenPort = $null
+                Mock Start-Process {
+                    # The child would inherit these; assert they are set AT spawn time.
+                    $script:seenPort = $env:COPILOT_SHIM_PORT
+                    $script:seenUpstream = $env:COPILOT_SHIM_UPSTREAM
+                    $script:spawned = $true
+                    [pscustomobject]@{ Id = 9002 }
+                }
+                $before = $env:COPILOT_SHIM_UPSTREAM
+                Start-CopilotShim | Should -BeTrue
+                $script:seenPort | Should -Be (Get-CopilotShimPort)
+                $script:seenUpstream | Should -Be (Get-CopilotBase)
+                # ...and are gone again afterwards.
+                $env:COPILOT_SHIM_UPSTREAM | Should -Be $before
+            }
+        }
+        It 'treats an uninspectable port as unknown, not as free-and-foreign' {
+            InModuleScope Copilot {
+                Mock Get-Command { $null } -ParameterFilter { $Name -eq 'Get-NetTCPConnection' }
+                $holder = Get-CopilotPortOwner -Port 4142
+                $holder.Owner | Should -Be 'unknown'
+            }
+        }
+    }
+
+    Context 'managed clients fail closed on an enabled shim' {
+        It 'Assert-CopilotShim is a no-op when the shim is switched off' {
+            InModuleScope Copilot {
+                Mock Get-CopilotShimEnabled { $false }
+                Mock Start-CopilotShim { throw 'must not start a disabled shim' }
+                Assert-CopilotShim | Should -BeTrue
+            }
+        }
+        It 'Assert-CopilotShim refuses rather than silently using the bare proxy' {
+            InModuleScope Copilot {
+                Mock Get-CopilotShimEnabled { $true }
+                Mock Start-CopilotShim { $false }
+                $captured = @(Assert-CopilotShim 2>&1)
+                $captured[-1] | Should -BeFalse
+                ($captured -join "`n") | Should -Match 'refused to bypass the enabled metrics shim'
+            }
+        }
+        It 'client base stays on the shim when it is enabled but down' {
+            InModuleScope Copilot {
+                Mock Get-CopilotShimEnabled { $true }
+                Mock Test-CopilotShimAlive { $false }
+                # Pre-fix this fell back to Get-CopilotBase, silently dropping the
+                # keepalive AND the Responses tool-description normalisation.
+                Get-CopilotClientBase | Should -Be (Get-CopilotShimBase)
+                Get-CopilotClientBase | Should -Be (Get-CopilotPinnedBase)
+            }
+        }
+        It 'copilot-run aborts instead of running against a bypassed shim' {
+            InModuleScope Copilot {
+                Mock Test-CopilotAlive { $true }
+                Mock Assert-CopilotShim { $false }
+                Mock Get-CopilotEnvBlock { throw 'must not build an env block' }
+                { copilot-run 'cmd-that-must-not-run' } | Should -Not -Throw
+                Should -Invoke Assert-CopilotShim -Times 1 -Exactly
+            }
+        }
+    }
+
     Context 'public surface' {
         It 'exports the ten commands' {
             $exported = (Get-Command -Module Copilot).Name

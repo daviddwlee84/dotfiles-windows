@@ -204,6 +204,23 @@ See Claude Code's [feature availability](https://code.claude.com/docs/en/feature
   create-seeded `~/.specstory/cli/config.toml` remains user-owned, and direct
   `specstory run claude` still follows that user/project configuration. Plain
   `claude` is unaffected.
+- **Managed clients fail closed on an enabled shim.** `copilot-run`, the
+  `claude-copilot*` launchers and `codex-copilot*` all pass through
+  `Assert-CopilotShim`; if the shim is enabled and cannot be started, they refuse
+  rather than quietly falling back to `localhost:4141`. Bypassing the shim drops
+  the SSE keepalive *and* the Responses tool-description normalization, so a
+  silent fallback reintroduces a documented `400` with no message anywhere.
+  `copilot-proxy shim off` is the only intentional direct-mode route.
+- **The shim port is read from the OS, not inferred from the health probe.**
+  `Test-CopilotShimAlive` can only prove that *something* answers HTTP on 4142
+  (this shim build has no `/_shim/health`, and the probe accepts a 404), so
+  `Start-CopilotShim` classifies the port with `Get-NetTCPConnection` +
+  `Win32_Process`: a stale or older `copilot-throttle-shim.js` of ours is
+  reclaimed, any other process is named and the start refuses — move out of its
+  way with `COPILOT_SHIM_PORT`. Without that, an unrelated HTTP server silently
+  becomes the gateway, and one of our own stale shims wedges every start with
+  `EADDRINUSE`. See
+  [pitfalls/copilot-proxy-shim-port-held-by-another-process.md](https://github.com/daviddwlee84/windows-dotfiles/blob/main/pitfalls/copilot-proxy-shim-port-held-by-another-process.md).
 - The throttle shim is pinned byte-for-byte to the reviewed macOS/Linux artifact.
   It limits concurrent requests and retries the **same buffered request and model**
   on network errors or HTTP 403/429/502/503/504 before any upstream body is exposed.

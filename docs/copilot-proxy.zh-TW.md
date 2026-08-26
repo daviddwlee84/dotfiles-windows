@@ -183,6 +183,18 @@ ANTHROPIC_SMALL_FAST_MODEL
   並一律把完整 command 交給 `specstory run claude -c`（包含零參數 session）。只建立一次的
   `~/.specstory/cli/config.toml` 仍由使用者擁有；直接執行 `specstory run claude` 仍遵循該
   user/project config。純 `claude` 不受影響。
+- **Managed client 對啟用中的 shim 一律 fail closed。** `copilot-run`、
+  `claude-copilot*` 與 `codex-copilot*` 全部經過 `Assert-CopilotShim`；shim 已啟用但起不來時
+  它們會直接放棄，而不是默默退回 `localhost:4141`。繞過 shim 會同時失去 SSE keepalive
+  **與** Responses tool-description 正規化，所以那種靜默 fallback 等於把一個已記錄在案的
+  `400` 重新放回來，而且哪裡都不會有訊息。`copilot-proxy shim off` 是唯一刻意的 direct-mode 路徑。
+- **Shim 的 port 狀態改由作業系統讀取，不再從健康探測推論。**
+  `Test-CopilotShimAlive` 只能證明 4142 上「有東西在講 HTTP」（這版 shim 沒有 `/_shim/health`，
+  而且探測連 404 都接受），所以 `Start-CopilotShim` 改用 `Get-NetTCPConnection` + `Win32_Process`
+  判定 port 歸屬：是我們自己的舊版或殘留 `copilot-throttle-shim.js` 就回收；其他程序則印出名稱後
+  拒絕啟動 —— 要讓路請用 `COPILOT_SHIM_PORT`。少了這一步，無關的 HTTP server 會默默變成所有
+  managed client 的閘道，而自己的殘留 shim 則會用 `EADDRINUSE` 卡死每一次啟動。詳見
+  [pitfalls/copilot-proxy-shim-port-held-by-another-process.md](https://github.com/daviddwlee84/windows-dotfiles/blob/main/pitfalls/copilot-proxy-shim-port-held-by-another-process.md)。
 - Throttle shim 以 byte-for-byte 方式固定到已 review 的 macOS/Linux artifact。它會限制
   concurrent requests，並在任何 upstream body 尚未暴露前，針對 network error 或 HTTP
   403/429/502/503/504，以**相同 buffered request 與 model**重試。它絕不替換 model，且

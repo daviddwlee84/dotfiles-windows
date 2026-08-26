@@ -709,11 +709,72 @@ function script:Get-CopilotShimEnabled {
     $sf = Get-CopilotShimState
     (Test-Path $sf) -and ((Get-Content -First 1 $sf -ErrorAction SilentlyContinue) -eq 'on')
 }
+# Base URL managed clients should use. An enabled-but-down shim is a HARD FAULT,
+# never a silent fallback to the bare proxy: bypassing the shim quietly drops the
+# SSE keepalive + stall watchdog AND the Responses tool-description normalization
+# that is the whole fix for
+# pitfalls/codex-copilot-empty-mcp-tool-description-400.md — so a down shim would
+# reintroduce a documented 400 with no message anywhere. Callers gate on
+# Assert-CopilotShim first; this only picks the URL.
+#
+# Deliberately identical in body to Get-CopilotPinnedBase but kept separate (as
+# on Unix): they answer different questions and only one of them is allowed to
+# start depending on liveness later. Do not collapse them.
 function script:Get-CopilotClientBase {
-    if ((Get-CopilotShimEnabled) -and (Test-CopilotShimAlive)) { Get-CopilotShimBase } else { Get-CopilotBase }
+    if (Get-CopilotShimEnabled) { Get-CopilotShimBase } else { Get-CopilotBase }
 }
+# Base URL for PERSISTENT pins (copilot-here settings.local.json). Not gated on
+# currently-alive since the file outlives this session.
 function script:Get-CopilotPinnedBase {
     if (Get-CopilotShimEnabled) { Get-CopilotShimBase } else { Get-CopilotBase }
+}
+
+# What is holding $Port right now:
+#   'free'     nothing is listening
+#   'ours'     every listener is a copilot-throttle-shim.js process
+#   'foreign'  something else is listening
+#   'unknown'  the port could not be inspected — callers MUST NOT infer 'free'
+#
+# 'unknown' (no Get-NetTCPConnection, e.g. pwsh on a non-Windows host) degrades
+# to the pre-check behaviour rather than falsely accusing a squatter.
+function script:Get-CopilotPortOwner {
+    param([Parameter(Mandatory)] [int] $Port)
+    $free = [pscustomobject]@{ Owner = 'free'; Pids = @(); Labels = @() }
+    if (-not (Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue)) {
+        return [pscustomobject]@{ Owner = 'unknown'; Pids = @(); Labels = @() }
+    }
+    $listenPids = @(
+        Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty OwningProcess -Unique | Where-Object { $_ }
+    )
+    if (-not $listenPids) { return $free }
+    $labels = @()
+    foreach ($procId in $listenPids) {
+        $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $procId" -ErrorAction SilentlyContinue
+        if ($proc -and $proc.CommandLine -like '*copilot-throttle-shim.js*') { continue }
+        $name = if ($proc) { $proc.Name } else { 'unknown' }
+        $labels += "$procId($name)"
+    }
+    [pscustomobject]@{
+        Owner  = if ($labels.Count -gt 0) { 'foreign' } else { 'ours' }
+        Pids   = $listenPids
+        Labels = $labels
+    }
+}
+
+# Managed clients must not silently bypass an enabled shim. Mirrors the Unix
+# `_copilot_require_shim`.
+#
+# Unlike Unix this goes straight through Start-CopilotShim instead of short-
+# circuiting on Test-CopilotShimAlive: this shim build has no /_shim/health, so
+# liveness cannot prove IDENTITY here (any HTTP listener on the port answers).
+# Start-CopilotShim owns the ownership check and is idempotent.
+function script:Assert-CopilotShim {
+    if (-not (Get-CopilotShimEnabled)) { return $true }
+    if (Start-CopilotShim) { return $true }
+    Write-Error 'copilot-proxy: managed client refused to bypass the enabled metrics shim.'
+    Write-Error "  use 'copilot-proxy shim off' only for an intentional direct-mode escape."
+    $false
 }
 
 # Resolve the model: $COPILOT_CLAUDE_MODEL > state file > default.
@@ -1046,20 +1107,69 @@ function script:Get-CopilotEnvBlock {
 }
 
 # --- shim start/stop ---
+# Start the shim (idempotent). Points it at the proxy; scopes COPILOT_SHIM_* to
+# the child.
+#
+# The port inspection is load-bearing twice over, because Test-CopilotShimAlive
+# can only prove that SOMETHING answers HTTP on the port (this build has no
+# /_shim/health, and -SkipHttpErrorCheck accepts a 404 or 500 as an answer):
+#
+#   * a FOREIGN listener would otherwise pass as a healthy shim and silently
+#     become the gateway every managed client talks to;
+#   * one of OUR shims that is stale or too old to answer would otherwise be
+#     read as "port free", and the spawn below dies instantly with EADDRINUSE —
+#     leaving every managed client failing closed against a shim that is in fact
+#     running. That wedge is unrecoverable by retrying.
+#
+# See pitfalls/copilot-proxy-shim-port-held-by-another-process.md
 function script:Start-CopilotShim {
+    $port = [int] (Get-CopilotShimPort)
+    $holder = Get-CopilotPortOwner -Port $port
+    if ($holder.Owner -eq 'foreign') {
+        Write-Error "copilot-proxy: port $port is held by another process: $($holder.Labels -join ' ')"
+        Write-Error '  free it, or pick a different port with COPILOT_SHIM_PORT.'
+        return $false
+    }
     if (Test-CopilotShimAlive) { return $true }
     if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
         Write-Error "copilot-proxy: shim needs 'bun' (scoop install bun)"; return $false
     }
     $script = Get-CopilotShimScript
     if (-not (Test-Path $script)) { Write-Error "copilot-proxy: shim script not found at $script"; return $false }
-    $env:COPILOT_SHIM_PORT = Get-CopilotShimPort
-    $env:COPILOT_SHIM_UPSTREAM = Get-CopilotBase
-    $p = Start-Process -FilePath 'bun' -ArgumentList @($script) -PassThru -WindowStyle Hidden `
-        -RedirectStandardOutput (Get-CopilotShimLog) -RedirectStandardError "$(Get-CopilotShimLog).err"
+    if ($holder.Owner -eq 'ours') {
+        foreach ($procId in $holder.Pids) { Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue }
+        # Give the reclaimed listener a moment to release the socket.
+        for ($w = 0; $w -lt 5; $w++) {
+            if ((Get-CopilotPortOwner -Port $port).Owner -eq 'free') { break }
+            Start-Sleep 1
+        }
+    }
+    # `$env:X = ...` is PROCESS-wide in PowerShell, not scoped to the function,
+    # so assigning these used to leak into the caller's session for good — and
+    # every later `bun copilot-throttle-shim.js` inherited them. Set, spawn,
+    # restore (the same idiom copilot-run uses for the ANTHROPIC_* block).
+    $shimEnv = @{ COPILOT_SHIM_PORT = "$port"; COPILOT_SHIM_UPSTREAM = Get-CopilotBase }
+    $saved = @{}
+    foreach ($k in $shimEnv.Keys) { $saved[$k] = [Environment]::GetEnvironmentVariable($k) }
+    try {
+        foreach ($k in $shimEnv.Keys) { Set-Item "env:$k" $shimEnv[$k] }
+        $p = Start-Process -FilePath 'bun' -ArgumentList @($script) -PassThru -WindowStyle Hidden `
+            -RedirectStandardOutput (Get-CopilotShimLog) -RedirectStandardError "$(Get-CopilotShimLog).err"
+    } finally {
+        foreach ($k in $shimEnv.Keys) {
+            if ($null -eq $saved[$k]) { Remove-Item "env:$k" -ErrorAction SilentlyContinue }
+            else { Set-Item "env:$k" $saved[$k] }
+        }
+    }
     $p.Id | Set-Content -Path (Get-CopilotShimPid)
     for ($i = 0; $i -lt 10; $i++) { if (Test-CopilotShimAlive) { return $true }; Start-Sleep 1 }
-    Write-Error "copilot-proxy: shim did not come up — check $(Get-CopilotShimLog)"; $false
+    Write-Error "copilot-proxy: shim did not come up — check $(Get-CopilotShimLog)"
+    # Surface the reason inline; Start-Process detaches, so EADDRINUSE and friends
+    # otherwise land only in a file nobody opens.
+    foreach ($logPath in @((Get-CopilotShimLog), "$(Get-CopilotShimLog).err")) {
+        if (Test-Path $logPath) { Get-Content -Tail 5 $logPath | ForEach-Object { Write-Host "  $_" } }
+    }
+    $false
 }
 function script:Stop-CopilotShim {
     $pidf = Get-CopilotShimPid
@@ -1583,7 +1693,10 @@ function copilot-run {
     param([Parameter(ValueFromRemainingArguments)] [string[]] $Argv)
     if (-not $Argv -or $Argv.Count -eq 0) { Write-Error 'Usage: copilot-run <cmd> [args...]'; return }
     if (-not (Test-CopilotAlive)) { copilot-proxy start; if (-not (Test-CopilotAlive)) { return } }
-    if ((Get-CopilotShimEnabled) -and -not (Test-CopilotShimAlive)) { Start-CopilotShim | Out-Null }
+    # Fail CLOSED: an enabled-but-down shim must not be silently bypassed — see
+    # Get-CopilotClientBase. This used to be `Start-CopilotShim | Out-Null`,
+    # which discarded the failure and then ran against the bare proxy.
+    if (-not (Assert-CopilotShim)) { return }
 
     # Single source of truth — see Get-CopilotEnvBlock.
     $inject = Get-CopilotEnvBlock
@@ -1692,9 +1805,11 @@ function codex-copilot {
     if (-not (Test-CopilotAlive)) { copilot-proxy start; if (-not (Test-CopilotAlive)) { return } }
     # Codex always needs the shim's Responses compatibility normalization even
     # when persistent burst throttling is disabled. This does not change state.
-    if (-not (Test-CopilotShimAlive)) {
-        if (-not (Start-CopilotShim)) { return }
-    }
+    # Unconditional (not gated on Test-CopilotShimAlive): that probe cannot tell
+    # our shim from any other HTTP listener on the port, and Start-CopilotShim —
+    # which does the ownership check — is idempotent and returns fast when the
+    # shim is already up.
+    if (-not (Start-CopilotShim)) { return }
     $catalog = Get-CopilotModelCatalog
     if (-not $catalog) { Write-Error 'codex-copilot: could not read the live gateway model catalog'; return }
 
