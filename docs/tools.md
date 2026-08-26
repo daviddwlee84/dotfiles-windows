@@ -18,6 +18,7 @@ tools; **winget** handles GUI apps.
 | delta | git diff pager |
 | jq | JSON processor |
 | yazi, btop | file manager / system monitor |
+| pueue | background command queue (`pueue` client + `pueued` daemon) |
 | television (`tv`) | fuzzy picker / channel launcher |
 | tldr (tlrc) | community man-page cheatsheets; `tldrf` adds `zh_TW → zh → en` fallback |
 | gh dash | GitHub PR/issue dashboard TUI (gh extension; installs once `gh` is authenticated) |

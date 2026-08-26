@@ -18,6 +18,7 @@ GUI 應用程式。
 | delta | git diff 分頁器 |
 | jq | JSON 處理器 |
 | yazi、btop | 檔案管理員 / 系統監控 |
+| pueue | 背景命令佇列（`pueue` client + `pueued` daemon） |
 | television（`tv`） | 模糊選擇器 / channel 啟動器 |
 | tldr（tlrc） | 社群 man page 速查表；`tldrf` 加上 `zh_TW → zh → en` fallback |
 | gh dash | GitHub PR/issue 儀表板 TUI（gh 擴充；`gh` 登入後才會安裝） |
