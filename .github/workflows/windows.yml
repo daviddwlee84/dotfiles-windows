@@ -96,8 +96,9 @@ jobs:
             # the rime redeploy script, and the apply step deploys the
             # AppData/Roaming/Rime YAML; --exclude scripts means winget never runs.
             '--promptBool','Install the Rime input method (Weasel) for Traditional Chinese (needs admin)=true',
-            '--promptBool','Use China (GFW) mirrors for pip/npm/cargo/go/node=false',
+            '--promptBool','Use China (GFW) mirrors for pip/uv, npm, RubyGems, Go, and rustup=false',
             '--promptBool','Managed or corporate machine (skip org-policy-blocked apps like Tailscale and Grammarly)=false',
+            '--promptBool','Allow one public PyPI/npm retry after eligible corporate feed failures=false',
             '--promptChoice','Back up existing files before apply (smart|full|off)=off',
             '--promptBool','Enable PSReadLine vi editing mode=true'
           )

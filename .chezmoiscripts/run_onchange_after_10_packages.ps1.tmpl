@@ -22,6 +22,7 @@
 #   installInputMethod   = {{ .installInputMethod }}
 #   useChineseMirror     = {{ .useChineseMirror }}
 #   managedMachine       = {{ .managedMachine }}
+#   allowPublicPackageFallback = {{ get . "allowPublicPackageFallback" | default false }}
 
 # Resilient by design: individual package failures are collected and reported at
 # the end, never fatal — one bad manifest must not abort the rest of the install
@@ -36,6 +37,12 @@ try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catc
 # otherwise optional China/GFW mirrors. Shared with profile.d so apply-time and
 # interactive commands cannot drift apart.
 {{ template "package-sources.ps1" . }}
+$managedMachine = {{ if .managedMachine }}$true{{ else }}$false{{ end }}
+$allowPublicPackageFallback = {{ if (get . "allowPublicPackageFallback") }}$true{{ else }}$false{{ end }}
+
+# Command-scoped corporate-first runner for the npm/PyPI operations backed by
+# company feeds. Other ecosystems retain their existing source behavior.
+{{ include "scripts/package-source-runner.ps1" }}
 
 function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 function Have($n) { [bool](Get-Command $n -ErrorAction SilentlyContinue) }
@@ -130,12 +137,13 @@ function Winget-InstallStore([string]$id) {
 # --- npm CLI agents --------------------------------------------------------
 function Npm-InstallGlobal([string[]]$pkgs) {
     if (-not (Have npm)) { foreach ($p in $pkgs) { Register-Failure "npm:$p (npm unavailable)" }; return }
-    $npmRootOutput = @(npm root -g 2>$null)
-    if ($LASTEXITCODE -ne 0 -or -not $npmRootOutput) {
-        foreach ($p in $pkgs) { Register-Failure "npm:$p (cannot resolve global npm root)" }
+    $npmExecutable = (Get-Command npm -CommandType Application | Select-Object -First 1).Source
+    try { $npm = Get-NpmGlobalExecutionContext -NpmCommandPath $npmExecutable }
+    catch {
+        foreach ($p in $pkgs) { Register-Failure "npm:$p (cannot resolve npm execution context)" }
         return
     }
-    $npmRoot = ([string]$npmRootOutput[-1]).Trim()
+    $npmRoot = $npm.Root
     foreach ($p in $pkgs) {
         # Apply is install-only. Re-running `npm install -g` as an implicit
         # upgrade fails with EBUSY/EPERM whenever an agent executable is live on
@@ -146,8 +154,11 @@ function Npm-InstallGlobal([string[]]$pkgs) {
             continue
         }
         Info "npm i -g $p"
-        npm install -g $p 2>&1 | Out-Host
-        if ($LASTEXITCODE -ne 0) { Register-Failure "npm:$p" }
+        $result = Invoke-PackageSourceCommand -Manager npm -Executable $npm.NodeExecutable `
+            -Arguments @($npm.NpmCli, 'install', '-g', $p) -Operation $p `
+            -PackageSpec $p -NpmPrefix $npm.Prefix -NpmCache $npm.Cache `
+            -NpmConfigValues $npm.ConfigValues -ManagedMachine $managedMachine -AllowPublicFallback $allowPublicPackageFallback
+        if (-not $result.Succeeded) { Register-Failure "npm:$p" }
     }
 }
 
@@ -375,8 +386,11 @@ Scoop-Install @('extras/opencode-desktop')
 # profile.d/00_env.ps1. Mirrors the LiteLLM uv-tool precedent below.
 if (Have uv) {
     Info 'uv tool install apprise (+pywin32 for windows://)'
-    uv tool install --with pywin32 apprise
-    if ($LASTEXITCODE -ne 0) { Register-Failure 'uv:apprise' }
+    $uvExecutable = (Get-Command uv -CommandType Application | Select-Object -First 1).Source
+    $result = Invoke-PackageSourceCommand -Manager uv -Executable $uvExecutable `
+        -Arguments @('tool', 'install', '--with', 'pywin32', 'apprise') -Operation apprise `
+        -ManagedMachine $managedMachine -AllowPublicFallback $allowPublicPackageFallback
+    if (-not $result.Succeeded) { Register-Failure 'uv:apprise' }
 }
 
 # peon-ping — game-character voice lines for agent events (CESP player; packs
@@ -542,7 +556,14 @@ foreach ($id in @(
 {{ if .installLlmTools -}}
 # Local LLM tools: Ollama (winget) + LiteLLM (uv tool).
 Winget-Install 'Ollama.Ollama'
-if (Have uv) { Info 'uv tool install litellm'; uv tool install 'litellm[proxy]'; if ($LASTEXITCODE -ne 0) { Register-Failure 'uv:litellm' } }
+if (Have uv) {
+    Info 'uv tool install litellm'
+    $uvExecutable = (Get-Command uv -CommandType Application | Select-Object -First 1).Source
+    $result = Invoke-PackageSourceCommand -Manager uv -Executable $uvExecutable `
+        -Arguments @('tool', 'install', 'litellm[proxy]') -Operation litellm `
+        -ManagedMachine $managedMachine -AllowPublicFallback $allowPublicPackageFallback
+    if (-not $result.Succeeded) { Register-Failure 'uv:litellm' }
+}
 {{ end -}}
 
 {{ if .installTunnelTools -}}
@@ -606,7 +627,7 @@ if (Have clink) {
 Scoop-Install @('ruby')
 if (Have gem) {
     Info 'gem install try-cli'
-{{- if .useChineseMirror }}
+{{- if and .useChineseMirror (not .managedMachine) }}
     gem install --clear-sources --source https://gems.ruby-china.com try-cli 2>&1 | Out-Host
 {{- else }}
     gem install try-cli 2>&1 | Out-Host

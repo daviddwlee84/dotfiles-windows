@@ -66,7 +66,7 @@ PowerShell anyway, so a machine with *no* PowerShell couldn't use the repo.
 !!! warning "Behind the GFW"
     Keep a VPN on for the bootstrap — scoop downloads git / pwsh / chezmoi / uv
     from **GitHub releases**. The `China mirrors` option only redirects
-    pip / npm / cargo / go / node at runtime, **not** scoop's own downloads.
+    pip/uv, npm, RubyGems, Go, and rustup at runtime, **not** scoop's own downloads.
 
 ## Init prompts
 
@@ -85,7 +85,7 @@ PowerShell anyway, so a machine with *no* PowerShell couldn't use the repo.
 | WSL Ubuntu bootstrap | `headless` | dotfiles install mode: `headless` (frozen from Windows) / `interactive` / `none` |
 | Utility apps | on (workstation) | CPU-Z, GPU-Z, TreeSize, VLC, Everything, ShareX, HWiNFO |
 | Gaming apps | off | Steam |
-| Extra runtimes | on (workstation) | rust, go, ruby via mise (node/bun/uv are baseline) |
+| Extra runtimes | on (workstation) | rustup, go, and ruby via Scoop (node/bun/uv are baseline) |
 | Media CLIs | off | ffmpeg, imagemagick |
 | Local LLM tools | off | Ollama, LiteLLM |
 | Tunnel tools | off | ngrok, cloudflared |
@@ -96,8 +96,9 @@ PowerShell anyway, so a machine with *no* PowerShell couldn't use the repo.
 | try (ephemeral workspaces) | off | Ruby CLI (`gem try-cli`): dated trial dirs + fuzzy selector; pwsh command is `tri` |
 | translate | on (workstation) | terminal translator CLI + TUI, built from source with `go install` (first build takes minutes) |
 | Rime input method (Weasel) | off | Traditional Chinese IME. Machine-scope installer — expect a UAC prompt; deploys the shared Rime `*.custom.yaml` to `%APPDATA%\Rime` |
-| China mirrors | off | pip / npm / cargo / go / node via GFW mirrors |
+| China mirrors | off | pip/uv, npm, RubyGems, Go, and rustup via GFW mirrors |
 | Managed machine | off | use company PyPI/npm registries and skip apps org policy usually blocks (Tailscale, Grammarly) |
+| Public package fallback | off | on managed machines, retry eligible transient corporate PyPI/npm failures once against the isolated public source |
 | Backup mode | `smart` | snapshot existing files before the first apply (`smart`/`full`/`off`) |
 | PSReadLine vi mode | on | vi editing in the shell |
 

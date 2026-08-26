@@ -89,4 +89,16 @@ Describe 'init prompts vs CI flags (invariant #1)' {
         $bad = @($script:Prompts | Where-Object { $_.Text -match '=' })
         $bad.Count | Should -Be 0 -Because "prompt text may not contain '=': $($bad.Var -join '; ')"
     }
+
+    It 'keeps public package fallback explicit and default-off' {
+        $template = Get-Content -Raw $tomlTmpl
+        $template | Should -Match 'allowPublicPackageFallback"\s+"Allow one public PyPI/npm retry after eligible corporate feed failures"\s+false'
+        @($script:Prompts | Where-Object Var -eq 'allowPublicPackageFallback').Count | Should -Be 1
+    }
+
+    It 'describes only package ecosystems with configured China mirrors' {
+        $prompt = $script:Prompts | Where-Object Var -eq 'useChineseMirror'
+        $prompt.Text | Should -Match 'pip/uv, npm, RubyGems, Go, and rustup'
+        $prompt.Text | Should -Not -Match 'Cargo|Node'
+    }
 }

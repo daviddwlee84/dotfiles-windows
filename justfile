@@ -34,7 +34,7 @@ upgrade-winget:
 
 # upgrade npm coding agents (close OpenCode/Codex/Copilot first; Windows locks live executables)
 upgrade-npm-agents:
-    npm update -g opencode-ai @openai/codex @github/copilot
+    pwsh -NoProfile -File ./scripts/run-package-source-command.ps1 -Action UpgradeNpmAgents
 
 # upgrade everything
 upgrade: upgrade-scoop upgrade-winget
@@ -110,8 +110,8 @@ test:
 
 # serve the docs site locally
 docs-serve:
-    uv run --with mkdocs-material --with mkdocs-static-i18n mkdocs serve
+    pwsh -NoProfile -File ./scripts/run-package-source-command.ps1 -Action DocsServe
 
 # build the docs site (strict)
 docs-build:
-    uv run --with mkdocs-material --with mkdocs-static-i18n mkdocs build --strict
+    pwsh -NoProfile -File ./scripts/run-package-source-command.ps1 -Action DocsBuild

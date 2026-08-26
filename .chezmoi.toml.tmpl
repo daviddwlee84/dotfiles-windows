@@ -53,8 +53,9 @@
     # its silent path registers SIMPLIFIED Chinese unless the installer also
     # gets /T (see Install-Weasel in the packages script).
     installInputMethod   = {{ promptBoolOnce . "installInputMethod" "Install the Rime input method (Weasel) for Traditional Chinese (needs admin)" false }}
-    useChineseMirror     = {{ promptBoolOnce . "useChineseMirror" "Use China (GFW) mirrors for pip/npm/cargo/go/node" false }}
+    useChineseMirror     = {{ promptBoolOnce . "useChineseMirror" "Use China (GFW) mirrors for pip/uv, npm, RubyGems, Go, and rustup" false }}
     managedMachine       = {{ promptBoolOnce . "managedMachine" "Managed or corporate machine (skip org-policy-blocked apps like Tailscale and Grammarly)" false }}
+    allowPublicPackageFallback = {{ promptBoolOnce . "allowPublicPackageFallback" "Allow one public PyPI/npm retry after eligible corporate feed failures" false }}
     backupMode           = {{ promptChoiceOnce . "backupMode" "Back up existing files before apply (smart|full|off)" (list "smart" "full" "off") "smart" | quote }}
     enableVimMode        = {{ promptBoolOnce . "enableVimMode" "Enable PSReadLine vi editing mode" true }}
 

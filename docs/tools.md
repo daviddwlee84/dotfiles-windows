@@ -223,16 +223,28 @@ One shared policy is applied both at install time and in interactive shells
 
 - **Managed machines** route pip/uv through the company PyPI pull-through
   registry and npm through the company npm pull-through registry. The PyPI path
-  was verified with `tomlkit==0.13.3`; its artifacts are served by the corporate
-  Azure Artifacts backend. IT already provisions the enabled company NuGet source
-  and disables nuget.org, so the dotfiles do not rewrite NuGet configuration.
-- **China mirrors** apply only on non-managed machines and route pip / npm / cargo /
-  go / node through Tsinghua / npmmirror / goproxy.cn / rsproxy.
-- No company Go or Cargo registry was discovered, so managed machines leave those
-  ecosystems at their existing defaults.
+  ultimately serves artifacts from the corporate Azure Artifacts backend. IT
+  provisions NuGet separately, so the dotfiles do not rewrite it.
+- **China mirrors** apply only on non-managed machines: pip/uv use Tsinghua,
+  npm uses npmmirror, RubyGems uses Ruby China, Go uses goproxy.cn, and rustup
+  uses rsproxy. Scoop runtime downloads are unaffected.
+- No company Go, Rust, or Ruby registry was discovered, so managed machines
+  leave those ecosystems at their existing defaults.
 
-The managed-machine policy wins if both toggles are true. This prevents a GFW
-mirror from bypassing corporate package policy.
+Managed policy wins when both machine toggles are true. A separate
+`allowPublicPackageFallback` prompt is **off by default**. When enabled on a
+managed machine, repo-owned npm agent installs/updates and uv dependency
+resolution (Apprise, LiteLLM, Herdr tomlkit, and docs commands) try the corporate
+source first. A timeout, temporary network failure, or explicit HTTP 5xx may
+trigger exactly one source-isolated retry against public PyPI/npm. Authentication
+or policy errors (401/403), TLS/certificate failures, 404/package absence, rate
+limits, solver/build errors, and local permission failures never fall back.
+
+Corporate and public indexes are never configured together. Each attempt clears
+extra index/registry inputs in its child process, preserves the parent shell and
+cache, and reports the retry explicitly. Switching source modes also removes only
+known endpoint values emitted by earlier repo versions; every other user/IT
+value survives, and `local.ps1` remains the final interactive override.
 
 ## Television (tv) channels
 

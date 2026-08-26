@@ -206,14 +206,25 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
 套用時的 installer 與互動式 shell（`profile.d/05_mirrors.ps1`）共用同一份政策：
 
 - **受管機器**的 pip/uv 走公司 PyPI pull-through registry，npm 走公司 npm
-  pull-through registry。PyPI 路徑已用 `tomlkit==0.13.3` 驗證，artifact 由公司
-  Azure Artifacts backend 提供。NuGet 的公司 source 與停用 nuget.org 已由 IT
-  machine-wide 配置，因此 dotfiles 不覆寫 NuGet 設定。
-- **China mirrors** 只在非受管機器生效，把 pip / npm / cargo / go / node 導向
-  清華 / npmmirror / goproxy.cn / rsproxy。
-- 未找到公司的 Go 或 Cargo registry，因此受管機器保留這兩者既有預設值。
+  pull-through registry；PyPI artifact 最終由公司的 Azure Artifacts backend
+  提供。NuGet 由 IT 另外配置，dotfiles 不覆寫。
+- **China mirrors** 只在非受管機器生效：pip/uv 用清華、npm 用 npmmirror、
+  RubyGems 用 Ruby China、Go 用 goproxy.cn、rustup 用 rsproxy；不影響 Scoop
+  下載 runtime。
+- 未找到公司的 Go、Rust 或 Ruby registry，因此受管機器保留這些 ecosystem
+  既有預設值。
 
-若兩個 toggle 同時為 true，受管機器政策優先，避免 GFW mirror 繞過公司套件政策。
+兩個機器 toggle 同時為 true 時仍以 managed policy 優先。另一個獨立的
+`allowPublicPackageFallback` 提問**預設關閉**；受管機器明確開啟後，repo 自己
+控制的 npm agent 安裝/升級與 uv dependency resolution（Apprise、LiteLLM、
+Herdr tomlkit、docs 指令）會先走公司來源。只有 timeout、暫時性網路錯誤或明確
+HTTP 5xx 能觸發一次隔離的 public PyPI/npm retry。401/403、TLS/certificate、
+404/package absence、rate limit、solver/build 與本機權限錯誤一律不 fallback。
+
+corporate 與 public index 不會同時配置；每次嘗試只在 child process 清除額外
+index/registry，保留 parent shell 與 cache，並明確顯示 retry。切換模式時也只
+清除舊版 repo 會產生的已知 endpoint 值；其他 user/IT 值都保留，`local.ps1`
+仍是互動式 shell 最後套用的 override。
 
 ## Television（tv）channels
 

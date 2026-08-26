@@ -41,6 +41,9 @@ $ErrorActionPreference = 'Stop'
 # fragment is not loaded here. Apply the same source policy inline before uv
 # resolves tomlkit: managed machines must use the IT-approved pull-through feed.
 {{ template "package-sources.ps1" . }}
+$managedMachine = {{ if .managedMachine }}$true{{ else }}$false{{ end }}
+$allowPublicPackageFallback = {{ if (get . "allowPublicPackageFallback") }}$true{{ else }}$false{{ end }}
+{{ include "scripts/package-source-runner.ps1" }}
 
 # Emit bytes verbatim so nothing re-encodes the config's ⭐ / box-drawing glyphs
 # and no BOM or trailing CRLF churn creeps into chezmoi's diff.
@@ -65,6 +68,7 @@ $tmplFile = Join-Path $tmpDir "herdr-tmpl-$stamp.toml"
 $liveFile = Join-Path $tmpDir "herdr-live-$stamp.toml"
 $pyFile = Join-Path $tmpDir "herdr-merge-$stamp.py"
 $outFile = Join-Path $tmpDir "herdr-out-$stamp.toml"
+$cleanupTempFiles = $true
 
 try {
     [System.IO.File]::WriteAllText($tmplFile, $templateText, $utf8)
@@ -73,12 +77,15 @@ try {
     # Pick a Python. uv is in this repo's scoop package set; `python` is the
     # uv-managed default install (--default --preview creates the unversioned shim).
     $py = $null
-    if (Get-Command uv -ErrorAction SilentlyContinue) {
-        $py = @('uv', 'run', '--no-project', '--quiet', '--with', 'tomlkit', '--python', '>=3.11', 'python')
-    } elseif (Get-Command python -ErrorAction SilentlyContinue) {
-        $py = @('python')
-    } elseif (Get-Command python3 -ErrorAction SilentlyContinue) {
-        $py = @('python3')
+    $pyUsesPackageRunner = $false
+    $systemPythonCommand = Get-Command python, python3 -CommandType Application -All -ErrorAction SilentlyContinue |
+        Where-Object Source -NotLike '*\WindowsApps\python*.exe' | Select-Object -First 1
+    $uvCommand = Get-Command uv -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($uvCommand) {
+        $py = @($uvCommand.Source, 'run', '--no-project', '--quiet', '--with', 'tomlkit', '--python', '>=3.11', 'python')
+        $pyUsesPackageRunner = $true
+    } elseif ($systemPythonCommand) {
+        $py = @($systemPythonCommand.Source)
     }
 
     if (-not $py) {
@@ -110,9 +117,7 @@ except ModuleNotFoundError:
     try:
         import tomli as tomllib
     except ModuleNotFoundError:
-        # No TOML reader -> can't safely merge; ship the managed template as-is.
-        emit(template_text)
-        sys.exit(0)
+        tomllib = None
 
 try:
     import tomlkit
@@ -135,8 +140,15 @@ with open(live_path, "r", encoding="utf-8") as fh:
 
 doc = tomlkit.parse(template_text)  # base, with comments intact
 try:
-    live = tomllib.loads(live_text) if live_text else {}
-except tomllib.TOMLDecodeError:
+    if not live_text:
+        live = {}
+    elif tomllib is not None:
+        live = tomllib.loads(live_text)
+    else:
+        # Python 3.10 may have tomlkit but no tomllib/tomli. Reuse tomlkit's
+        # parser rather than discarding otherwise-preservable runtime state.
+        live = tomlkit.parse(live_text).unwrap()
+except Exception:
     # A corrupt live file must not block the apply — enforce the template.
     print("modify_config.toml: live config is not valid TOML; enforcing template", file=sys.stderr)
     live = {}
@@ -164,14 +176,34 @@ emit(tomlkit.dumps(doc))
 
     [System.IO.File]::WriteAllText($pyFile, $pySource, $utf8)
 
-    $env:HERDR_TEMPLATE_FILE = $tmplFile
-    $env:HERDR_LIVE_FILE = $liveFile
-    $env:HERDR_OUT_FILE = $outFile
-
+    $childEnvironment = @{
+        HERDR_TEMPLATE_FILE = $tmplFile
+        HERDR_LIVE_FILE = $liveFile
+        HERDR_OUT_FILE = $outFile
+    }
     $exe = $py[0]
-    $rest = @($py[1..($py.Count - 1)]) + @($pyFile)
-    & $exe @rest
-    $rc = $LASTEXITCODE
+    $rest = if ($py.Count -gt 1) { @($py[1..($py.Count - 1)]) + @($pyFile) } else { @($pyFile) }
+    if ($pyUsesPackageRunner) {
+        $result = Invoke-PackageSourceCommand -Manager uv -Executable $exe -Arguments $rest `
+            -Operation herdr-tomlkit -ManagedMachine $managedMachine `
+            -AllowPublicFallback $allowPublicPackageFallback -AdditionalEnvironment $childEnvironment `
+            -OutputMode StandardError
+        $rc = $result.ExitCode
+        if ($rc -ne 0 -and $systemPythonCommand -and $result.ProcessTerminated) {
+            [Console]::Error.WriteLine('modify_config.toml: uv failed; retrying with system Python')
+            Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue
+            $result = Invoke-CapturedPackageProcess -Executable $systemPythonCommand.Source -Arguments @($pyFile) `
+                -Environment $childEnvironment -OutputMode StandardError
+            $rc = $result.ExitCode
+        } elseif ($rc -ne 0 -and -not $result.ProcessTerminated) {
+            $cleanupTempFiles = $false
+            [Console]::Error.WriteLine('modify_config.toml: uv process did not terminate cleanly; fallback and temporary-file cleanup suppressed')
+        }
+    } else {
+        $result = Invoke-CapturedPackageProcess -Executable $exe -Arguments $rest `
+            -Environment $childEnvironment -OutputMode StandardError
+        $rc = $result.ExitCode
+    }
 
     if ($rc -ne 0 -or -not (Test-Path -LiteralPath $outFile)) {
         [Console]::Error.WriteLine("modify_config.toml: merge failed (exit $rc); emitting managed template")
@@ -181,10 +213,9 @@ emit(tomlkit.dumps(doc))
 
     Write-StdoutBytes ([System.IO.File]::ReadAllBytes($outFile))
 } finally {
-    foreach ($f in $tmplFile, $liveFile, $pyFile, $outFile) {
-        Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
-    }
-    foreach ($v in 'HERDR_TEMPLATE_FILE', 'HERDR_LIVE_FILE', 'HERDR_OUT_FILE') {
-        Remove-Item "env:$v" -ErrorAction SilentlyContinue
+    if ($cleanupTempFiles) {
+        foreach ($f in $tmplFile, $liveFile, $pyFile, $outFile) {
+            Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
+        }
     }
 }

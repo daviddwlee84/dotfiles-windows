@@ -33,9 +33,10 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   apps, npm = AI agents, PSGallery = PSFzf/AudioDeviceCmdlets. Fault-tolerant: one
   failed package is collected + reported, never aborts the apply.
 - Package sources are defined once in `.chezmoitemplates/package-sources.ps1` and
-  reused by the installer and `profile.d/05_mirrors.ps1`: managed machines
-  use company PyPI/npm pull-through registries; otherwise the China-mirror toggle
-  selects GFW mirrors. Managed-machine policy wins if both toggles are true.
+  reused by the installer and `profile.d/05_mirrors.ps1`: managed machines use
+  company PyPI/npm pull-through registries; otherwise the China-mirror toggle
+  selects GFW mirrors. Managed policy wins. An independent, default-off public
+  fallback retries only eligible repo-owned npm/uv commands once.
 - Install ≠ upgrade: `chezmoi apply` only installs what's missing; upgrade via
   `just upgrade-scoop` / `just upgrade-winget`.
 
@@ -72,7 +73,7 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 - role: **{{ .role }}**
 - Coding agents: {{ .installCodingAgents }} · Agent sounds: {{ .agentSounds }} · SpecStory build (PR #191): {{ .installSpecstoryBuild }} · GUI apps: {{ .installWindowsApps }} · WSL2 (Docker backend): {{ .installWsl }} · WSL Ubuntu: {{ .installWslUbuntu }} · Utility apps: {{ .installUtilityApps }} · Gaming: {{ .installGamingApps }}
 - Extra runtimes: {{ .installExtraRuntimes }} · Media: {{ .installMediaTools }} · LLM: {{ .installLlmTools }} · Tunnel: {{ .installTunnelTools }} · IaC: {{ .installIacTools }} · OpenSSH: {{ .installSshServer }} · herdr: {{ .installHerdr }} · Clink(cmd): {{ .installClink }} · try: {{ .installTry }} · translate: {{ .installTranslate }} · Rime/Weasel: {{ .installInputMethod }}
-- China mirrors: {{ .useChineseMirror }} · Backup mode: {{ .backupMode }} · Vim mode: {{ .enableVimMode }} · Managed machine: {{ .managedMachine }}
+- China mirrors: {{ .useChineseMirror }} · Managed machine: {{ .managedMachine }} · Public package fallback: {{ get . "allowPublicPackageFallback" | default false }} · Backup mode: {{ .backupMode }} · Vim mode: {{ .enableVimMode }}
 
 ## just recipes
 `just --list`: `apply`/`diff`/`update`, `upgrade-scoop`/`upgrade-winget`/`upgrade-translate`, `lint`/`test`,

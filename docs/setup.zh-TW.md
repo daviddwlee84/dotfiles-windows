@@ -60,7 +60,7 @@ powershell -ExecutionPolicy Bypass -File "%TEMP%\bootstrap.ps1"
 !!! warning "在 GFW 後面"
     bootstrap 期間請開著 VPN —— scoop 會從 **GitHub releases** 下載
     git / pwsh / chezmoi / uv。`China mirrors` 選項只在執行期重導
-    pip / npm / cargo / go / node，**不涵蓋** scoop 自己的下載。
+    pip/uv、npm、RubyGems、Go 與 rustup，**不涵蓋** scoop 自己的下載。
 
 ## 初始化提問
 
@@ -79,7 +79,7 @@ powershell -ExecutionPolicy Bypass -File "%TEMP%\bootstrap.ps1"
 | WSL Ubuntu bootstrap | `headless` | dotfiles 安裝模式：`headless`（從 Windows 凍結）/`interactive`/`none` |
 | Utility apps | 開（workstation） | CPU-Z、GPU-Z、TreeSize、VLC、Everything、ShareX、HWiNFO |
 | Gaming apps | 關 | Steam |
-| Extra runtimes | 開（workstation） | 透過 mise 安裝 rust、go、ruby（node/bun/uv 為基本內建） |
+| Extra runtimes | 開（workstation） | 透過 Scoop 安裝 rustup、go、ruby（node/bun/uv 為基本內建） |
 | Media CLIs | 關 | ffmpeg、imagemagick |
 | Local LLM tools | 關 | Ollama、LiteLLM |
 | Tunnel tools | 關 | ngrok、cloudflared |
@@ -90,8 +90,9 @@ powershell -ExecutionPolicy Bypass -File "%TEMP%\bootstrap.ps1"
 | try（暫時性 workspace） | 關 | Ruby CLI（`gem try-cli`）：以日期命名的試驗目錄 + 模糊選擇器；pwsh 指令為 `tri` |
 | translate | 開（workstation） | 終端機翻譯 CLI + TUI，用 `go install` 從原始碼編（第一次要編好幾分鐘） |
 | Rime 輸入法（小狼毫） | 關 | 繁體中文輸入法。安裝程式是 machine scope —— 會跳 UAC；並把共用的 Rime `*.custom.yaml` 部署到 `%APPDATA%\Rime` |
-| China mirrors | 關 | pip / npm / cargo / go / node 走 GFW 鏡像 |
+| China mirrors | 關 | pip/uv、npm、RubyGems、Go 與 rustup 走 GFW 鏡像 |
 | Managed machine | 關 | 使用公司 PyPI/npm registry，並略過 org 政策常擋的 app（Tailscale、Grammarly） |
+| Public package fallback | 關 | 受管機器的公司 PyPI/npm 發生符合條件的暫時性錯誤時，以隔離的 public source 重試一次 |
 | Backup mode | `smart` | 首次 apply 前備份既有檔案（`smart`/`full`/`off`） |
 | PSReadLine vi mode | 開 | shell 的 vi 編輯模式 |
 
