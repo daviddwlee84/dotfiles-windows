@@ -1,4 +1,7 @@
 {
+  "language": "en",
+  "lineLayout": "expanded",
+  "showSeparators": false,
   "display": {
     "showModel": true,
     "showProject": true,
@@ -7,9 +10,13 @@
     "showConfigCounts": true,
     "showTokenBreakdown": true,
     "showUsage": true,
+    "usageBarEnabled": true,
     "showResetLabel": true,
+    "usageCompact": false,
     "showCost": true,
+    "showRoutedCost": true,
     "showDuration": true,
+    "showSpeed": true,
     "showTools": true,
     "showSkills": true,
     "showMcp": true,
@@ -22,6 +29,8 @@
     "showMemoryUsage": true,
     "showPromptCache": true,
     "showClaudeCodeVersion": true,
+    "showSessionStartDate": true,
+    "showLastResponseAt": true,
     "showCompactions": true,
     "showAdvisor": true
   },

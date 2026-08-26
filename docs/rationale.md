@@ -160,7 +160,11 @@ chezmoi-ignored overlays (`editors/*.json`, `claude/settings-overlay.json`,
 preserving every key the tool wrote outside the managed leaves. The Claude
 merger handles settings and HUD config as two independent, fail-closed
 transactions and commits validated BOM-free JSON through same-directory atomic
-replacement while preserving Windows metadata. A byte precondition rejects stale
+replacement while preserving Windows metadata. For claude-hud 0.8.0, chezmoi
+merges only the shared `plugins/claude-hud/config.json` base. The plugin then
+layers the optional per-config `$CLAUDE_CONFIG_DIR/claude-hud.json` over that
+base; this manual override may intentionally shadow managed leaves and is never
+read, normalized or deleted by chezmoi. A byte precondition rejects stale
 read-modify-write results, so malformed input, a concurrent live edit, or a failed
 write on one target cannot damage or block the other. This is invariant #5 in `AGENTS.md`.
 

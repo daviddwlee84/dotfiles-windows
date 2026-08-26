@@ -152,10 +152,13 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
   `run_onchange` 合併腳本（`.chezmoiscripts/run_onchange_after_25_claude_settings.ps1.tmpl`）
   會彼此獨立地深度合併 `~/.claude/settings.json` 與穩定路徑
   `~/.claude/plugins/claude-hud/config.json`，各自保留只存在於 live 檔的狀態。後者會
-  強制套用 **claude-hud 0.7.1 所定義的 Full preset**（活動、token/usage/cost、session、
-  memory/cache/version 等資訊），但色彩、版面、threshold、provider/auth 與未來新增的 key
-  仍由使用者擁有。外掛會在首次啟動時從 marketplace 自動安裝；受 guard 保護的 Git Bash
-  status-line command 使用 scoop 的 `node`，在 plugin cache 尚未出現前會安靜地 no-op。
+  強制套用 **claude-hud 0.8.0 的受管 Full policy**：英文標籤、Expanded 版面、非 compact
+  usage bar、活動資訊，以及 token/usage/cost/speed/session 時間戳、memory/cache/version
+  與 Git/Jujutsu 狀態。自訂文字、auth/provider、排序、色彩、threshold、時間/model 格式、
+  external usage path 與未來新增的 key 仍由使用者擁有。選用的
+  `~/.claude/claude-hud.json` per-config override 永遠不會被修改，並可刻意遮蔽受管 base。
+  外掛會在首次啟動時從 marketplace 自動安裝；受 guard 保護的 Git Bash status-line
+  command 使用 scoop 的 `node`，在 plugin cache 尚未出現前會安靜地 no-op。
   settings overlay 也會啟用 `pyright-lsp`，並設定 `permissions.defaultMode: auto` 與
   `skipDangerousModePermissionPrompt`。執行 `chezmoi apply` 後請**重啟 Claude Code**以載入
   新安裝的外掛。參見[同時執行多個代理](claude-code-agents.zh-TW.md)。

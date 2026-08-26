@@ -133,7 +133,10 @@ chezmoi 忽略的 overlays（`editors/*.json`、`claude/settings-overlay.json`�
 `claude/hud-full-overlay.json`，經 `{{ include }}` 內嵌）遞迴深度合併進 live 檔 ——
 除了明確受管的 leaves 外，都保留工具寫入的 key。Claude merger 會把 settings 與 HUD
 config 當成兩個彼此獨立、fail-closed 的 transaction，先驗證 BOM-free JSON，再透過同一
-目錄、保留 Windows metadata 的 atomic replacement 提交。byte precondition 會拒絕 stale
+目錄、保留 Windows metadata 的 atomic replacement 提交。claude-hud 0.8.0 下，chezmoi
+只合併共用的 `plugins/claude-hud/config.json` base；外掛再把選用的 per-config
+`$CLAUDE_CONFIG_DIR/claude-hud.json` 疊在 base 上。這個手動 override 可以刻意遮蔽受管
+leaves，chezmoi 永遠不會讀取、正規化或刪除它。byte precondition 會拒絕 stale
 read-modify-write 結果；其中一個 target 的輸入損壞、同時發生的 live edit 或寫入失敗，
 不會破壞或阻擋另一個。
 這就是 `AGENTS.md` 的 invariant #5。

@@ -159,12 +159,16 @@ Enabled by **Install coding agents**:
   `run_onchange` merger (`.chezmoiscripts/run_onchange_after_25_claude_settings.ps1.tmpl`)
   independently deep-merges `~/.claude/settings.json` and the stable
   `~/.claude/plugins/claude-hud/config.json`, preserving live-only state in each.
-  The latter enforces the documented **Full preset as of claude-hud 0.7.1**
-  (activity plus token/usage/cost/session/memory/cache/version indicators) while
-  leaving advanced colors, layout, thresholds, provider/auth fields and future
-  keys user-owned. The plugin self-installs from its marketplace on first launch;
-  its guarded Git Bash status-line command runs with scoop's `node` and silently
-  no-ops until the plugin cache exists. The settings overlay also enables
+  The latter enforces the managed **Full policy for claude-hud 0.8.0**: English
+  labels, Expanded layout, a non-compact usage bar, activity plus
+  token/usage/cost/speed/session timestamps/memory/cache/version indicators, and
+  Git/Jujutsu state. Custom text, auth/provider fields, ordering, colors,
+  thresholds, time/model formatting, external usage paths and future keys remain
+  user-owned. The optional `~/.claude/claude-hud.json` per-config override is
+  never touched and can intentionally shadow the managed base. The plugin
+  self-installs from its marketplace on first launch; its guarded Git Bash
+  status-line command runs with scoop's `node` and silently no-ops until the
+  plugin cache exists. The settings overlay also enables
   `pyright-lsp` and sets `permissions.defaultMode: auto` plus
   `skipDangerousModePermissionPrompt`. **Restart Claude Code** after
   `chezmoi apply` to load a newly installed plugin. See

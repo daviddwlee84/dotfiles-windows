@@ -270,7 +270,7 @@ function Update-ClaudeHudConfig {
         [Parameter(Mandatory)] [string] $OverlayJson
     )
 
-    $overlay = ConvertFrom-JsonObjectText -Text $OverlayJson -Label 'managed claude-hud Full 0.7.1 overlay'
+    $overlay = ConvertFrom-JsonObjectText -Text $OverlayJson -Label 'managed claude-hud Full 0.8.0 overlay'
     $hudPath = Join-Path $ClaudeDir 'plugins\claude-hud\config.json'
     $hudTargetPath = Resolve-JsonTargetPath -Path $hudPath
     $hudExisted = Test-Path -LiteralPath $hudTargetPath
@@ -280,7 +280,7 @@ function Update-ClaudeHudConfig {
     Merge-JsonObject -Base $config -Overlay $overlay
     $changed = Write-JsonObjectAtomically -Path $hudPath -Value $config `
         -ExpectedExists $hudExisted -ExpectedBytes $hudBytes
-    if ($changed) { Write-Host "claude-hud Full overlay -> $hudPath" }
+    if ($changed) { Write-Host "claude-hud Full 0.8.0 overlay -> $hudPath" }
 }
 
 # Respect CLAUDE_CONFIG_DIR for both targets, matching Claude Code and claude-hud.

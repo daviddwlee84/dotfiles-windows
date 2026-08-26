@@ -72,7 +72,7 @@ BeforeAll {
 }
 
 Describe 'Claude settings and HUD overlays' {
-    It 'creates settings and the Full 0.7.1 HUD policy from empty state' {
+    It 'creates settings and the Full 0.8.0 HUD policy from empty state' {
         $configDir = New-TestConfigDir
         $result = Invoke-ClaudeSettingsScript -ConfigDir $configDir
 
@@ -93,16 +93,21 @@ Describe 'Claude settings and HUD overlays' {
         $settings.hooks.Contains('SubagentStop') | Should -BeFalse
 
         $hud = Read-StrictJson $hudPath
+        $hud.language | Should -BeExactly 'en'
+        $hud.lineLayout | Should -BeExactly 'expanded'
+        $hud.showSeparators | Should -BeFalse
         foreach ($key in @(
             'showModel', 'showProject', 'showAddedDirs', 'showContextBar',
-            'showConfigCounts', 'showTokenBreakdown', 'showUsage', 'showResetLabel',
-            'showCost', 'showDuration', 'showTools', 'showSkills', 'showMcp',
-            'showAgents', 'showTodos', 'showSessionName', 'showSessionTokens',
-            'showEffortLevel', 'showOutputStyle', 'showMemoryUsage',
-            'showPromptCache', 'showClaudeCodeVersion', 'showCompactions', 'showAdvisor'
+            'showConfigCounts', 'showTokenBreakdown', 'showUsage', 'usageBarEnabled',
+            'showResetLabel', 'showCost', 'showRoutedCost', 'showDuration', 'showSpeed',
+            'showTools', 'showSkills', 'showMcp', 'showAgents', 'showTodos',
+            'showSessionName', 'showSessionTokens', 'showEffortLevel', 'showOutputStyle',
+            'showMemoryUsage', 'showPromptCache', 'showClaudeCodeVersion',
+            'showSessionStartDate', 'showLastResponseAt', 'showCompactions', 'showAdvisor'
         )) {
-            $hud.display[$key] | Should -BeTrue -Because "$key is part of Full 0.7.1"
+            $hud.display[$key] | Should -BeTrue -Because "$key is part of Full 0.8.0"
         }
+        $hud.display.usageCompact | Should -BeFalse
         $hud.gitStatus.enabled | Should -BeTrue
         $hud.gitStatus.showDirty | Should -BeTrue
         $hud.gitStatus.showAheadBehind | Should -BeFalse
@@ -117,13 +122,20 @@ Describe 'Claude settings and HUD overlays' {
         $hudDir = Join-Path $configDir 'plugins/claude-hud'
         New-Item -ItemType Directory -Force -Path $hudDir | Out-Null
         $live = [ordered]@{
-            language = 'zh-CN'
+            language = 'zh-Hant'
             lineLayout = 'compact'
+            showSeparators = $true
             display = [ordered]@{
                 showTools = $false
-                showRoutedCost = $true
-                showSpeed = $true
+                showRoutedCost = $false
+                showSpeed = $false
+                usageBarEnabled = $false
+                usageCompact = $true
+                showSessionStartDate = $false
+                showLastResponseAt = $false
                 showAuth = $true
+                effortFormat = 'symbol'
+                providerName = 'keep-provider'
                 promptCacheTtlSeconds = 42
                 customLine = 'keep me'
             }
@@ -137,13 +149,20 @@ Describe 'Claude settings and HUD overlays' {
         $result.ExitCode | Should -Be 0
         $hud = Read-StrictJson (Join-Path $hudDir 'config.json')
 
+        $hud.language | Should -BeExactly 'en'
+        $hud.lineLayout | Should -BeExactly 'expanded'
+        $hud.showSeparators | Should -BeFalse
         $hud.display.showTools | Should -BeTrue
-        $hud.gitStatus.enabled | Should -BeTrue
-        $hud.language | Should -BeExactly 'zh-CN'
-        $hud.lineLayout | Should -BeExactly 'compact'
         $hud.display.showRoutedCost | Should -BeTrue
         $hud.display.showSpeed | Should -BeTrue
+        $hud.display.usageBarEnabled | Should -BeTrue
+        $hud.display.usageCompact | Should -BeFalse
+        $hud.display.showSessionStartDate | Should -BeTrue
+        $hud.display.showLastResponseAt | Should -BeTrue
+        $hud.gitStatus.enabled | Should -BeTrue
         $hud.display.showAuth | Should -BeTrue
+        $hud.display.effortFormat | Should -BeExactly 'symbol'
+        $hud.display.providerName | Should -BeExactly 'keep-provider'
         $hud.display.promptCacheTtlSeconds | Should -Be 42
         $hud.display.customLine | Should -BeExactly 'keep me'
         $hud.gitStatus.showFileStats | Should -BeFalse
@@ -151,6 +170,23 @@ Describe 'Claude settings and HUD overlays' {
         $hud.colors.model | Should -BeExactly 'brightRed'
         $hud.colors.custom | Should -Be 123
         $hud.futurePluginState.nested | Should -BeExactly 'preserve-me'
+    }
+
+    It 'leaves the per-config HUD override byte-for-byte untouched' {
+        $configDir = New-TestConfigDir
+        $overridePath = Join-Path $configDir 'claude-hud.json'
+        [byte[]] $overrideBytes = $Utf8.GetBytes("{`r`n  `"display`": { `"customLine`": `"shadow managed base`" }`r`n}")
+        [IO.File]::WriteAllBytes($overridePath, $overrideBytes)
+
+        $result = Invoke-ClaudeSettingsScript -ConfigDir $configDir
+
+        $result.ExitCode | Should -Be 0
+        $result.Stderr | Should -BeNullOrEmpty
+        Assert-ExactBytes -Actual ([IO.File]::ReadAllBytes($overridePath)) -Expected $overrideBytes
+        $hud = Read-StrictJson (Join-Path $configDir 'plugins/claude-hud/config.json')
+        $hud.language | Should -BeExactly 'en'
+        $hud.lineLayout | Should -BeExactly 'expanded'
+        $hud.display.showTools | Should -BeTrue
     }
 
     It 'preserves foreign Claude settings and hooks while adding managed entries' {
