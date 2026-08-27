@@ -39,7 +39,7 @@ function Get-PackageFailureClass {
     $lines = @($text -split "`r?`n")
     $corporateSegments = [Collections.Generic.List[string]]::new()
     $corporateHostPattern = '(?i)(?<![A-Za-z0-9.-])(?:packagefeedproxy\.microsoft\.io|[A-Za-z0-9-]+\.pkgs\.visualstudio\.com)(?=[:/\s]|$)'
-    $failureMarkerPattern = '(?i)(?:failed|failure|error|request(?:ing)?\s+(?:to|from)|could not|cannot|timed out|timeout|caused by)'
+    $failureMarkerPattern = '(?i)(?:failed|failure|error|\bERR!?\b|request(?:ing)?\s+(?:to|from)|could not|cannot|timed out|timeout|caused by)'
     for ($index = 0; $index -lt $lines.Count; $index++) {
         if ($lines[$index] -match $corporateHostPattern -and
             $lines[$index] -match $failureMarkerPattern -and

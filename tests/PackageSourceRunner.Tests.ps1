@@ -75,6 +75,7 @@ Describe 'package source runner' {
         $script:ArgumentLog = Join-Path $TestDrive 'arguments.log'
         $script:ConfigLog = Join-Path $TestDrive 'configs.log'
         $script:ConfigContentLog = Join-Path $TestDrive 'config-content.log'
+        Remove-Item $script:ArgumentLog, $script:ConfigLog, $script:ConfigContentLog -Force -ErrorAction SilentlyContinue
         New-FakeNpmCommand -Path $script:FakeNpm
     }
 

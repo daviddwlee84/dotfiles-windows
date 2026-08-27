@@ -1537,6 +1537,7 @@ Describe 'Copilot module' {
                 Mock Test-Path { $true }
                 Mock Stop-Process {}
                 Mock Start-Process { [pscustomobject]@{ Id = 9001 } }
+                Mock Start-CopilotProcessWatcher {}
                 Mock Set-Content {}
                 Start-CopilotShim | Should -BeTrue
                 Should -Invoke Stop-Process -Times 1 -Exactly -ParameterFilter { $Id -eq 4242 }
@@ -1549,6 +1550,7 @@ Describe 'Copilot module' {
                 Mock Test-CopilotShimAlive { $script:spawned -eq $true }
                 Mock Get-Command { [pscustomobject]@{ Source = 'bun' } } -ParameterFilter { $Name -eq 'bun' }
                 Mock Test-Path { $true }
+                Mock Start-CopilotProcessWatcher {}
                 Mock Set-Content {}
                 $script:spawned = $false
                 $script:seenPort = $null
