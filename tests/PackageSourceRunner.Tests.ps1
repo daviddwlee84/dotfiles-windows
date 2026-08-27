@@ -69,13 +69,14 @@ exit /b 1
     }
 }
 
-BeforeEach {
-    $script:FakeNpm = Join-Path $TestDrive 'fake-npm.cmd'
-    $script:ArgumentLog = Join-Path $TestDrive 'arguments.log'
-    $script:ConfigLog = Join-Path $TestDrive 'configs.log'
-    $script:ConfigContentLog = Join-Path $TestDrive 'config-content.log'
-    New-FakeNpmCommand -Path $script:FakeNpm
-}
+Describe 'package source runner' {
+    BeforeEach {
+        $script:FakeNpm = Join-Path $TestDrive 'fake-npm.cmd'
+        $script:ArgumentLog = Join-Path $TestDrive 'arguments.log'
+        $script:ConfigLog = Join-Path $TestDrive 'configs.log'
+        $script:ConfigContentLog = Join-Path $TestDrive 'config-content.log'
+        New-FakeNpmCommand -Path $script:FakeNpm
+    }
 
 Describe 'package failure classification' {
     It 'allows only approved transient classes' {
@@ -236,4 +237,5 @@ Describe 'source argument isolation' {
             [Environment]::SetEnvironmentVariable($scopedName, $previousAuth, 'Process')
         }
     }
+}
 }

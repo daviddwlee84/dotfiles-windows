@@ -105,10 +105,10 @@ function script:Get-CopilotTmp     { if ($env:TEMP) { $env:TEMP } else { [System
 function script:Get-CopilotLogFile { Join-Path (Get-CopilotTmp) "copilot-api-$(Get-CopilotPort).log" }
 function script:Rotate-CopilotLog {
     param([Parameter(Mandatory)] [string] $Path)
-    if (-not (Test-Path -LiteralPath $Path)) { return }
+    if (-not [System.IO.File]::Exists($Path)) { return }
     Remove-Item "$Path.3" -Force -ErrorAction SilentlyContinue
-    if (Test-Path -LiteralPath "$Path.2") { Move-Item -LiteralPath "$Path.2" -Destination "$Path.3" -Force }
-    if (Test-Path -LiteralPath "$Path.1") { Move-Item -LiteralPath "$Path.1" -Destination "$Path.2" -Force }
+    if ([System.IO.File]::Exists("$Path.2")) { Move-Item -LiteralPath "$Path.2" -Destination "$Path.3" -Force }
+    if ([System.IO.File]::Exists("$Path.1")) { Move-Item -LiteralPath "$Path.1" -Destination "$Path.2" -Force }
     Move-Item -LiteralPath $Path -Destination "$Path.1" -Force
 }
 function script:Get-CopilotPidFile { Join-Path (Get-CopilotTmp) "copilot-api-$(Get-CopilotPort).pid" }

@@ -131,7 +131,8 @@ Describe 'Package installer regressions' {
     }
 
     It 'does not implicitly upgrade already-installed npm agents during apply' {
-        $package | Should -Match 'npm root -g'
+        $package | Should -Match 'Get-NpmGlobalExecutionContext'
+        $package | Should -Match '\$npm\.Root'
         $package | Should -Match '\$packageManifest'
         $package | Should -Match 'already installed -- skipping'
         $package | Should -Match 'just upgrade-npm-agents'
