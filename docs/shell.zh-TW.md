@@ -263,11 +263,40 @@ ssh-setup-remote user@hostname
 
 - 公鑰是透過 `ssh … -EncodedCommand …`（base64 UTF-16LE）在遠端執行一小段 PowerShell
   程式附加上去的，這樣沿途不會有任何環節把引號搞亂。
-- **也會偵測遠端是不是 Windows**（先試 `uname -s` 失敗，再用 PowerShell 探測回答）。
-  若該帳號屬於遠端的 Administrators 群組，sshd 預設的 `Match Group administrators`
-  規則**只會**讀取 `C:\ProgramData\ssh\administrators_authorized_keys`——寫進
-  `~/.ssh/authorized_keys` 的金鑰會被悄悄忽略——所以精靈會先詢問才寫入該檔案，並把它的
-  ACL 重設為僅 Administrators+SYSTEM（sshd 會拒絕權限更寬鬆的檔案）。
+- **也會偵測遠端是不是 Windows。** 若該帳號屬於遠端的 Administrators 群組，sshd 預設的
+  `Match Group administrators` 規則**只會**讀取
+  `C:\ProgramData\ssh\administrators_authorized_keys`——寫進 `~/.ssh/authorized_keys`
+  的金鑰會被悄悄忽略——所以精靈會寫入該檔案，並把它的 ACL 重設為僅
+  Administrators+SYSTEM（sshd 會拒絕權限更寬鬆的檔案）。
+
+### 為什麼是減少連線次數，而不是連線多工
+
+Unix 那一側會為每一跳開一個 `ControlMaster`，讓整條鏈每跳只需輸入一次密碼。
+**這在 Windows 上做不到**：Windows OpenSSH 客戶端不支援 `ControlMaster` /
+`ControlPath`（`ssh -o ControlPath=… -O check` 會回
+`getsockname failed: Not a socket`，詳見
+`pitfalls/win32-openssh-no-connection-multiplexing.md`）。不要加這些選項，它們沒有作用。
+
+真正能動的只有「減少連線次數」，所以探測會跟安裝合併成同一次連線：
+
+| 遠端 | 第 1 步所需連線數 |
+|---|---|
+| POSIX | 1 —— `uname -s` 併進 `authorized_keys` 的附加指令前面 |
+| Windows | 2 —— 先試 POSIX，再用一支 PowerShell 程式同時完成 Administrators 判定**與**安裝 |
+
+這也是為什麼 `administrators_authorized_keys` 的問題改成**一開始就問**、而且用條件句
+描述，而不是夾在探測與安裝中間：本機的回答只是一個*策略*，遠端會再和該帳號真正的群組
+成員身分做 AND。因此在非管理員的機器上回答「是」是安全的。
+
+### 某一跳失敗時
+
+金鑰安裝失敗不再中止該跳剩下的步驟。它會跳過金鑰對複製——把私鑰推到一台連驗證都過不了
+的機器上毫無意義——但仍然會提供**本機** `~/.ssh/config` 的編輯，這件事不論遠端連不連得
+上都有用。`ssh` 自己的 stderr 會被印出來而不是丟掉，所以連線層的錯誤會直接說明原因，而
+不是偽裝成「無法辨識遠端作業系統」。
+
+有真正的主控台時，提示會走 `Read-Host`（因此經過 PSReadLine），方向鍵是移動游標而不是
+插入跳脫序列；stdin 被重導時則退回原本的讀取方式。
 
 環境變數（與 Unix 側同名）：`SSH_SETUP_ASSUME_YES=1` 讓每個提示都取預設值、
 `SSH_SETUP_KEY=<path>` 跳過金鑰選擇、`SSH_CFG_ROOT`／`SSH_SETUP_HOME` 可改指到別的設定

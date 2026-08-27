@@ -37,6 +37,17 @@ function script:Read-SshSetupAnswer {
         Write-Host "$Prompt(default)"
         return ''
     }
+    # Read-Host goes through PSReadLine, so arrow keys move the cursor instead
+    # of inserting a literal escape sequence. It needs a real console: under a
+    # redirected stdin (the Pester suite, a piped run) fall back to the raw
+    # reader, which is what this used to do unconditionally.
+    if (-not [Console]::IsInputRedirected) {
+        try {
+            return [string](Read-Host -Prompt $Prompt.TrimEnd())
+        } catch {
+            Write-Verbose "Read-SshSetupAnswer: Read-Host unavailable ($_); using Console.In"
+        }
+    }
     Write-Host $Prompt -NoNewline
     $answer = [Console]::In.ReadLine()
     if ($null -eq $answer) { return '' }
@@ -288,11 +299,32 @@ function script:Invoke-SshConfigQuery {
     return @(& ssh -G $Target 2>$null)
 }
 
+# stderr is KEPT, not sent to $null: a hard transport failure (ssh exits 255 --
+# bad auth, unresolvable host, a ControlPath over the 104-byte sockaddr_un
+# limit) otherwise looks exactly like "the remote said nothing", which is how
+# the Unix twin managed to report a dead connection as an unidentifiable OS.
+$script:SshSetupLastExit = 0
+$script:SshSetupLastError = ''
+$script:SshSetupStep1Ok = $true
+
 function script:Invoke-SshRemote {
     param([Parameter(Mandatory)][string]$Dest, [string[]]$SshArgs = @(), [Parameter(Mandatory)][string]$Command)
-    $out = & ssh @SshArgs $Dest $Command 2>$null
+    $err = @()
+    $out = & ssh @SshArgs $Dest $Command 2>&1 |
+        Where-Object {
+            if ($_ -is [System.Management.Automation.ErrorRecord]) { $err += [string]$_; $false } else { $true }
+        }
     $script:SshSetupLastExit = $LASTEXITCODE
+    $script:SshSetupLastError = ($err -join [Environment]::NewLine)
     return @($out)
+}
+
+# Print the last transport error, indented, if there was one.
+function script:Show-SshSetupError {
+    if ([string]::IsNullOrWhiteSpace($script:SshSetupLastError)) { return }
+    foreach ($line in ($script:SshSetupLastError -split "`r?`n")) {
+        if ($line.Trim()) { Write-Host "    $line" }
+    }
 }
 
 # Ship a PowerShell program to the far end as -EncodedCommand (base64 UTF-16LE):
@@ -418,38 +450,34 @@ function script:Restore-SshPublicKey {
 # whoami /groups rather than IsInRole(): a non-elevated admin token carries the
 # Administrators SID as deny-only, which IsInRole reports as false, while sshd
 # still routes that session through the administrators_authorized_keys rule.
-function script:Get-SshRemoteKind {
-    param([Parameter(Mandatory)][string]$Dest, [string[]]$SshArgs = @())
-
-    $out = Invoke-SshRemote -Dest $Dest -SshArgs (@('-o', 'ConnectTimeout=15') + $SshArgs) -Command 'uname -s'
-    $first = ($out | Select-Object -First 1)
-    if ($first -match '^(Linux|Darwin|.*BSD|SunOS|AIX|CYGWIN|MINGW|MSYS)') {
-        return [pscustomobject]@{ Kind = 'posix'; Admin = $false; User = '' }
-    }
-
-    $probe = @'
-$ErrorActionPreference = 'SilentlyContinue'
-$g = (whoami /groups | Out-String)
-$a = if ($g -match 'S-1-5-32-544') { '1' } else { '0' }
-Write-Output ("windows admin=" + $a + " user=" + $env:USERNAME)
-'@
-    $out = Invoke-SshPowerShell -Dest $Dest -SshArgs (@('-o', 'ConnectTimeout=15') + $SshArgs) -Script $probe
-    foreach ($line in $out) {
-        if ($line -match 'windows\s+admin=(\d)\s+user=(.*)$') {
-            return [pscustomobject]@{ Kind = 'windows'; Admin = ($Matches[1] -eq '1'); User = $Matches[2].Trim() }
-        }
-    }
-    return [pscustomobject]@{ Kind = 'unknown'; Admin = $false; User = '' }
-}
-
+# Probe and install in as few connections as the far end allows. Windows
+# OpenSSH has no connection multiplexing (ControlMaster/ControlPath are not
+# supported -- see pitfalls/win32-openssh-no-connection-multiplexing.md), so
+# every extra round trip is another password prompt. The only lever left is to
+# make fewer of them:
+#
+#   POSIX remote   1 connection  (uname + append in one command)
+#   Windows remote 2 connections (the POSIX attempt, then one PowerShell
+#                                 program that probes AND installs)
+#
+# That is down from three, and it is why the administrators_authorized_keys
+# question is asked UP FRONT as a policy rather than in between the probe and
+# the install.
 # There is no ssh-copy-id on Windows, so even a POSIX remote is served by an
-# explicit append. grep -qxF keeps it idempotent.
+# explicit append. grep -qxF keeps it idempotent. `uname -s` rides along so a
+# POSIX host is identified and set up in a single connection.
 function script:Install-SshKeyPosix {
-    param([Parameter(Mandatory)][string]$Dest, [string[]]$SshArgs = @(), [Parameter(Mandatory)][string]$PublicKey)
+    param(
+        [Parameter(Mandatory)][string]$Dest,
+        [string[]]$SshArgs = @(),
+        [Parameter(Mandatory)][string]$PublicKey,
+        [switch]$WithProbe
+    )
     $quoted = "'" + $PublicKey.Replace("'", "'\''") + "'"
     $cmd = "umask 077; mkdir -p ~/.ssh; touch ~/.ssh/authorized_keys; " +
            "grep -qxF $quoted ~/.ssh/authorized_keys || printf '%s\n' $quoted >> ~/.ssh/authorized_keys; " +
            "echo installed:~/.ssh/authorized_keys"
+    if ($WithProbe) { $cmd = "uname -s; " + $cmd }
     return (Invoke-SshRemote -Dest $Dest -SshArgs $SshArgs -Command $cmd)
 }
 
@@ -458,16 +486,27 @@ function script:Install-SshKeyWindows {
         [Parameter(Mandatory)][string]$Dest,
         [string[]]$SshArgs = @(),
         [Parameter(Mandatory)][string]$PublicKey,
-        [switch]$UseAdminFile
+        [switch]$UseAdminFile,
+        [switch]$WithProbe
     )
     # Single quotes are doubled, not backslash-escaped, inside a PowerShell
     # '...' literal.
     $key = $PublicKey.Replace("'", "''")
     $admin = if ($UseAdminFile) { '1' } else { '0' }
+    $probeOnly = if ($WithProbe) { '1' } else { '0' }
     $tpl = @'
 $ErrorActionPreference = 'Stop'
 $key = '@@KEY@@'
-if ('@@ADMIN@@' -eq '1') {
+# whoami /groups rather than IsInRole(): a non-elevated admin token carries the
+# Administrators SID as deny-only, which IsInRole reports as false, while sshd
+# still routes that session through the administrators_authorized_keys rule.
+$g = (whoami /groups | Out-String)
+$isAdmin = $g -match 'S-1-5-32-544'
+if ('@@PROBE@@' -eq '1') {
+    Write-Output ("windows admin=" + $(if ($isAdmin) { '1' } else { '0' }) + " user=" + $env:USERNAME)
+}
+$useAdmin = $isAdmin -and ('@@ADMIN@@' -eq '1')
+if ($useAdmin) {
     $dir  = Join-Path $env:ProgramData 'ssh'
     $path = Join-Path $dir 'administrators_authorized_keys'
 } else {
@@ -483,13 +522,13 @@ if ($lines -notcontains $key) {
 } else {
     Write-Output "present:$path"
 }
-if ('@@ADMIN@@' -eq '1') {
+if ($useAdmin) {
     # sshd refuses the file unless it is owned by Administrators/SYSTEM only.
     icacls $path /inheritance:r /grant 'Administrators:F' /grant 'SYSTEM:F' | Out-Null
     Write-Output "acl:$path"
 }
 '@
-    $src = $tpl.Replace('@@KEY@@', $key).Replace('@@ADMIN@@', $admin)
+    $src = $tpl.Replace('@@KEY@@', $key).Replace('@@ADMIN@@', $admin).Replace('@@PROBE@@', $probeOnly)
     return (Invoke-SshPowerShell -Dest $Dest -SshArgs $SshArgs -Script $src)
 }
 
@@ -514,42 +553,69 @@ function script:Set-RemoteSshKeyOnHost {
 
     Write-Host ''
     Write-Host "--- Copy public key to $Hop ---"
-    $ans = Read-SshSetupAnswer 'Install the key for passwordless login? [Y/n] '
+
+    # A failure here is recorded, not fatal: step 2 is skipped (no point
+    # pushing a key pair to a host we could not authenticate to) but step 3
+    # still runs, because the local ~/.ssh/config edit is useful regardless and
+    # silently skipping it was the most confusing part of the original bug.
+    $step1Ok = $true
     $kind = 'posix'
+    $ans = Read-SshSetupAnswer 'Install the key for passwordless login? [Y/n] '
     if (Test-SshSetupYes -Answer $ans -DefaultYes) {
-        Write-Host "Probing $dest ..."
-        $probe = Get-SshRemoteKind -Dest $dest -SshArgs $sshArgs
-        $kind = $probe.Kind
-        if ($kind -eq 'unknown') {
-            Write-Host 'Could not identify the remote OS.'
-            $a = Read-SshSetupAnswer "Is $dest a Windows (OpenSSH sshd) machine? [y/N] "
-            $kind = if (Test-SshSetupYes -Answer $a) { 'windows' } else { 'posix' }
+        $pub = (Get-Content -LiteralPath ($KeyPath + '.pub') -Raw).Trim()
+
+        # Asked BEFORE any connection so the Windows path needs one round trip
+        # rather than probe-ask-install. Phrased conditionally because we do
+        # not know yet whether the remote account is an administrator.
+        Write-Host ''
+        Write-Host 'If the remote account turns out to be a Windows administrator, sshd'
+        Write-Host "reads ONLY C:\ProgramData\ssh\administrators_authorized_keys for it —"
+        Write-Host 'a key in ~/.ssh/authorized_keys would simply be ignored. That file is'
+        Write-Host 'shared by every administrator on the box.'
+        $a = Read-SshSetupAnswer 'Use administrators_authorized_keys in that case? [Y/n] '
+        $adminPolicy = Test-SshSetupYes -Answer $a -DefaultYes
+
+        Write-Host ''
+        Write-Host "> ssh $dest (probe + install)"
+
+        # Attempt 1: POSIX. `uname -s` rides along, so a Linux/macOS remote is
+        # identified and set up in a single connection.
+        $out = Install-SshKeyPosix -Dest $dest -SshArgs $sshArgs -PublicKey $pub -WithProbe
+        $posixOk = ($script:SshSetupLastExit -eq 0) -and
+                   ($out -join "`n") -match '(?m)^(Linux|Darwin|.*BSD|SunOS|AIX|CYGWIN|MINGW|MSYS)' -and
+                   ($out -join "`n") -match 'installed:'
+
+        if ($posixOk) {
+            $kind = 'posix'
+        } else {
+            # Attempt 2: Windows. One PowerShell program that probes the
+            # Administrators membership AND installs to the file that choice
+            # implies, reporting both.
+            $kind = 'windows'
+            $out = Install-SshKeyWindows -Dest $dest -SshArgs $sshArgs -PublicKey $pub `
+                       -UseAdminFile:$adminPolicy -WithProbe
+            $joined = ($out -join "`n")
+            if ($joined -match 'windows\s+admin=(\d)\s+user=(.*)') {
+                if ($Matches[2]) { $remoteUser = $Matches[2].Trim() }
+            }
+            if (($script:SshSetupLastExit -ne 0) -or ($joined -notmatch '(added:|present:)')) {
+                Write-Warning "Could not install the key on $dest (ssh exit $script:SshSetupLastExit)."
+                Show-SshSetupError
+                $step1Ok = $false
+            }
         }
 
-        $pub = (Get-Content -LiteralPath ($KeyPath + '.pub') -Raw).Trim()
-        if ($kind -eq 'windows') {
-            $useAdmin = $false
-            if ($probe.Admin) {
-                $who = if ($probe.User) { $probe.User } else { 'The remote account' }
-                Write-Host ''
-                Write-Host "$who is in the remote Administrators group."
-                Write-Host "sshd's default ``Match Group administrators`` rule reads ONLY"
-                Write-Host 'C:\ProgramData\ssh\administrators_authorized_keys for such accounts —'
-                Write-Host 'a key in ~/.ssh/authorized_keys would be ignored. That file is shared'
-                Write-Host 'by every administrator on the box.'
-                $a = Read-SshSetupAnswer 'Use administrators_authorized_keys? [Y/n] '
-                $useAdmin = Test-SshSetupYes -Answer $a -DefaultYes
-            }
-            $out = Install-SshKeyWindows -Dest $dest -SshArgs $sshArgs -PublicKey $pub -UseAdminFile:$useAdmin
-        } else {
-            $out = Install-SshKeyPosix -Dest $dest -SshArgs $sshArgs -PublicKey $pub
-        }
-        if (-not $out) {
-            Write-Warning "Key install on $dest produced no output — verify manually."
-            return $false
-        }
-        $out | ForEach-Object { Write-Host $_ }
+        if ($step1Ok) { $out | ForEach-Object { Write-Host $_ } }
     }
+
+    if (-not $step1Ok) {
+        $script:SshSetupStep1Ok = $false
+        Write-Host ''
+        $a = Read-SshSetupAnswer "Still update the LOCAL ~/.ssh/config for ${Hop}? [Y/n] "
+        if (-not (Test-SshSetupYes -Answer $a -DefaultYes)) { return $false }
+        $Role = 'localonly'
+    }
+
 
     # --- copy the key pair (final target only) ---
     if ($Role -eq 'target') {
@@ -821,10 +887,15 @@ function Set-RemoteSshKey {
         # BatchMode makes this a non-blocking probe: it fails immediately
         # instead of prompting for a password.
         $split = Split-SshHop -Spec $hop
-        $probeArgs = @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8')
+        $probeArgs = @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10')
         if ($split.Port) { $probeArgs += @('-p', $split.Port) }
+        # The question is "did ssh AUTHENTICATE", not "did the remote command
+        # succeed": ssh reserves 255 for its own failures and passes anything
+        # else through from the remote. `true` is not a cmd.exe builtin, so a
+        # working Windows hop answers 1 -- reading that as failure meant a
+        # Windows jump host could never be recognised as already set up.
         $null = Invoke-SshRemote -Dest $split.Dest -SshArgs $probeArgs -Command 'true'
-        if ($script:SshSetupLastExit -eq 0) {
+        if ($script:SshSetupLastExit -ne 255) {
             Write-Host "$hop already accepts key-based login."
             $a = Read-SshSetupAnswer 'Set it up anyway? [y/N] '
             if (-not (Test-SshSetupYes -Answer $a)) {
@@ -833,9 +904,11 @@ function Set-RemoteSshKey {
             }
         }
 
-        if (-not (Set-RemoteSshKeyOnHost -Hop $hop -KeyPath $keyPath -Role $role)) {
+        $script:SshSetupStep1Ok = $true
+        $hopOk = Set-RemoteSshKeyOnHost -Hop $hop -KeyPath $keyPath -Role $role
+        if ((-not $hopOk) -or (-not $script:SshSetupStep1Ok)) {
             $ok = $false
-            Write-Warning "Setup for $hop failed."
+            Write-Warning "Key install for $hop did not succeed."
             if ($role -eq 'jump') {
                 $a = Read-SshSetupAnswer 'Continue with the rest of the chain? [y/N] '
                 if (-not (Test-SshSetupYes -Answer $a)) { break }
@@ -844,7 +917,7 @@ function Set-RemoteSshKey {
     }
 
     Write-Host ''
-    Write-Host '=== Done! ==='
+    if ($ok) { Write-Host '=== Done! ===' } else { Write-Host '=== Done, with errors ===' }
     $final = if ($script:SshSetupHostAlias) { $script:SshSetupHostAlias } else { $Target }
     Write-Host "Test with: ssh $final"
     if (-not $ok) { Write-Warning 'At least one hop did not complete.' }

@@ -241,7 +241,7 @@ Describe 'ssh-setup-remote fragment' {
                 return @('added:remote', 'acl:remote')
             }
             $null = Install-SshKeyWindows -Dest 'winbox' -PublicKey 'ssh-ed25519 AAAA test' -UseAdminFile
-            $script:CapturedPs | Should -Match "if \('1' -eq '1'\)"
+            $script:CapturedPs | Should -Match "'1' -eq '1'"
             $script:CapturedPs | Should -Match 'icacls'
             $script:CapturedPs | Should -Match 'SYSTEM:F'
         }
@@ -254,7 +254,7 @@ Describe 'ssh-setup-remote fragment' {
                 return @('added:remote')
             }
             $null = Install-SshKeyWindows -Dest 'winbox' -PublicKey 'ssh-ed25519 AAAA test'
-            $script:CapturedPs | Should -Match "if \('0' -eq '1'\)"
+            $script:CapturedPs | Should -Match "'0' -eq '1'"
         }
 
         It 'doubles a single quote in the key comment for the PowerShell literal' {
@@ -269,25 +269,75 @@ Describe 'ssh-setup-remote fragment' {
         }
     }
 
-    Context 'Get-SshRemoteKind' {
-        It 'reports posix when uname succeeds' {
-            Mock -CommandName Invoke-SshRemote { return @('Linux') }
-            (Get-SshRemoteKind -Dest 'box').Kind | Should -BeExactly 'posix'
+    Context 'Fewer round trips' {
+        # Windows OpenSSH has no ControlMaster, so every extra connection is
+        # another password prompt. The probe therefore rides along with the
+        # install instead of being a connection of its own.
+        It 'identifies and installs on a POSIX remote in a single connection' {
+            $script:Calls = 0
+            Mock -CommandName Invoke-SshRemote {
+                param($Dest, $SshArgs, $Command)
+                $null = $Dest, $SshArgs
+                $script:Calls++
+                $script:CapturedCmd = $Command
+                return @('Linux', 'installed:~/.ssh/authorized_keys')
+            }
+            $out = Install-SshKeyPosix -Dest 'box' -PublicKey 'ssh-ed25519 AAAA t' -WithProbe
+            $script:Calls | Should -Be 1
+            $script:CapturedCmd | Should -Match '^uname -s;'
+            ($out -join "`n") | Should -Match 'installed:'
         }
 
-        It 'falls back to a PowerShell probe and reports admin + username' {
-            Mock -CommandName Invoke-SshRemote { return @() }
-            Mock -CommandName Invoke-SshPowerShell { return @('windows admin=1 user=Ada') }
-            $r = Get-SshRemoteKind -Dest 'winbox'
-            $r.Kind | Should -BeExactly 'windows'
-            $r.Admin | Should -BeTrue
-            $r.User | Should -BeExactly 'Ada'
+        It 'omits the probe when it is not asked for' {
+            Mock -CommandName Invoke-SshRemote {
+                param($Dest, $SshArgs, $Command)
+                $null = $Dest, $SshArgs
+                $script:CapturedCmd = $Command
+                return @('installed:~/.ssh/authorized_keys')
+            }
+            $null = Install-SshKeyPosix -Dest 'box' -PublicKey 'ssh-ed25519 AAAA t'
+            $script:CapturedCmd | Should -Not -Match 'uname'
         }
 
-        It 'reports unknown when neither probe identifies the remote' {
-            Mock -CommandName Invoke-SshRemote { return @() }
-            Mock -CommandName Invoke-SshPowerShell { return @() }
-            (Get-SshRemoteKind -Dest 'mystery').Kind | Should -BeExactly 'unknown'
+        It 'probes and installs on a Windows remote in a single connection' {
+            $script:Calls = 0
+            Mock -CommandName Invoke-SshPowerShell {
+                param($Dest, $SshArgs, $Script)
+                $null = $Dest, $SshArgs
+                $script:Calls++
+                $script:CapturedPs = $Script
+                return @('windows admin=1 user=Ada', 'added:remote', 'acl:remote')
+            }
+            $out = Install-SshKeyWindows -Dest 'winbox' -PublicKey 'ssh-ed25519 AAAA t' -UseAdminFile -WithProbe
+            $script:Calls | Should -Be 1
+            $script:CapturedPs | Should -Match 'whoami /groups'
+            $script:CapturedPs | Should -Match 'S-1-5-32-544'
+            ($out -join "`n") | Should -Match 'windows admin=1 user=Ada'
+            ($out -join "`n") | Should -Match 'added:'
+        }
+
+        It 'defers to the remote: the admin file is used only if the account really is an admin' {
+            # The local answer is a POLICY; the remote ANDs it with actual
+            # group membership, so answering yes on a non-admin box is safe.
+            Mock -CommandName Invoke-SshPowerShell {
+                param($Dest, $SshArgs, $Script)
+                $null = $Dest, $SshArgs
+                $script:CapturedPs = $Script
+                return @('added:remote')
+            }
+            $null = Install-SshKeyWindows -Dest 'winbox' -PublicKey 'ssh-ed25519 AAAA t' -UseAdminFile
+            $script:CapturedPs | Should -Match '\$useAdmin = \$isAdmin -and'
+        }
+    }
+
+    Context 'Transport errors' {
+        It 'keeps ssh stderr instead of discarding it' {
+            # A dead transport used to look exactly like "the remote said
+            # nothing", which is how a ControlPath failure got reported as an
+            # unidentifiable OS on the Unix twin.
+            $script:SshSetupLastError = "ControlPath too long"
+            $out = & { Show-SshSetupError } 6>&1
+            ($out -join ' ') | Should -Match 'ControlPath too long'
         }
     }
 }

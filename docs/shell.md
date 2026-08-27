@@ -290,13 +290,47 @@ ships no `ssh-copy-id`:
 - The public key is appended by a small PowerShell program run on the remote
   over `ssh … -EncodedCommand …` (base64 UTF-16LE, so nothing en route can
   mangle the quoting).
-- **A Windows remote is detected too** (`uname -s` fails, then a PowerShell
-  probe answers). For an account in the remote Administrators group, sshd's
-  default `Match Group administrators` rule reads *only*
-  `C:\ProgramData\ssh\administrators_authorized_keys` — a key appended to
-  `~/.ssh/authorized_keys` there is silently ignored — so the wizard asks
-  before writing there and resets that file's ACL to Administrators+SYSTEM
-  (sshd refuses a more permissive one).
+- **A Windows remote is detected too.** For an account in the remote
+  Administrators group, sshd's default `Match Group administrators` rule reads
+  *only* `C:\ProgramData\ssh\administrators_authorized_keys` — a key appended
+  to `~/.ssh/authorized_keys` there is silently ignored — so the wizard writes
+  there and resets that file's ACL to Administrators+SYSTEM (sshd refuses a
+  more permissive one).
+
+### Why it counts connections instead of multiplexing them
+
+The Unix twin opens one `ControlMaster` per hop so a chain costs one password
+each. **That is not available here**: the Windows OpenSSH client does not
+support `ControlMaster` / `ControlPath` (`ssh -o ControlPath=… -O check` fails
+with `getsockname failed: Not a socket`; see
+`pitfalls/win32-openssh-no-connection-multiplexing.md`). Do not add those
+options — they do nothing.
+
+The lever that *is* available is making fewer connections, so the probe rides
+along with the install:
+
+| Remote | Connections for step 1 |
+|---|---|
+| POSIX | 1 — `uname -s` prefixed to the `authorized_keys` append |
+| Windows | 2 — the POSIX attempt, then one PowerShell program that probes Administrators membership **and** installs |
+
+This is why the `administrators_authorized_keys` question is asked **up front**,
+phrased conditionally, rather than between a probe and an install: the local
+answer is a *policy*, which the remote then ANDs with the account's real group
+membership. Answering yes on a non-admin box is therefore harmless.
+
+### When a hop fails
+
+A failed key install no longer aborts the rest of that hop. It skips the
+key-pair copy — pushing a private key to a host you could not authenticate to
+is pointless — but still offers the **local** `~/.ssh/config` edit, which is
+useful whether or not the remote is reachable. `ssh`'s own stderr is printed
+rather than discarded, so a transport failure says why instead of masquerading
+as an unidentifiable remote OS.
+
+Prompts go through `Read-Host` (and therefore PSReadLine) when a real console
+is attached, so arrow keys edit the line instead of inserting escape
+sequences; a redirected stdin falls back to the raw reader.
 
 Env knobs (same names as the Unix side): `SSH_SETUP_ASSUME_YES=1` takes every
 prompt's default, `SSH_SETUP_KEY=<path>` skips the key picker,
