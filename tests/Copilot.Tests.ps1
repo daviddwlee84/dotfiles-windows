@@ -21,7 +21,8 @@ Describe 'Copilot module' {
         It 'keeps the maintained fork default pinned exactly' {
             InModuleScope Copilot {
                 $env:COPILOT_API_PKG = $null
-                Get-CopilotPkg | Should -BeExactly '@jeffreycao/copilot-api@2.1.0'
+                $env:XDG_STATE_HOME = Join-Path $TestDrive 'empty-state'
+                Get-CopilotPkg | Should -BeExactly '@jeffreycao/copilot-api@2.3.4'
             }
         }
         It 'treats the bare original package as "original"' {
@@ -30,7 +31,10 @@ Describe 'Copilot module' {
         It 'treats the scoped fork as "fork"' {
             InModuleScope Copilot { $env:COPILOT_API_PKG = '@jeffreycao/copilot-api@2.1.0'; Get-CopilotPkgFlavor | Should -Be 'fork' }
         }
-        AfterEach { $env:COPILOT_API_PKG = $null }
+        AfterEach {
+            $env:COPILOT_API_PKG = $null
+            $env:XDG_STATE_HOME = $null
+        }
     }
 
     Context 'default model resolution' {
@@ -97,8 +101,12 @@ Describe 'Copilot module' {
             if ($env:XDG_DATA_HOME -and [System.IO.Directory]::Exists($env:XDG_DATA_HOME)) {
                 [System.IO.Directory]::Delete($env:XDG_DATA_HOME, $true)
             }
+            if ($env:XDG_STATE_HOME -and [System.IO.Directory]::Exists($env:XDG_STATE_HOME)) {
+                [System.IO.Directory]::Delete($env:XDG_STATE_HOME, $true)
+            }
             $env:COPILOT_API_PKG = $null
             $env:XDG_DATA_HOME = $null
+            $env:XDG_STATE_HOME = $null
         }
 
         function script:Set-TestCopilotPackage {
@@ -153,11 +161,15 @@ Describe 'Copilot module' {
             }
         }
 
-        It 'exposes the CDN manifest only for the reviewed default pin' {
+        It 'exposes the complete CDN manifest only for the reviewed default pin' {
             InModuleScope Copilot {
+                $env:COPILOT_API_PKG = $null
+                $env:XDG_STATE_HOME = Join-Path $TestDrive 'manifest-state'
                 $manifest = Get-CopilotPkgCdnManifest
-                $manifest.BaseUrl | Should -Match '@jeffreycao/copilot-api@2\.1\.0'
-                $manifest.Files['dist/main.js'] | Should -BeExactly 'oQOghbsofHbuu5LH+YOP6SMGcHbH6KuDXNvdiWMDVhY='
+                $manifest.BaseUrl | Should -Match '@jeffreycao/copilot-api@2\.3\.4'
+                $manifest.Files.Count | Should -Be 19
+                $manifest.Files['dist/main.js'] | Should -BeExactly 'vaVfZjZeDbPTprzN05FdWTFOrXvpzTGBma4gJ7/wTrA='
+                $manifest.Files['package.json'] | Should -BeExactly 'E4yUXnzcYYCBL714huIHrmTTBz/9Im4/4BvIEJLxsTY='
                 $env:COPILOT_API_PKG = '@jeffreycao/copilot-api@latest'
                 Get-CopilotPkgCdnManifest | Should -BeNullOrEmpty
             }
@@ -244,6 +256,20 @@ Describe 'Copilot module' {
                 $stamp.RequestedSpec | Should -BeExactly '@jeffreycao/copilot-api@2.1.0'
                 $stamp.Name | Should -BeExactly '@jeffreycao/copilot-api'
                 $stamp.Version | Should -BeExactly '2.1.0'
+            }
+        }
+
+        It 'persists an existing verified 2.1.0 install before the built-in advances' {
+            Set-TestCopilotPackage
+            @{ requestedSpec = '@jeffreycao/copilot-api@2.1.0'; name = '@jeffreycao/copilot-api'; version = '2.1.0' } |
+                ConvertTo-Json -Compress | Set-Content -LiteralPath (Join-Path $script:pkgPrefix '.installed-spec')
+            $env:XDG_STATE_HOME = Join-Path $TestDrive "state-$([guid]::NewGuid())"
+            $env:COPILOT_API_PKG = $null
+            InModuleScope Copilot {
+                Initialize-CopilotPkgSelection
+                Get-CopilotPkg | Should -BeExactly '@jeffreycao/copilot-api@2.1.0'
+                $selection = Get-CopilotPkgSelection
+                $selection.integrity | Should -BeExactly (Get-CopilotVerifiedIntegrity -Version '2.1.0')
             }
         }
 

@@ -43,9 +43,9 @@
 #   COPILOT_SHIM_PING_MS default 15000   - SSE ping interval; 0 also disables the
 #                                          mid-stream watchdog loop
 #   COPILOT_SHIM_PING_AFTER_MS default 10000 - grace before the slow SSE path
-#   COPILOT_SHIM_STALL_MS default 240000 - pre-header watchdog, plus mid-stream
-#                                          when pings are enabled; 0 disables
-#   COPILOT_API_PKG      default @jeffreycao/copilot-api@2.1.0 - registry spec
+#   COPILOT_SHIM_STALL_MS default 240000 - pre-header and mid-stream watchdog;
+#                                          0 disables
+#   COPILOT_API_PKG      default persisted selection, then @jeffreycao/copilot-api@2.3.4
 #                          (name or @scope/name + optional version/tag/range;
 #                           aliases/local/git/URL specs are rejected before cleanup)
 #   COPILOT_CLAUDE_MODEL                 - override the pinned model
@@ -62,9 +62,41 @@
 Set-StrictMode -Off
 
 # ------------------------------------------------------------------ helpers ---
-$script:CopilotDefaultPkg = '@jeffreycao/copilot-api@2.1.0'
+$script:CopilotDefaultPkg = '@jeffreycao/copilot-api@2.3.4'
+$script:CopilotVerifiedIntegrities = @{
+    '2.3.4' = 'sha512-yRMH3wQAH74a0K/3Gl0S3itSL7Dza/7qOGG32PXV3tKRd4feG3utpuIQf42HhnhIdcBwMz3qhmeWBPQrPxZQMQ=='
+    '2.3.0' = 'sha512-4h7ysNAO8N9zJkIcOnNPio9asGTMsRkvQ70deSRBSwkBJFOZXYeoKmiHU06VSP712gVNaTrRA7abLAPkTuINqA=='
+    '2.1.0' = 'sha512-9/Ro1UzrYT/erB7eR/rf61XHFyc5TOwQ94B6ij/Wu91TD1hnmbuqYu/PavKGUQ7YDBVCXFENRRvQSpTkS0X3eA=='
+}
 function script:Get-CopilotPort { if ($env:COPILOT_PROXY_PORT) { $env:COPILOT_PROXY_PORT } else { '4141' } }
-function script:Get-CopilotPkg  { if ($env:COPILOT_API_PKG)   { $env:COPILOT_API_PKG }   else { $script:CopilotDefaultPkg } }
+function script:Get-CopilotPkgSelectionState { Join-Path (Get-XdgState) 'copilot-proxy/package.json' }
+function script:Get-CopilotPkgSelection {
+    $path = Get-CopilotPkgSelectionState
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
+    try { Get-Content -LiteralPath $path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } catch { $null }
+}
+function script:Get-CopilotPkg {
+    if ($env:COPILOT_API_PKG) { return $env:COPILOT_API_PKG }
+    $selection = Get-CopilotPkgSelection
+    if ($selection -and -not [string]::IsNullOrWhiteSpace([string]$selection.spec)) { return [string]$selection.spec }
+    $script:CopilotDefaultPkg
+}
+function script:Get-CopilotVerifiedIntegrity {
+    param([Parameter(Mandatory)] [string] $Version)
+    [string]$script:CopilotVerifiedIntegrities[$Version]
+}
+function script:Write-CopilotPkgSelection {
+    param([Parameter(Mandatory)] [string] $Spec, [Parameter(Mandatory)] [string] $Integrity, [string] $Registry = 'https://registry.npmjs.org')
+    $path = Get-CopilotPkgSelectionState
+    $dir = Split-Path -Parent $path
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    $tmp = "$path.tmp-$([guid]::NewGuid())"
+    try {
+        [ordered]@{ spec = $Spec; integrity = $Integrity; registry = $Registry; selected_at = [DateTime]::UtcNow.ToString('o') } |
+            ConvertTo-Json -Compress | Set-Content -LiteralPath $tmp -Encoding utf8
+        Move-Item -LiteralPath $tmp -Destination $path -Force
+    } finally { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+}
 function script:Get-CopilotPkgFlavor {
     switch -Regex (Get-CopilotPkg) { '^copilot-api(@.*)?$' { 'original' } default { 'fork' } }
 }
@@ -178,6 +210,20 @@ function script:Write-CopilotPkgStamp {
         name          = [string]$Metadata.Name
         version       = [string]$Metadata.Version
     } | ConvertTo-Json -Compress | Set-Content -Path (Get-CopilotPkgStamp) -Encoding utf8
+}
+
+function script:Initialize-CopilotPkgSelection {
+    if ($env:COPILOT_API_PKG -or (Test-Path -LiteralPath (Get-CopilotPkgSelectionState))) { return }
+    $metadata = Get-CopilotPkgMetadata
+    if (-not $metadata -or $metadata.Name -cne '@jeffreycao/copilot-api') { return }
+    $stamp = Get-CopilotPkgStampMetadata
+    $spec = if ($stamp -and $stamp.Name -ceq $metadata.Name -and $stamp.Version -ceq $metadata.Version) {
+        $stamp.RequestedSpec
+    } else { Get-CopilotPkgLegacyStamp }
+    if ($spec -notmatch '^@jeffreycao/copilot-api@(?<version>\d+\.\d+\.\d+)$' -or $Matches.version -cne $metadata.Version) { return }
+    $integrity = Get-CopilotVerifiedIntegrity -Version $metadata.Version
+    if (-not $integrity -or -not (Test-CopilotPkgDependencies -Metadata $metadata) -or $null -eq (Get-CopilotPkgLaunch)) { return }
+    Write-CopilotPkgSelection -Spec $spec -Integrity $integrity
 }
 
 # The binlink bun wrote, if any. Bun on Windows writes node_modules/.bin/<name>.exe
@@ -360,29 +406,32 @@ function script:Invoke-CopilotPkgInstallTry {
 
 # Runtime files from the exact public npm package, mirrored by jsDelivr. Hashes
 # are SHA-256/base64 from data.jsdelivr.com and are pinned here so a CDN response
-# cannot silently replace the reviewed 2.1.0 gateway. This fallback is deliberately
+# cannot silently replace the reviewed 2.3.4 gateway. This fallback is deliberately
 # unavailable for arbitrary COPILOT_API_PKG overrides.
 function script:Get-CopilotPkgCdnManifest {
     if ((Get-CopilotPkg) -cne $script:CopilotDefaultPkg) { return $null }
     [pscustomobject]@{
-        BaseUrl = 'https://cdn.jsdelivr.net/npm/@jeffreycao/copilot-api@2.1.0/'
+        BaseUrl = 'https://cdn.jsdelivr.net/npm/@jeffreycao/copilot-api@2.3.4/'
         Files   = [ordered]@{
-            'dist/auth-C0aeKq7k.js'           = 'SlXC4gSEaGNwdS4tXTtqhiF/D02E8+iNrQBwFwPndVk='
-            'dist/auth-DH-ThnhJ.js'            = 'p/LRoZdk8wOOM5DQCufu0gIIGU84NRETuD8+J21ZCaI='
-            'dist/config-CoMdcHDW.js'          = 'tlRwGNY2oBBkVNWqioLKCfcLlq6pO3sNjGd5bKJX9Lo='
-            'dist/debug-D2giR-Kj.js'            = 'AwZwgakDhoVncgyOCXPgbfxGtWM71RKh52uVzQfK/4w='
-            'dist/electron-fetch-DPhDE6JE.js'   = '4AbNiuAKta9UotthWSjDdeFOIsUa5sVHn0UH2XPmv/E='
-            'dist/main.js'                      = 'oQOghbsofHbuu5LH+YOP6SMGcHbH6KuDXNvdiWMDVhY='
-            'dist/mcp-BG6fpi6q.js'              = 'wrS9K3fGks5lXduDse3rc0ElpitVMVV8YaJlEEp92sM='
-            'dist/models-DUdPhOBN.js'           = 'UIQEMx31RTqQ4jLIPNMKx2SjISxKEPSuIBQk8zYboEI='
-            'dist/server-DcL9pgmS.js'           = 'xerRQ08UU/gW0HlymLaApCkvffna7y2lAurhGmU/+zs='
-            'dist/start-D3oRc7UM.js'            = 'gLDD5nPRkA+fBKnxvLrJceZpso/exlJqlZpmDwqlnFg='
-            'dist/tls-BmWaOfKV.js'              = 'TYMkywUE/GWAkU3yHZqcATkW+OrKvp2z1r6zA1G4JEY='
-            'dist/token-_ZvkUtOA.js'             = 'NlrLr8byUuqBuLbMrdhSnLhgCWPgkFBW90NCpuHLJ8Q='
-            'dist/tool-search-Ds1vbmGG.js'       = 'nayapOul67JQ5MZlG6VHjbOOmtFWkdp57Ix1QBR6XjE='
-            'LICENSE'                           = 'heZrUUWQ2XF0DN2cwkTHVOuqFpAhW/xs6boMUHgC+zk='
-            'package.json'                      = 'zZgMgbuYwB/SkThsZ4vBA3no+GTyfx3JYG4QPMrGcUM='
-            'pages/index.html'                  = 'qwkHLR+pD3xUVT4R2qb86ohDG0vEDFTk/eV3lllEnXU='
+            'dist/auth-B-ry4rJx.js'          = 'oWtI7Il1Ycm7QGGAVNkDB/YSNVIqNeANzxn4ySMq2DA='
+            'dist/auth-OxiT7vCr.js'           = 'SJB5e46Bw/j2v+/71rmSMCKiD/HtKDlTnBwDCbZNBw0='
+            'dist/config-CEGVuc_4.js'         = 'NajCmIfzBpUIXfPVKO7Yhnqv6qLDJg450xuKGus/OFs='
+            'dist/debug-Db0SCVSP.js'          = 'PYQ0ZQkhSIKzjmSQNVuod7UX7hL7rmk74/hn+jbx6dg='
+            'dist/electron-fetch-BRX-ug5E.js' = 'oBa4GH1/3n4w5AT0m9tn47ir3PqqWvVeQBp2cTmsni8='
+            'dist/fast-path-BoMnZCVC.js'      = 'Po6L2Mh+yjlCby1RJlE5EZN9xt4oNsetIP2VdyOqhxo='
+            'dist/main.js'                    = 'vaVfZjZeDbPTprzN05FdWTFOrXvpzTGBma4gJ7/wTrA='
+            'dist/mcp-fpSlKZxK.js'            = 'PTwf6tu6Bq2ekPOlVLl+y8qwWBZZgzwIDjEtEZsPGVc='
+            'dist/mcp-server-BeNu_Edl.js'     = 'ruQkaC7svMl8bgEQIJC8j9mMoevqnePPQeXuYDrewrQ='
+            'dist/mcp-server-DQ4r-fAy.js'      = 'Sl3DpTS6mFf+wfNAd/sT+9fNs3BTy1RIDXwwZkwG30A='
+            'dist/models-Bd9M8jdy.js'          = 'jaq8btjRfvcBN7vv3KVMdXNUDdE56ZMk0XT+OaErNzE='
+            'dist/server-CKVtJPpg.js'          = '5XtIj3RhHIpm17Vzxi0RRlSUqEBuzJWtjEvvN7OAUGY='
+            'dist/start-DqfeTNPH.js'           = 'o8WBjEUhzDLiGwJjf8mEFO7Z+x6AGili583In+lOIi8='
+            'dist/tls-Aq1Dd8E2.js'             = 'jeyg/nuW+psGNRPqRbmCUgHCuceRjrsofuHL4qTR9iM='
+            'dist/token-C3cN0vNj.js'           = 'J2B+JhDRQon5iegPMhNUg7IwrO6EW8eHBq6Td9Qbkyk='
+            'dist/tool-search-Ds1vbmGG.js'     = 'nayapOul67JQ5MZlG6VHjbOOmtFWkdp57Ix1QBR6XjE='
+            'LICENSE'                          = 'heZrUUWQ2XF0DN2cwkTHVOuqFpAhW/xs6boMUHgC+zk='
+            'package.json'                     = 'E4yUXnzcYYCBL714huIHrmTTBz/9Im4/4BvIEJLxsTY='
+            'pages/index.html'                 = 'rOF8krw8Kq+LPqy6n6N+Zy9YhO5lzJ9cmyxoz5DYuts='
         }
     }
 }
@@ -439,8 +488,9 @@ function script:Install-CopilotPkgFromCdn {
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $packageDir) | Out-Null
         Move-Item -LiteralPath $downloadDir -Destination $packageDir -ErrorAction Stop
         $metadata = Get-CopilotPkgMetadata
-        if (-not $metadata -or $metadata.Name -cne '@jeffreycao/copilot-api' -or $metadata.Version -cne '2.1.0') {
-            throw 'downloaded package metadata does not identify @jeffreycao/copilot-api@2.1.0'
+        $expectedVersion = Get-CopilotPkgExactVersion
+        if (-not $metadata -or $metadata.Name -cne '@jeffreycao/copilot-api' -or $metadata.Version -cne $expectedVersion) {
+            throw "downloaded package metadata does not identify @jeffreycao/copilot-api@$expectedVersion"
         }
         if (-not (Install-CopilotPkgDependencies -PackageDir $packageDir)) {
             throw 'dependency installation through the configured registry failed'
@@ -457,6 +507,7 @@ function script:Install-CopilotPkgFromCdn {
 
 # Ensure the pinned spec is installed. No-op (and no network) once it is.
 function script:Install-CopilotPkg {
+    Initialize-CopilotPkgSelection
     if (-not (Get-CopilotPkgSpecInfo)) {
         Write-Error "copilot-proxy: COPILOT_API_PKG must be a registry package spec (name or @scope/name with an optional version/tag/range); aliases and local/git/URL specs are unsupported: $(Get-CopilotPkg)"
         return $false
@@ -514,6 +565,104 @@ function script:Install-CopilotPkg {
     }
     Write-CopilotPkgStamp -Metadata $metadata
     $true
+}
+
+function script:Test-CopilotPkgHelp {
+    $launch = Get-CopilotPkgLaunch
+    if (-not $launch) { return $false }
+    if ($launch.Cwd) { Push-Location $launch.Cwd }
+    try {
+        & $launch.Exe @($launch.Pre + '--help') *> $null
+        return $LASTEXITCODE -eq 0
+    } catch { return $false }
+    finally { if ($launch.Cwd) { Pop-Location } }
+}
+
+function script:Invoke-CopilotPkgUpdate {
+    param([Parameter(Mandatory)] [string] $Version)
+    if ($env:COPILOT_API_PKG) {
+        Write-Error 'copilot-proxy: COPILOT_API_PKG is active; refusing to mutate persisted selection.'
+        return $false
+    }
+    $integrity = Get-CopilotVerifiedIntegrity -Version $Version
+    if (-not $integrity) {
+        Write-Error 'copilot-proxy: update requires a verified exact version: 2.3.4, 2.3.0, or 2.1.0.'
+        return $false
+    }
+
+    Initialize-CopilotPkgSelection
+    $spec = "@jeffreycao/copilot-api@$Version"
+    $livePrefix = Get-CopilotPkgPrefix
+    $previousPrefix = "$livePrefix.previous"
+    $state = Get-CopilotPkgSelectionState
+    $previousState = "$state.previous"
+    $stageData = Join-Path (Split-Path -Parent (Get-XdgData)) ".copilot-update-$([guid]::NewGuid())"
+    $savedData = $env:XDG_DATA_HOME
+    $savedPkg = $env:COPILOT_API_PKG
+    $stagePrefix = Join-Path $stageData 'copilot-api/pkg'
+    $staged = $false
+    try {
+        $env:XDG_DATA_HOME = $stageData
+        $env:COPILOT_API_PKG = $spec
+        $staged = (Install-CopilotPkg) -and (Test-CopilotPkgHelp)
+    } finally {
+        if ($null -eq $savedData) { Remove-Item env:XDG_DATA_HOME -ErrorAction SilentlyContinue } else { $env:XDG_DATA_HOME = $savedData }
+        if ($null -eq $savedPkg) { Remove-Item env:COPILOT_API_PKG -ErrorAction SilentlyContinue } else { $env:COPILOT_API_PKG = $savedPkg }
+    }
+    if (-not $staged) {
+        Remove-Item -LiteralPath $stageData -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Error "copilot-proxy: staged $spec failed installation or --help verification."
+        return $false
+    }
+
+    $swapBackup = "$livePrefix.swap-$([guid]::NewGuid())"
+    try {
+        Remove-Item -LiteralPath $previousPrefix -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $livePrefix) { Move-Item -LiteralPath $livePrefix -Destination $swapBackup }
+        Move-Item -LiteralPath $stagePrefix -Destination $livePrefix
+        if (Test-Path -LiteralPath $swapBackup) { Move-Item -LiteralPath $swapBackup -Destination $previousPrefix }
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $state) | Out-Null
+        if (Test-Path -LiteralPath $state) { Copy-Item -LiteralPath $state -Destination $previousState -Force }
+        Write-CopilotPkgSelection -Spec $spec -Integrity $integrity
+        Write-Host "copilot-proxy: staged and selected $spec; restart explicitly when ready."
+        return $true
+    } catch {
+        Remove-Item -LiteralPath $livePrefix -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $swapBackup) { Move-Item -LiteralPath $swapBackup -Destination $livePrefix -ErrorAction SilentlyContinue }
+        Write-Error "copilot-proxy: package swap failed; previous prefix restored ($_)"
+        return $false
+    } finally {
+        Remove-Item -LiteralPath $stageData -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $swapBackup -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function script:Invoke-CopilotPkgRollback {
+    $livePrefix = Get-CopilotPkgPrefix
+    $previousPrefix = "$livePrefix.previous"
+    $state = Get-CopilotPkgSelectionState
+    $previousState = "$state.previous"
+    if (-not (Test-Path -LiteralPath $previousPrefix -PathType Container) -or
+        -not (Test-Path -LiteralPath $previousState -PathType Leaf)) {
+        Write-Error 'copilot-proxy: no offline package rollback is available.'
+        return $false
+    }
+    $swapPrefix = "$livePrefix.rollback-$([guid]::NewGuid())"
+    $swapState = "$state.rollback-$([guid]::NewGuid())"
+    try {
+        Move-Item -LiteralPath $livePrefix -Destination $swapPrefix
+        Move-Item -LiteralPath $previousPrefix -Destination $livePrefix
+        Move-Item -LiteralPath $swapPrefix -Destination $previousPrefix
+        Move-Item -LiteralPath $state -Destination $swapState
+        Move-Item -LiteralPath $previousState -Destination $state
+        Move-Item -LiteralPath $swapState -Destination $previousState
+        $selected = Get-CopilotPkgSelection
+        Write-Host "copilot-proxy: rolled back to $($selected.spec); restart explicitly when ready."
+        return $true
+    } catch {
+        Write-Error "copilot-proxy: rollback swap failed ($_)"
+        return $false
+    }
 }
 
 # Run a copilot-api subcommand (auth / check-usage / debug) in the foreground.
@@ -1335,6 +1484,11 @@ function copilot-proxy {
             if ((Get-CopilotPkgFlavor) -eq 'original') { Invoke-CopilotPkgCommand auth }
             else { Invoke-CopilotPkgCommand auth login --provider copilot }
         }
+        'update' {
+            if ($Argv.Count -lt 2) { Write-Error 'usage: copilot-proxy update VERSION'; return }
+            $null = Invoke-CopilotPkgUpdate -Version ([string]$Argv[1])
+        }
+        'rollback' { $null = Invoke-CopilotPkgRollback }
         'reinstall' {
             # Force a clean re-install of the pinned spec (normally only needed if the
             # prefix got corrupted — a version bump re-installs on its own via the stamp).

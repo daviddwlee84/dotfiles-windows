@@ -19,7 +19,9 @@ fork，讓 **GitHub Copilot 訂閱**可作為 **Claude Code** 與其他 Anthropi
 | `copilot-proxy logs [N]` | 查看 proxy log |
 | `copilot-proxy shim [on\|off]` | 切換節流 shim（port 4142） |
 | `copilot-proxy whoami` | 帳號 / 方案 / 額度 |
-| `copilot-proxy reinstall` | 清掉並重裝釘選套件 |
+| `copilot-proxy reinstall` | 清掉並重裝目前 selection |
+| `copilot-proxy update VERSION` | stage、驗證並選取 exact 2.3.4/2.3.0/2.1.0，不重啟 |
+| `copilot-proxy rollback` | 離線切回上一個 verified package，不重啟 |
 | `copilot-run <cmd...>` | 注入 proxy 環境變數後執行指令 |
 | `claude-copilot` | 在 proxy 上開一次 Claude Code session |
 | `claude-copilot-once` | 暫時釘住專案、執行一次、結束後還原 |
@@ -54,7 +56,7 @@ Claude Code --Anthropic /v1/messages--> copilot-api (localhost:4141)
                                   GitHub Copilot API
 ```
 
-預設套件是 `@jeffreycao/copilot-api@2.1.0`。GPT id 會走 Responses translation，
+預設套件是 `@jeffreycao/copilot-api@2.3.4`。GPT id 會走 Responses translation，
 包括把 Claude Code 的 `output_config.effort` 轉成 `reasoning.effort`。GPT-5.6 與
 Claude Code `ultracode` 需要這條路徑；舊 `1.13.14` 可能用 hard-coded fallback 蓋掉
 client 指定的 effort。
@@ -65,20 +67,29 @@ Ready 判定會核對已安裝 `package.json` 的 name/version、verified stamp 
 path，不會只看舊目錄或 binlink。安裝失敗不能重新蓋 stamp，也不能啟動 stale package。
 `COPILOT_API_PKG` 接受 registry package spec（name 或 `@scope/name` 加 optional
 version/tag/range）；npm alias 與 local/git/URL spec 會在 filesystem cleanup 前拒絕。
-warm start 不需要套件網路。
+warm start 不需要套件網路。Selection precedence 是 `COPILOT_API_PKG` → persisted
+`$XDG_STATE_HOME/copilot-proxy/package.json` → 內建 2.3.4。已驗證的既有 2.1.0/2.3.0
+install 會先寫成 persisted selection，因此套用新 module 不會暗中連網升級。
+
+執行 `copilot-proxy update 2.3.4` 才會 stage 並驗證新 release、把舊 tree 保留成
+`pkg.previous`，且不重啟目前 proxy；之後再明確 restart。`copilot-proxy rollback` 可離線
+交換兩個 verified tree；exact `update 2.3.0`、`update 2.1.0` 仍支援。2.3.4 對應 source
+commit `a51553569ba071e0c9a8329f8f5ccac2482a3945`、npm SHA-1
+`643f59e0c257db613954738f02300c0a7ceebfeb`，以及 SRI
+`sha512-yRMH3wQAH74a0K/3Gl0S3itSL7Dza/7qOGG32PXV3tKRd4feG3utpuIQf42HhnhIdcBwMz3qhmeWBPQrPxZQMQ==`。
 
 公司 mirror 回 `ETARGET` 時，可能只是精確的公開版本尚未同步。刪掉仍可用的 prefix 前，
 先確認 npm 實際使用的 registry：
 
 ```powershell
 npm config get registry
-npm view '@jeffreycao/copilot-api@2.1.0' version
+npm view '@jeffreycao/copilot-api@2.3.4' version
 # 公司政策允許直連 public npm 時，可做對照：
-npm view '@jeffreycao/copilot-api@2.1.0' version --registry https://registry.npmjs.org/
+npm view '@jeffreycao/copilot-api@2.3.4' version --registry https://registry.npmjs.org/
 ```
 
 若只有設定中的 mirror 缺少此版本，應等待／要求 mirror 同步，或以核准的 registry 執行
-`copilot-proxy reinstall`。Windows module 也會自動 fallback 到 jsDelivr 上精確的 2.1.0
+`copilot-proxy reinstall`。Windows module 也會自動 fallback 到 jsDelivr 上精確的 2.3.4
 runtime files，逐檔核對內建 SHA-256，再只透過目前 npm registry 解析一般 dependencies。
 這可處理 mirror 延遲同步，同時不放寬 pin，也不繞過核准 feed 取得 dependency tree。
 不要把測過的精確 pin 改成 `latest`。
@@ -147,7 +158,7 @@ ANTHROPIC_SMALL_FAST_MODEL
 |---|---|---|
 | CLI、tools、hooks、skills、memory、plugins、MCP、checkpoints、sandboxing | 可以 | 都是本機功能；GPT 收到轉譯後的 prompt/tool schema，行為可能不同。 |
 | subagents、dynamic workflows | 可以 | 提供 role variables，但不蓋掉 workflow-specific subagent routing。見 [workflows](https://code.claude.com/docs/en/workflows)。 |
-| `ultracode` | 2.1.0 可以 | 它是 xhigh effort + dynamic workflows，不是獨立模型。 |
+| `ultracode` | 2.3.4 可以 | 它是 xhigh effort + dynamic workflows，不是獨立模型。 |
 | thinking/reasoning | 轉譯後可用 | GPT 使用 Responses reasoning，不是 Anthropic-native thinking semantics。 |
 | Web Search、fast/auto mode、MCP tool search | 依 provider | 取決於 Copilot endpoint 與 gateway translation。 |
 | Ultrareview、Remote Control、Chrome、cloud Code Review、routines、web/mobile/Slack session | 不可以 | 需要 Claude.ai auth/cloud identity，local gateway 無法提供。 |
