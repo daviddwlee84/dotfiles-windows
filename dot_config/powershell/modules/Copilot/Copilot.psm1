@@ -40,8 +40,8 @@
 #   COPILOT_SHIM_MAX     default 4       - concurrent in-flight upstream POSTs
 #   COPILOT_SHIM_RETRIES default 3       - same-model transient retry attempts
 #   COPILOT_SHIM_BACKOFF_MS default 500  - base retry backoff (doubles per try)
-#   COPILOT_SHIM_PING_MS default 15000   - SSE ping interval; 0 also disables the
-#                                          mid-stream watchdog loop
+#   COPILOT_SHIM_PING_MS default 15000   - SSE ping interval; 0 disables pings
+#                                          without disabling the stall watchdog
 #   COPILOT_SHIM_PING_AFTER_MS default 10000 - grace before the slow SSE path
 #   COPILOT_SHIM_STALL_MS default 240000 - pre-header and mid-stream watchdog;
 #                                          0 disables
@@ -707,6 +707,8 @@ function script:Get-CopilotShimScript { Join-Path (Get-XdgConfig) 'powershell/co
 function script:Get-CopilotShimLog    { Join-Path (Get-CopilotTmp) "copilot-shim-$(Get-CopilotShimPort).log" }
 function script:Get-CopilotShimPid    { Join-Path (Get-CopilotTmp) "copilot-shim-$(Get-CopilotShimPort).pid" }
 function script:Get-CopilotShimState  { Join-Path (Get-XdgState) 'copilot-proxy/shim' }
+function script:Get-CopilotShimMetricsDb { Join-Path (Get-XdgState) 'copilot-proxy/metrics.sqlite' }
+function script:Get-CopilotTokenUsageDb { Join-Path (Get-XdgData) 'copilot-api/copilot-api.sqlite' }
 function script:Get-CopilotModelState { Join-Path (Get-XdgState) 'copilot-proxy/model' }
 
 # --- egress: which proxy should Node use for the GitHub /models fetch? --------
@@ -847,8 +849,10 @@ function script:Test-CopilotAlive {
     catch { $false }
 }
 function script:Test-CopilotShimAlive {
-    try { $null = Invoke-WebRequest -Uri "$(Get-CopilotShimBase)/v1/models" -TimeoutSec 2 -SkipHttpErrorCheck -ErrorAction Stop; $true }
-    catch { $false }
+    try {
+        $health = Invoke-RestMethod -Uri "$(Get-CopilotShimBase)/_shim/health" -TimeoutSec 2 -ErrorAction Stop
+        $health.ok -eq $true
+    } catch { $false }
 }
 function script:Get-CopilotShimEnabled {
     switch ($env:COPILOT_PROXY_SHIM) {
@@ -856,7 +860,8 @@ function script:Get-CopilotShimEnabled {
         { $_ -in '0', 'off', 'false', 'no' } { return $false }
     }
     $sf = Get-CopilotShimState
-    (Test-Path $sf) -and ((Get-Content -First 1 $sf -ErrorAction SilentlyContinue) -eq 'on')
+    if (Test-Path $sf) { return (Get-Content -First 1 $sf -ErrorAction SilentlyContinue) -ne 'off' }
+    $true
 }
 # Base URL managed clients should use. An enabled-but-down shim is a HARD FAULT,
 # never a silent fallback to the bare proxy: bypassing the shim quietly drops the
@@ -914,10 +919,8 @@ function script:Get-CopilotPortOwner {
 # Managed clients must not silently bypass an enabled shim. Mirrors the Unix
 # `_copilot_require_shim`.
 #
-# Unlike Unix this goes straight through Start-CopilotShim instead of short-
-# circuiting on Test-CopilotShimAlive: this shim build has no /_shim/health, so
-# liveness cannot prove IDENTITY here (any HTTP listener on the port answers).
-# Start-CopilotShim owns the ownership check and is idempotent.
+# Test-CopilotShimAlive accepts only this shim's /_shim/health identity endpoint.
+# Start-CopilotShim additionally owns the process/port check and is idempotent.
 function script:Assert-CopilotShim {
     if (-not (Get-CopilotShimEnabled)) { return $true }
     if (Start-CopilotShim) { return $true }
@@ -1259,9 +1262,9 @@ function script:Get-CopilotEnvBlock {
 # Start the shim (idempotent). Points it at the proxy; scopes COPILOT_SHIM_* to
 # the child.
 #
-# The port inspection is load-bearing twice over, because Test-CopilotShimAlive
-# can only prove that SOMETHING answers HTTP on the port (this build has no
-# /_shim/health, and -SkipHttpErrorCheck accepts a 404 or 500 as an answer):
+# The port inspection remains load-bearing even though /_shim/health proves
+# protocol identity: it names foreign listeners and lets us reclaim only a stale
+# process whose command line is copilot-throttle-shim.js.
 #
 #   * a FOREIGN listener would otherwise pass as a healthy shim and silently
 #     become the gateway every managed client talks to;
@@ -1297,7 +1300,12 @@ function script:Start-CopilotShim {
     # so assigning these used to leak into the caller's session for good — and
     # every later `bun copilot-throttle-shim.js` inherited them. Set, spawn,
     # restore (the same idiom copilot-run uses for the ANTHROPIC_* block).
-    $shimEnv = @{ COPILOT_SHIM_PORT = "$port"; COPILOT_SHIM_UPSTREAM = Get-CopilotBase }
+    $shimEnv = @{
+        COPILOT_SHIM_PORT = "$port"
+        COPILOT_SHIM_UPSTREAM = Get-CopilotBase
+        COPILOT_SHIM_METRICS_DB = Get-CopilotShimMetricsDb
+        COPILOT_API_SQLITE_DB_PATH = Get-CopilotTokenUsageDb
+    }
     $saved = @{}
     foreach ($k in $shimEnv.Keys) { $saved[$k] = [Environment]::GetEnvironmentVariable($k) }
     try {
@@ -1318,6 +1326,8 @@ function script:Start-CopilotShim {
     foreach ($logPath in @((Get-CopilotShimLog), "$(Get-CopilotShimLog).err")) {
         if (Test-Path $logPath) { Get-Content -Tail 5 $logPath | ForEach-Object { Write-Host "  $_" } }
     }
+    if ($p -and -not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath (Get-CopilotShimPid) -Force -ErrorAction SilentlyContinue
     $false
 }
 function script:Stop-CopilotShim {
@@ -1330,6 +1340,33 @@ function script:Stop-CopilotShim {
     Get-CimInstance Win32_Process -Filter "Name = 'bun.exe'" -ErrorAction SilentlyContinue |
         Where-Object { $_.CommandLine -like '*copilot-throttle-shim.js*' } |
         ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+}
+
+function script:Invoke-CopilotShimCli {
+    param([Parameter(Mandatory)] [ValidateSet('stats', 'events', 'bench')] [string] $Command,
+          [string[]] $Argument = @())
+    $scriptPath = Get-CopilotShimScript
+    if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+        Write-Error "copilot-proxy: shim script not found at $scriptPath"
+        return $false
+    }
+    $shimEnv = @{
+        COPILOT_SHIM_PORT = Get-CopilotShimPort
+        COPILOT_SHIM_METRICS_DB = Get-CopilotShimMetricsDb
+        COPILOT_API_SQLITE_DB_PATH = Get-CopilotTokenUsageDb
+    }
+    $saved = @{}
+    foreach ($key in $shimEnv.Keys) { $saved[$key] = [Environment]::GetEnvironmentVariable($key) }
+    try {
+        foreach ($key in $shimEnv.Keys) { Set-Item "env:$key" $shimEnv[$key] }
+        & bun $scriptPath $Command @Argument
+        return $LASTEXITCODE -eq 0
+    } finally {
+        foreach ($key in $shimEnv.Keys) {
+            if ($null -eq $saved[$key]) { Remove-Item "env:$key" -ErrorAction SilentlyContinue }
+            else { Set-Item "env:$key" $saved[$key] }
+        }
+    }
 }
 
 # ============================================================ copilot-proxy ===
@@ -1460,7 +1497,7 @@ function copilot-proxy {
                 Write-Host "  models: $($rawIds.Count) served; Claude: $claudeText"
                 if (Get-CopilotShimEnabled) {
                     if (Test-CopilotShimAlive) { Write-Host "  shim:   ON, up on $(Get-CopilotShimBase)  -> clients use this" }
-                    else { Write-Host "  shim:   ON but DOWN (clients fall back to $(Get-CopilotBase))" }
+                    else { Write-Host "  shim:   ON but DOWN (managed clients fail closed; break glass: copilot-proxy shim off)" }
                 } else { Write-Host "  shim:   off  (enable: copilot-proxy shim on)" }
             } else {
                 Write-Host "copilot-proxy: not running on port $port  (start: copilot-proxy start)"
@@ -1477,6 +1514,14 @@ function copilot-proxy {
             if (Test-Path $lf) { Get-Content -Tail $n $lf }
             elseif (Test-Path "$lf.err") { Get-Content -Tail $n "$lf.err" }
             else { Write-Error "copilot-proxy: no log file at $lf" }
+        }
+        { $_ -in 'stats', 'events' } {
+            $null = Invoke-CopilotShimCli -Command $action -Argument @($Argv | Select-Object -Skip 1)
+        }
+        'bench' {
+            if (-not (Test-CopilotAlive)) { Write-Error 'copilot-proxy: bench requires the proxy to be running.'; return }
+            if (-not (Assert-CopilotShim)) { return }
+            $null = Invoke-CopilotShimCli -Command bench -Argument @($Argv | Select-Object -Skip 1)
         }
         'auth' {
             # One-time device login -> stores a ghu_ token copilot-api can exchange.
@@ -1498,7 +1543,7 @@ function copilot-proxy {
             $installed = Get-CopilotPkgMetadata
             Write-Host "copilot-proxy: installed $($installed.Name)@$($installed.Version) (requested $(Get-CopilotPkg)) -> $(Get-CopilotPkgPrefix)"
         }
-        { $_ -in 'whoami', 'usage' } {
+        { $_ -in 'whoami', 'usage', 'quota' } {
             if (-not (Test-Path (Get-CopilotToken))) { Write-Error "copilot-proxy: not authenticated — run 'copilot-proxy auth'."; return }
             if ((Get-CopilotPkgFlavor) -eq 'original') {
                 Invoke-CopilotPkgCommand check-usage
@@ -1541,7 +1586,7 @@ function copilot-proxy {
             }
         }
         { $_ -in '-h', '--help', 'help' } {
-            Write-Host "Usage: copilot-proxy [start|stop|restart|status|doctor [--live]|logs [shim|N [gen]]|shim [on|off|status]|whoami|auth|reinstall]"
+            Write-Host "Usage: copilot-proxy [start|stop|restart|status|doctor [--live]|logs [shim|N [gen]]|shim [on|off|status]|stats|events|quota|bench|update VERSION|rollback|whoami|auth|reinstall]"
             Write-Host "  doctor (alias: test)  diagnose prereqs, package, auth, proxy, Claude catalog, Codex Apps"
             Write-Host "                        (direct vs via proxy), upstream. --live costs 1 quota unit."
             Write-Host "  COPILOT_HTTP_PROXY    auto|always|never|http://127.0.0.1:PORT  (default auto)"

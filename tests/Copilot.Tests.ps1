@@ -1392,12 +1392,30 @@ Describe 'Copilot module' {
         }
     }
 
-    # The shim has no /_shim/health on this build, so Test-CopilotShimAlive only
-    # proves that SOMETHING answers HTTP on the port (-SkipHttpErrorCheck accepts
-    # a 404 too). Everything below is about not letting that weak signal decide
-    # port state or client routing.
+    # Protocol identity comes only from /_shim/health; OS inspection separately
+    # decides whether a listener is ours, foreign, or uninspectable.
     # pitfalls/copilot-proxy-shim-port-held-by-another-process.md
     Context 'shim port ownership' {
+        It 'defaults on but honors an explicit persisted off state' {
+            InModuleScope Copilot {
+                $env:COPILOT_PROXY_SHIM = $null
+                $env:XDG_STATE_HOME = Join-Path $TestDrive "shim-state-$([guid]::NewGuid())"
+                Get-CopilotShimEnabled | Should -BeTrue
+                $state = Get-CopilotShimState
+                New-Item -ItemType Directory -Force (Split-Path $state) | Out-Null
+                'off' | Set-Content $state
+                Get-CopilotShimEnabled | Should -BeFalse
+                $env:XDG_STATE_HOME = $null
+            }
+        }
+        It 'accepts only the shim identity health response' {
+            InModuleScope Copilot {
+                Mock Invoke-RestMethod { [pscustomobject]@{ ok = $true } } -ParameterFilter { $Uri -like '*/_shim/health' }
+                Test-CopilotShimAlive | Should -BeTrue
+                Mock Invoke-RestMethod { [pscustomobject]@{ ok = $false } } -ParameterFilter { $Uri -like '*/_shim/health' }
+                Test-CopilotShimAlive | Should -BeFalse
+            }
+        }
         It 'refuses to spawn when the port is held by a foreign process' {
             InModuleScope Copilot {
                 Mock Get-CopilotPortOwner {
@@ -1456,15 +1474,21 @@ Describe 'Copilot module' {
                     # The child would inherit these; assert they are set AT spawn time.
                     $script:seenPort = $env:COPILOT_SHIM_PORT
                     $script:seenUpstream = $env:COPILOT_SHIM_UPSTREAM
+                    $script:seenMetricsDb = $env:COPILOT_SHIM_METRICS_DB
+                    $script:seenTokenDb = $env:COPILOT_API_SQLITE_DB_PATH
                     $script:spawned = $true
                     [pscustomobject]@{ Id = 9002 }
                 }
                 $before = $env:COPILOT_SHIM_UPSTREAM
+                $beforeMetrics = $env:COPILOT_SHIM_METRICS_DB
                 Start-CopilotShim | Should -BeTrue
                 $script:seenPort | Should -Be (Get-CopilotShimPort)
                 $script:seenUpstream | Should -Be (Get-CopilotBase)
+                $script:seenMetricsDb | Should -Be (Get-CopilotShimMetricsDb)
+                $script:seenTokenDb | Should -Be (Get-CopilotTokenUsageDb)
                 # ...and are gone again afterwards.
                 $env:COPILOT_SHIM_UPSTREAM | Should -Be $before
+                $env:COPILOT_SHIM_METRICS_DB | Should -Be $beforeMetrics
             }
         }
         It 'treats an uninspectable port as unknown, not as free-and-foreign' {

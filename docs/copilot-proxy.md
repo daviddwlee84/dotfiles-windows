@@ -17,7 +17,10 @@ the PowerShell profile. It requires Bun, Node/npm and a Copilot subscription.
 | `copilot-proxy status` | show raw served count and Claude availability |
 | `copilot-proxy doctor [--live]` | diagnose package, auth, proxy, catalog, roles, upstream and Codex Apps |
 | `copilot-proxy logs [N]` | tail the proxy log |
-| `copilot-proxy shim [on\|off]` | toggle the throttle shim (port 4142) |
+| `copilot-proxy shim [on\|off]` | toggle the metrics/throttle shim (port 4142; default on) |
+| `copilot-proxy stats` / `events` | query the local metrics databases, including while processes are down |
+| `copilot-proxy quota` | show live account / plan / quota |
+| `copilot-proxy bench --model ID` | run bounded real Responses benchmarks (consumes quota) |
 | `copilot-proxy whoami` | account / plan / quota |
 | `copilot-proxy reinstall` | wipe and reinstall the selected package |
 | `copilot-proxy update VERSION` | stage, verify and select exact 2.3.4/2.3.0/2.1.0 without restarting |
@@ -224,34 +227,27 @@ See Claude Code's [feature availability](https://code.claude.com/docs/en/feature
   the SSE keepalive *and* the Responses tool-description normalization, so a
   silent fallback reintroduces a documented `400` with no message anywhere.
   `copilot-proxy shim off` is the only intentional direct-mode route.
-- **The shim port is read from the OS, not inferred from the health probe.**
-  `Test-CopilotShimAlive` can only prove that *something* answers HTTP on 4142
-  (this shim build has no `/_shim/health`, and the probe accepts a 404), so
-  `Start-CopilotShim` classifies the port with `Get-NetTCPConnection` +
-  `Win32_Process`: a stale or older `copilot-throttle-shim.js` of ours is
-  reclaimed, any other process is named and the start refuses — move out of its
-  way with `COPILOT_SHIM_PORT`. Without that, an unrelated HTTP server silently
-  becomes the gateway, and one of our own stale shims wedges every start with
-  `EADDRINUSE`. See
+- **Identity comes only from `/_shim/health`; ownership still comes from the OS.**
+  `Test-CopilotShimAlive` requires `{ok:true}` from that endpoint, while
+  `Start-CopilotShim` classifies port ownership with `Get-NetTCPConnection` +
+  `Win32_Process`: a stale `copilot-throttle-shim.js` of ours is reclaimed, any
+  other process is named and refused. A failed required spawn is reaped. Move a
+  foreign listener with `COPILOT_SHIM_PORT`; never infer identity from a generic
+  `/v1/models` response. See
   [pitfalls/copilot-proxy-shim-port-held-by-another-process.md](https://github.com/daviddwlee84/windows-dotfiles/blob/main/pitfalls/copilot-proxy-shim-port-held-by-another-process.md).
-- The throttle shim is pinned byte-for-byte to the reviewed macOS/Linux artifact.
+- The metrics/throttle shim is pinned byte-for-byte to parent commit `b205a2a`.
   It limits concurrent requests and retries the **same buffered request and model**
-  on network errors or HTTP 403/429/502/503/504 before any upstream body is exposed.
-  It never substitutes a model, and deliberately passes HTTP 402 through once;
-  billing configuration is not a throttle failure.
-- For an inspectable literal `stream: true` JSON request, the shim waits through a
-  10-second grace period, then enters its slow SSE path. The first comment frame—and
-  therefore the first bytes/headers visible through Bun—arrives on the next
-  15-second keepalive tick; later comments continue at that interval while the
-  request is queued or the model is silently reasoning. The 240-second watchdog
-  bounds pre-header silence and, while pings are enabled, mid-stream silence. Fast
-  streams and every non-streaming response remain transparent, including their real
-  status code and body. If an upstream error arrives only after the early SSE path
-  has emitted bytes, the HTTP status is already spent, so the shim emits a standard
-  SSE `error` event. Tune these boundaries with `COPILOT_SHIM_PING_AFTER_MS`,
-  `COPILOT_SHIM_PING_MS` and `COPILOT_SHIM_STALL_MS`; setting ping to `0` also
-  disables the current mid-stream watchdog loop, while the pre-header watchdog
-  remains controlled by `COPILOT_SHIM_STALL_MS`.
+  on network errors or HTTP 403/429/500/502/503/504 before any upstream body is
+  exposed. HTTP 402 and bare 401 pass through once; no request-time model substitution
+  occurs. Queue/backoff cancellation releases permits promptly.
+- For literal `stream:true`, the shim emits keepalive comments after the grace period,
+  requires successful upstream bodies to be SSE, and translates late failures to
+  Anthropic `error` or Responses `response.failed` terminal events. The stall
+  watchdog remains active when pings are disabled. Timing and token rows live in
+  `$XDG_STATE_HOME/copilot-proxy/metrics.sqlite` and
+  `$XDG_DATA_HOME/copilot-api/copilot-api.sqlite`; `stats`/`events` read them offline.
+  `bench` is bounded to 1–10 runs, 32–2048 max output tokens and concurrency 1–4,
+  but still sends real inference and consumes quota.
 
 State lives under `~/.local/state/copilot-proxy/`; device login stores the GitHub
 token at `~/.local/share/copilot-api/github_token` without printing it by default.

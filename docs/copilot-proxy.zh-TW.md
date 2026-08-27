@@ -17,7 +17,10 @@ fork，讓 **GitHub Copilot 訂閱**可作為 **Claude Code** 與其他 Anthropi
 | `copilot-proxy status` | 顯示 raw served 數量與 Claude 可用性 |
 | `copilot-proxy doctor [--live]` | 診斷套件、認證、proxy、catalog、roles、上游與 Codex Apps |
 | `copilot-proxy logs [N]` | 查看 proxy log |
-| `copilot-proxy shim [on\|off]` | 切換節流 shim（port 4142） |
+| `copilot-proxy shim [on\|off]` | 切換 metrics/節流 shim（port 4142；預設 on） |
+| `copilot-proxy stats` / `events` | 查詢本機 metrics DB，process 停止時也可使用 |
+| `copilot-proxy quota` | 顯示即時帳號 / 方案 / 額度 |
+| `copilot-proxy bench --model ID` | 執行有界的真實 Responses benchmark（消耗 quota） |
 | `copilot-proxy whoami` | 帳號 / 方案 / 額度 |
 | `copilot-proxy reinstall` | 清掉並重裝目前 selection |
 | `copilot-proxy update VERSION` | stage、驗證並選取 exact 2.3.4/2.3.0/2.1.0，不重啟 |
@@ -199,27 +202,20 @@ ANTHROPIC_SMALL_FAST_MODEL
   它們會直接放棄，而不是默默退回 `localhost:4141`。繞過 shim 會同時失去 SSE keepalive
   **與** Responses tool-description 正規化，所以那種靜默 fallback 等於把一個已記錄在案的
   `400` 重新放回來，而且哪裡都不會有訊息。`copilot-proxy shim off` 是唯一刻意的 direct-mode 路徑。
-- **Shim 的 port 狀態改由作業系統讀取，不再從健康探測推論。**
-  `Test-CopilotShimAlive` 只能證明 4142 上「有東西在講 HTTP」（這版 shim 沒有 `/_shim/health`，
-  而且探測連 404 都接受），所以 `Start-CopilotShim` 改用 `Get-NetTCPConnection` + `Win32_Process`
-  判定 port 歸屬：是我們自己的舊版或殘留 `copilot-throttle-shim.js` 就回收；其他程序則印出名稱後
-  拒絕啟動 —— 要讓路請用 `COPILOT_SHIM_PORT`。少了這一步，無關的 HTTP server 會默默變成所有
-  managed client 的閘道，而自己的殘留 shim 則會用 `EADDRINUSE` 卡死每一次啟動。詳見
+- **Identity 只接受 `/_shim/health`；ownership 仍由 OS 判定。**
+  `Test-CopilotShimAlive` 要求該 endpoint 回 `{ok:true}`；`Start-CopilotShim` 另以
+  `Get-NetTCPConnection` + `Win32_Process` 判斷 port owner，只回收 stale 的
+  `copilot-throttle-shim.js`，其他 process 會具名拒絕。required spawn 失敗也會 reap；不要用
+  generic `/v1/models` 回應推論 identity。詳見
   [pitfalls/copilot-proxy-shim-port-held-by-another-process.md](https://github.com/daviddwlee84/windows-dotfiles/blob/main/pitfalls/copilot-proxy-shim-port-held-by-another-process.md)。
-- Throttle shim 以 byte-for-byte 方式固定到已 review 的 macOS/Linux artifact。它會限制
-  concurrent requests，並在任何 upstream body 尚未暴露前，針對 network error 或 HTTP
-  403/429/502/503/504，以**相同 buffered request 與 model**重試。它絕不替換 model，且
-  刻意讓 HTTP 402 只通過一次；billing 設定不是 throttle failure。
-- 對可判讀的 literal `stream: true` JSON request，shim 先經過 10 秒 grace period，再進入
-  slow SSE path。第一個 comment frame（也就是 Bun 真正讓 headers/bytes 上線的時間）會在
-  下一個 15 秒 keepalive tick 抵達；request 排隊或 model silent reasoning 期間則持續依此
-  interval 發送。240 秒 watchdog 會限制 pre-header 靜默；啟用 ping 時也會限制 mid-stream
-  靜默。快速 stream 與所有 non-streaming response 都維持透明，包括真實 status code 與
-  body。若 upstream error 在 early SSE path 已送出 bytes 後才到，HTTP status 已無法改寫，
-  shim 會改送標準 SSE `error` event。可用 `COPILOT_SHIM_PING_AFTER_MS`、
-  `COPILOT_SHIM_PING_MS` 與 `COPILOT_SHIM_STALL_MS` 調整邊界；把 ping 設為 `0` 也會停用
-  目前的 mid-stream watchdog loop，但 pre-header watchdog 仍由
-  `COPILOT_SHIM_STALL_MS` 控制。
+- Metrics/throttle shim 與 parent commit `b205a2a` byte-for-byte 相同。任何 upstream body 尚未
+  暴露前，network error 或 HTTP 403/429/500/502/503/504 會以**相同 buffered request 與
+  model**重試；HTTP 402 與 bare 401 只通過一次，不做 request-time model substitution。
+- `stream:true` 經 grace period 後會收到 keepalive comment；成功 body 必須是 SSE，late
+  failure 依 endpoint 送 Anthropic `error` 或 Responses `response.failed`。關掉 ping 不會
+  關掉 stall watchdog。Timing/token rows 位於 `$XDG_STATE_HOME/copilot-proxy/metrics.sqlite`
+  與 `$XDG_DATA_HOME/copilot-api/copilot-api.sqlite`，`stats`/`events` 可離線讀取。`bench`
+  限制 1–10 runs、32–2048 max output、concurrency 1–4，但仍會送真實 inference、消耗 quota。
 
 狀態放在 `~/.local/state/copilot-proxy/`；device login 會把 GitHub token 存在
 `~/.local/share/copilot-api/github_token`，預設不印出內容。
