@@ -103,6 +103,14 @@ function script:Get-CopilotPkgFlavor {
 function script:Get-CopilotBase    { "http://localhost:$(Get-CopilotPort)" }
 function script:Get-CopilotTmp     { if ($env:TEMP) { $env:TEMP } else { [System.IO.Path]::GetTempPath() } }
 function script:Get-CopilotLogFile { Join-Path (Get-CopilotTmp) "copilot-api-$(Get-CopilotPort).log" }
+function script:Rotate-CopilotLog {
+    param([Parameter(Mandatory)] [string] $Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+    Remove-Item "$Path.3" -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath "$Path.2") { Move-Item -LiteralPath "$Path.2" -Destination "$Path.3" -Force }
+    if (Test-Path -LiteralPath "$Path.1") { Move-Item -LiteralPath "$Path.1" -Destination "$Path.2" -Force }
+    Move-Item -LiteralPath $Path -Destination "$Path.1" -Force
+}
 function script:Get-CopilotPidFile { Join-Path (Get-CopilotTmp) "copilot-api-$(Get-CopilotPort).pid" }
 function script:Get-CopilotToken   { Join-Path $HOME '.local/share/copilot-api/github_token' }
 
@@ -1416,6 +1424,8 @@ function script:Start-CopilotShim {
             Start-Sleep 1
         }
     }
+    Rotate-CopilotLog -Path (Get-CopilotShimLog)
+    Rotate-CopilotLog -Path "$(Get-CopilotShimLog).err"
     # `$env:X = ...` is PROCESS-wide in PowerShell, not scoped to the function,
     # so assigning these used to leak into the caller's session for good — and
     # every later `bun copilot-throttle-shim.js` inherited them. Set, spawn,
@@ -1523,13 +1533,9 @@ function copilot-proxy {
             if (-not (Test-Path (Get-CopilotToken))) {
                 Write-Error "copilot-proxy: not authenticated yet — run 'copilot-proxy auth' first."; return
             }
-            # Rotate the previous session's log (keep last 3).
-            if (Test-Path $logf) {
-                Remove-Item "$logf.3" -ErrorAction SilentlyContinue
-                if (Test-Path "$logf.2") { Move-Item -Force "$logf.2" "$logf.3" }
-                if (Test-Path "$logf.1") { Move-Item -Force "$logf.1" "$logf.2" }
-                Move-Item -Force $logf "$logf.1"
-            }
+            # Rotate stdout and stderr independently (keep the last 3 sessions).
+            Rotate-CopilotLog -Path $logf
+            Rotate-CopilotLog -Path "$logf.err"
             # Install the pinned package BEFORE launching anything. Resolving it at
             # launch (the old `bunx <pkg> start`) is what used to hang forever behind
             # a socks proxy, with nothing but "Resolving dependencies" in the log.
@@ -1654,7 +1660,13 @@ function copilot-proxy {
             if ($Argv.Count -ge 2 -and $Argv[1] -eq 'lifecycle') {
                 $lf = Get-CopilotLifecycleLog; $n = if ($Argv.Count -ge 3) { [int]$Argv[2] } else { 40 }
             } elseif ($Argv.Count -ge 2 -and $Argv[1] -eq 'shim') {
-                $lf = Get-CopilotShimLog; $n = if ($Argv.Count -ge 3) { [int]$Argv[2] } else { 40 }
+                if ($Argv.Count -ge 3 -and $Argv[2] -eq 'err') {
+                    $lf = "$(Get-CopilotShimLog).err"; $n = if ($Argv.Count -ge 4) { [int]$Argv[3] } else { 40 }
+                } else {
+                    $lf = Get-CopilotShimLog; $n = if ($Argv.Count -ge 3) { [int]$Argv[2] } else { 40 }
+                }
+            } elseif ($Argv.Count -ge 2 -and $Argv[1] -eq 'err') {
+                $lf = "$logf.err"; $n = if ($Argv.Count -ge 3) { [int]$Argv[2] } else { 40 }
             } else {
                 $lf = $logf; $n = if ($Argv.Count -ge 2) { [int]$Argv[1] } else { 40 }
                 if ($Argv.Count -ge 3 -and $Argv[2] -in '1', '2', '3') { $lf = "$logf.$($Argv[2])" }
@@ -1734,7 +1746,7 @@ function copilot-proxy {
             }
         }
         { $_ -in '-h', '--help', 'help' } {
-            Write-Host "Usage: copilot-proxy [start|stop|restart|status|doctor [--live]|logs [shim|lifecycle|N [gen]]|shim [on|off|status]|stats|events|quota|bench|update VERSION|rollback|whoami|auth|reinstall]"
+            Write-Host "Usage: copilot-proxy [start|stop|restart|status|doctor [--live]|logs [err|shim [err]|lifecycle|N [gen]]|shim [on|off|status]|stats|events|quota|bench|update VERSION|rollback|whoami|auth|reinstall]"
             Write-Host "  doctor (alias: test)  diagnose prereqs, package, auth, proxy, Claude catalog, Codex Apps"
             Write-Host "                        (direct vs via proxy), upstream. --live costs 1 quota unit."
             Write-Host "  COPILOT_HTTP_PROXY    auto|always|never|http://127.0.0.1:PORT  (default auto)"

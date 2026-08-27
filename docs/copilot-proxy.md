@@ -16,7 +16,7 @@ the PowerShell profile. It requires Bun, Node/npm and a Copilot subscription.
 | `copilot-proxy start` / `stop` / `restart` | manage the local proxy (port 4141) |
 | `copilot-proxy status` | show raw served count and Claude availability |
 | `copilot-proxy doctor [--live]` | diagnose package, auth, proxy, catalog, roles, upstream and Codex Apps |
-| `copilot-proxy logs [N]` / `logs shim` / `logs lifecycle` | tail proxy, shim, or process-lifecycle logs |
+| `copilot-proxy logs [N]` / `logs err` / `logs shim [err]` / `logs lifecycle` | tail proxy stdout/stderr, shim stdout/stderr, or process-lifecycle logs |
 | `copilot-proxy shim [on\|off]` | toggle the metrics/throttle shim (port 4142; default on) |
 | `copilot-proxy stats` / `events` | query the local metrics databases, including while processes are down |
 | `copilot-proxy quota` | show live account / plan / quota |
@@ -254,7 +254,9 @@ token at `~/.local/share/copilot-api/github_token` without printing it by defaul
 A detached watcher appends process lifecycle records to `lifecycle.jsonl`: spawn,
 ready, startup failure, exit code, package/version/PID/port, and whether shutdown
 was deliberate or unexpected. Inspect it with `copilot-proxy logs lifecycle`;
-request-level attempts and stream failures remain in `stats`/`events`.
+request-level attempts and stream failures remain in `stats`/`events`. Proxy and
+shim stdout/stderr rotate independently for three sessions, and `logs err` or
+`logs shim err` exposes errors even when a stdout log also exists.
 
 ## Codex through the gateway
 

@@ -1444,6 +1444,34 @@ Describe 'Copilot module' {
                 $output | Should -Contain '{"requests":0}'
             }
         }
+
+        It 'rotates stdout and stderr histories independently' {
+            InModuleScope Copilot {
+                $stdout = Join-Path $TestDrive 'proxy.log'
+                $stderr = "$stdout.err"
+                'stdout-current' | Set-Content $stdout
+                'stdout-old' | Set-Content "$stdout.1"
+                'stderr-current' | Set-Content $stderr
+                'stderr-old' | Set-Content "$stderr.1"
+                Rotate-CopilotLog -Path $stdout
+                Rotate-CopilotLog -Path $stderr
+                (Get-Content "$stdout.1") | Should -BeExactly 'stdout-current'
+                (Get-Content "$stdout.2") | Should -BeExactly 'stdout-old'
+                (Get-Content "$stderr.1") | Should -BeExactly 'stderr-current'
+                (Get-Content "$stderr.2") | Should -BeExactly 'stderr-old'
+            }
+        }
+
+        It 'exposes proxy stderr even when stdout also exists' {
+            InModuleScope Copilot {
+                Mock Get-Command { [pscustomobject]@{ Source = 'bun' } } -ParameterFilter { $Name -eq 'bun' }
+                Mock Get-CopilotLogFile { Join-Path $TestDrive 'proxy.log' }
+                Mock Test-Path { $true }
+                Mock Get-Content { $Path } -ParameterFilter { $Path -like '*.err' -and $Tail -eq 40 }
+                $output = @(copilot-proxy logs err)
+                $output[-1] | Should -BeLike '*.err'
+            }
+        }
     }
 
     # Protocol identity comes only from /_shim/health; OS inspection separately

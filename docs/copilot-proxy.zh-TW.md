@@ -16,7 +16,7 @@ fork，讓 **GitHub Copilot 訂閱**可作為 **Claude Code** 與其他 Anthropi
 | `copilot-proxy start` / `stop` / `restart` | 管理本機 proxy（port 4141） |
 | `copilot-proxy status` | 顯示 raw served 數量與 Claude 可用性 |
 | `copilot-proxy doctor [--live]` | 診斷套件、認證、proxy、catalog、roles、上游與 Codex Apps |
-| `copilot-proxy logs [N]` / `logs shim` / `logs lifecycle` | 查看 proxy、shim 或 process lifecycle log |
+| `copilot-proxy logs [N]` / `logs err` / `logs shim [err]` / `logs lifecycle` | 查看proxy/shim stdout、stderr或process lifecycle log |
 | `copilot-proxy shim [on\|off]` | 切換 metrics/節流 shim（port 4142；預設 on） |
 | `copilot-proxy stats` / `events` | 查詢本機 metrics DB，process 停止時也可使用 |
 | `copilot-proxy quota` | 顯示即時帳號 / 方案 / 額度 |
@@ -221,7 +221,8 @@ ANTHROPIC_SMALL_FAST_MODEL
 `~/.local/share/copilot-api/github_token`，預設不印出內容。Detached watcher 會把spawn、ready、
 startup failure、exit code、package/version/PID/port，以及deliberate或unexpected shutdown
 append到`lifecycle.jsonl`；用`copilot-proxy logs lifecycle`查看。Request-level attempts與
-stream failure仍由`stats`/`events`查詢。
+stream failure仍由`stats`/`events`查詢。Proxy與shim的stdout/stderr各自保留三代；即使stdout
+存在，`logs err`與`logs shim err`仍可直接查看stderr。
 
 ## Codex 走 gateway
 
