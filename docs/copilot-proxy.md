@@ -16,7 +16,7 @@ the PowerShell profile. It requires Bun, Node/npm and a Copilot subscription.
 | `copilot-proxy start` / `stop` / `restart` | manage the local proxy (port 4141) |
 | `copilot-proxy status` | show raw served count and Claude availability |
 | `copilot-proxy doctor [--live]` | diagnose package, auth, proxy, catalog, roles, upstream and Codex Apps |
-| `copilot-proxy logs [N]` | tail the proxy log |
+| `copilot-proxy logs [N]` / `logs shim` / `logs lifecycle` | tail proxy, shim, or process-lifecycle logs |
 | `copilot-proxy shim [on\|off]` | toggle the metrics/throttle shim (port 4142; default on) |
 | `copilot-proxy stats` / `events` | query the local metrics databases, including while processes are down |
 | `copilot-proxy quota` | show live account / plan / quota |
@@ -251,6 +251,10 @@ See Claude Code's [feature availability](https://code.claude.com/docs/en/feature
 
 State lives under `~/.local/state/copilot-proxy/`; device login stores the GitHub
 token at `~/.local/share/copilot-api/github_token` without printing it by default.
+A detached watcher appends process lifecycle records to `lifecycle.jsonl`: spawn,
+ready, startup failure, exit code, package/version/PID/port, and whether shutdown
+was deliberate or unexpected. Inspect it with `copilot-proxy logs lifecycle`;
+request-level attempts and stream failures remain in `stats`/`events`.
 
 ## Codex through the gateway
 

@@ -1416,6 +1416,36 @@ Describe 'Copilot module' {
         }
     }
 
+    Context 'process lifecycle diagnostics' {
+        It 'records unexpected exits and deliberate stop intent separately' {
+            $watcher = Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-process-watch.ps1'
+            $log = Join-Path $TestDrive 'lifecycle.jsonl'
+
+            $unexpected = Start-Process -FilePath (Get-Command pwsh).Source -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Milliseconds 100; exit 7') -PassThru
+            & $watcher -ProcessId $unexpected.Id -Component proxy -LogPath $log -IntentPath (Join-Path $TestDrive 'unexpected.intent') -Package pkg -Version 2.3.4 -Port 4141
+
+            $deliberate = Start-Process -FilePath (Get-Command pwsh).Source -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Milliseconds 100; exit 0') -PassThru
+            $intent = Join-Path $TestDrive 'deliberate.intent'
+            'stop' | Set-Content $intent
+            & $watcher -ProcessId $deliberate.Id -Component shim -LogPath $log -IntentPath $intent -Package pkg -Version 2.3.4 -Port 4142
+
+            $rows = @(Get-Content $log | ForEach-Object { $_ | ConvertFrom-Json })
+            $rows[0].event | Should -BeExactly 'unexpected_exit'
+            $rows[0].exit_code | Should -Be 7
+            $rows[1].event | Should -BeExactly 'deliberate_stop'
+            Test-Path $intent | Should -BeFalse
+        }
+
+        It 'preserves stats JSON on the success stream' {
+            InModuleScope Copilot {
+                Mock Get-Command { [pscustomobject]@{ Source = 'bun' } } -ParameterFilter { $Name -eq 'bun' }
+                Mock Invoke-CopilotShimCli { '{"requests":0}' }
+                $output = @(copilot-proxy stats --json)
+                $output | Should -Contain '{"requests":0}'
+            }
+        }
+    }
+
     # Protocol identity comes only from /_shim/health; OS inspection separately
     # decides whether a listener is ours, foreign, or uninspectable.
     # pitfalls/copilot-proxy-shim-port-held-by-another-process.md

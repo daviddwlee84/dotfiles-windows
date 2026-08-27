@@ -754,6 +754,12 @@ function script:Get-CopilotShimPid    { Join-Path (Get-CopilotTmp) "copilot-shim
 function script:Get-CopilotShimState  { Join-Path (Get-XdgState) 'copilot-proxy/shim' }
 function script:Get-CopilotShimMetricsDb { Join-Path (Get-XdgState) 'copilot-proxy/metrics.sqlite' }
 function script:Get-CopilotTokenUsageDb { Join-Path (Get-XdgData) 'copilot-api/copilot-api.sqlite' }
+function script:Get-CopilotLifecycleLog { Join-Path (Get-XdgState) 'copilot-proxy/lifecycle.jsonl' }
+function script:Get-CopilotProcessWatchScript { Join-Path (Get-XdgConfig) 'powershell/copilot-process-watch.ps1' }
+function script:Get-CopilotStopIntent {
+    param([Parameter(Mandatory)] [string] $Component, [Parameter(Mandatory)] [int] $ProcessId)
+    Join-Path (Get-XdgState) "copilot-proxy/stop-$Component-$ProcessId.intent"
+}
 function script:Get-CopilotModelState { Join-Path (Get-XdgState) 'copilot-proxy/model' }
 
 # --- egress: which proxy should Node use for the GitHub /models fetch? --------
@@ -1303,6 +1309,75 @@ function script:Get-CopilotEnvBlock {
     $block
 }
 
+function script:Write-CopilotLifecycleEvent {
+    param(
+        [Parameter(Mandatory)] [string] $Component,
+        [Parameter(Mandatory)] [string] $Event,
+        [int] $ProcessId,
+        [int] $Port,
+        [string] $Detail
+    )
+    $metadata = Get-CopilotPkgMetadata
+    $row = [ordered]@{
+        timestamp = [DateTime]::UtcNow.ToString('o')
+        component = $Component
+        event = $Event
+        pid = if ($ProcessId) { $ProcessId } else { $null }
+        port = if ($Port) { $Port } else { $null }
+        package = if ($metadata) { [string]$metadata.Name } else { [string](Get-CopilotPkgName) }
+        version = if ($metadata) { [string]$metadata.Version } else { $null }
+        detail = $Detail
+    }
+    $path = Get-CopilotLifecycleLog
+    [System.IO.Directory]::CreateDirectory((Split-Path -Parent $path)) | Out-Null
+    [System.IO.File]::AppendAllText($path, (($row | ConvertTo-Json -Compress) + [Environment]::NewLine), [System.Text.UTF8Encoding]::new($false))
+}
+
+function script:Start-CopilotProcessWatcher {
+    param(
+        [Parameter(Mandatory)] $Process,
+        [Parameter(Mandatory)] [ValidateSet('proxy', 'shim')] [string] $Component,
+        [Parameter(Mandatory)] [int] $Port
+    )
+    $watchScript = Get-CopilotProcessWatchScript
+    if (-not (Test-Path -LiteralPath $watchScript -PathType Leaf)) {
+        Write-CopilotLifecycleEvent -Component $Component -Event 'watch_unavailable' -ProcessId $Process.Id -Port $Port -Detail $watchScript
+        return
+    }
+    $metadata = Get-CopilotPkgMetadata
+    $watchEnv = @{
+        COPILOT_WATCH_SCRIPT = $watchScript
+        COPILOT_WATCH_PID = [string]$Process.Id
+        COPILOT_WATCH_COMPONENT = $Component
+        COPILOT_WATCH_LOG = Get-CopilotLifecycleLog
+        COPILOT_WATCH_INTENT = Get-CopilotStopIntent -Component $Component -ProcessId $Process.Id
+        COPILOT_WATCH_PACKAGE = if ($metadata) { [string]$metadata.Name } else { '' }
+        COPILOT_WATCH_VERSION = if ($metadata) { [string]$metadata.Version } else { '' }
+        COPILOT_WATCH_PORT = [string]$Port
+    }
+    Remove-Item -LiteralPath $watchEnv.COPILOT_WATCH_INTENT -Force -ErrorAction SilentlyContinue
+    $saved = @{}
+    foreach ($key in $watchEnv.Keys) { $saved[$key] = [Environment]::GetEnvironmentVariable($key) }
+    $command = '& $env:COPILOT_WATCH_SCRIPT -ProcessId ([int]$env:COPILOT_WATCH_PID) -Component $env:COPILOT_WATCH_COMPONENT -LogPath $env:COPILOT_WATCH_LOG -IntentPath $env:COPILOT_WATCH_INTENT -Package $env:COPILOT_WATCH_PACKAGE -Version $env:COPILOT_WATCH_VERSION -Port ([int]$env:COPILOT_WATCH_PORT)'
+    $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($command))
+    try {
+        foreach ($key in $watchEnv.Keys) { Set-Item "env:$key" $watchEnv[$key] }
+        Start-Process -FilePath (Get-Command pwsh).Source -ArgumentList @('-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded) -WindowStyle Hidden | Out-Null
+    } finally {
+        foreach ($key in $watchEnv.Keys) {
+            if ($null -eq $saved[$key]) { Remove-Item "env:$key" -ErrorAction SilentlyContinue }
+            else { Set-Item "env:$key" $saved[$key] }
+        }
+    }
+}
+
+function script:Set-CopilotStopIntent {
+    param([Parameter(Mandatory)] [string] $Component, [Parameter(Mandatory)] [int] $ProcessId)
+    $path = Get-CopilotStopIntent -Component $Component -ProcessId $ProcessId
+    [System.IO.Directory]::CreateDirectory((Split-Path -Parent $path)) | Out-Null
+    [System.IO.File]::WriteAllText($path, [DateTime]::UtcNow.ToString('o'), [System.Text.UTF8Encoding]::new($false))
+}
+
 # --- shim start/stop ---
 # Start the shim (idempotent). Points it at the proxy; scopes COPILOT_SHIM_* to
 # the child.
@@ -1364,7 +1439,16 @@ function script:Start-CopilotShim {
         }
     }
     $p.Id | Set-Content -Path (Get-CopilotShimPid)
-    for ($i = 0; $i -lt 10; $i++) { if (Test-CopilotShimAlive) { return $true }; Start-Sleep 1 }
+    Write-CopilotLifecycleEvent -Component shim -Event spawned -ProcessId $p.Id -Port $port
+    Start-CopilotProcessWatcher -Process $p -Component shim -Port $port
+    for ($i = 0; $i -lt 10; $i++) {
+        if (Test-CopilotShimAlive) {
+            Write-CopilotLifecycleEvent -Component shim -Event ready -ProcessId $p.Id -Port $port
+            return $true
+        }
+        Start-Sleep 1
+    }
+    Write-CopilotLifecycleEvent -Component shim -Event start_failed -ProcessId $p.Id -Port $port -Detail 'health timeout'
     Write-Error "copilot-proxy: shim did not come up — check $(Get-CopilotShimLog)"
     # Surface the reason inline; Start-Process detaches, so EADDRINUSE and friends
     # otherwise land only in a file nobody opens.
@@ -1379,12 +1463,18 @@ function script:Stop-CopilotShim {
     $pidf = Get-CopilotShimPid
     if (Test-Path $pidf) {
         $pid_ = Get-Content -First 1 $pidf -ErrorAction SilentlyContinue
-        if ($pid_) { Stop-Process -Id $pid_ -Force -ErrorAction SilentlyContinue }
+        if ($pid_) {
+            Set-CopilotStopIntent -Component shim -ProcessId ([int]$pid_)
+            Stop-Process -Id $pid_ -Force -ErrorAction SilentlyContinue
+        }
         Remove-Item $pidf -ErrorAction SilentlyContinue
     }
     Get-CimInstance Win32_Process -Filter "Name = 'bun.exe'" -ErrorAction SilentlyContinue |
         Where-Object { $_.CommandLine -like '*copilot-throttle-shim.js*' } |
-        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        ForEach-Object {
+            Set-CopilotStopIntent -Component shim -ProcessId $_.ProcessId
+            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+        }
 }
 
 function script:Invoke-CopilotShimCli {
@@ -1393,7 +1483,7 @@ function script:Invoke-CopilotShimCli {
     $scriptPath = Get-CopilotShimScript
     if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
         Write-Error "copilot-proxy: shim script not found at $scriptPath"
-        return $false
+        return
     }
     $shimEnv = @{
         COPILOT_SHIM_PORT = Get-CopilotShimPort
@@ -1405,7 +1495,7 @@ function script:Invoke-CopilotShimCli {
     try {
         foreach ($key in $shimEnv.Keys) { Set-Item "env:$key" $shimEnv[$key] }
         & bun $scriptPath $Command @Argument
-        return $LASTEXITCODE -eq 0
+        if ($LASTEXITCODE -ne 0) { Write-Error "copilot-proxy: shim $Command failed with exit code $LASTEXITCODE" }
     } finally {
         foreach ($key in $shimEnv.Keys) {
             if ($null -eq $saved[$key]) { Remove-Item "env:$key" -ErrorAction SilentlyContinue }
@@ -1494,12 +1584,15 @@ function copilot-proxy {
                 }
             }
             $p.Id | Set-Content -Path $pidf
+            Write-CopilotLifecycleEvent -Component proxy -Event spawned -ProcessId $p.Id -Port ([int]$port)
+            Start-CopilotProcessWatcher -Process $p -Component proxy -Port ([int]$port)
             $startTimeout = if ($env:COPILOT_PROXY_START_TIMEOUT) { [int]$env:COPILOT_PROXY_START_TIMEOUT } else { 45 }
             for ($i = 0; $i -lt $startTimeout; $i++) {
                 if (Test-CopilotAlive) {
                     if (Get-CopilotShimEnabled) {
                         if (Start-CopilotShim) { Write-Host "copilot-proxy: throttle shim up -> $(Get-CopilotShimBase) (-> $(Get-CopilotBase))" }
                     }
+                    Write-CopilotLifecycleEvent -Component proxy -Event ready -ProcessId $p.Id -Port ([int]$port)
                     Write-Host "copilot-proxy: up -> $(Get-CopilotClientBase)  (logs: copilot-proxy logs)"
                     return
                 }
@@ -1507,12 +1600,14 @@ function copilot-proxy {
                 # remaining seconds pretending we're still waiting.
                 if ($p.HasExited) {
                     Remove-Item $pidf -ErrorAction SilentlyContinue
+                    Write-CopilotLifecycleEvent -Component proxy -Event start_failed -ProcessId $p.Id -Port ([int]$port) -Detail "exit code $($p.ExitCode)"
                     Write-Error "copilot-proxy: server exited during startup — check 'copilot-proxy logs'."; return
                 }
                 Start-Sleep 1
             }
             # Timed out. REAP what we spawned: the old code returned and left it
             # running, so each retry stacked another orphan and none ever bound the port.
+            Write-CopilotLifecycleEvent -Component proxy -Event start_failed -ProcessId $p.Id -Port ([int]$port) -Detail 'health timeout'
             Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
             Remove-Item $pidf -ErrorAction SilentlyContinue
             Write-Error "copilot-proxy: did not come up in time — check 'copilot-proxy logs'."
@@ -1521,12 +1616,18 @@ function copilot-proxy {
             Stop-CopilotShim
             if (Test-Path $pidf) {
                 $pid_ = Get-Content -First 1 $pidf -ErrorAction SilentlyContinue
-                if ($pid_) { Stop-Process -Id $pid_ -Force -ErrorAction SilentlyContinue }
+                if ($pid_) {
+                    Set-CopilotStopIntent -Component proxy -ProcessId ([int]$pid_)
+                    Stop-Process -Id $pid_ -Force -ErrorAction SilentlyContinue
+                }
                 Remove-Item $pidf -ErrorAction SilentlyContinue
             }
             Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
                 Where-Object { $_.CommandLine -like "*copilot-api*--port $port*" } |
-                ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+                ForEach-Object {
+                    Set-CopilotStopIntent -Component proxy -ProcessId $_.ProcessId
+                    Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+                }
             Start-Sleep 1
             if (Test-CopilotAlive) { Write-Error "copilot-proxy: still answering on $port (another instance?)"; return }
             Write-Host "copilot-proxy: stopped (port $port free)"
@@ -1550,7 +1651,9 @@ function copilot-proxy {
         }
         { $_ -in 'doctor', 'test' } { Invoke-CopilotDoctor -Live:($Argv -contains '--live') }
         'logs' {
-            if ($Argv.Count -ge 2 -and $Argv[1] -eq 'shim') {
+            if ($Argv.Count -ge 2 -and $Argv[1] -eq 'lifecycle') {
+                $lf = Get-CopilotLifecycleLog; $n = if ($Argv.Count -ge 3) { [int]$Argv[2] } else { 40 }
+            } elseif ($Argv.Count -ge 2 -and $Argv[1] -eq 'shim') {
                 $lf = Get-CopilotShimLog; $n = if ($Argv.Count -ge 3) { [int]$Argv[2] } else { 40 }
             } else {
                 $lf = $logf; $n = if ($Argv.Count -ge 2) { [int]$Argv[1] } else { 40 }
@@ -1561,12 +1664,12 @@ function copilot-proxy {
             else { Write-Error "copilot-proxy: no log file at $lf" }
         }
         { $_ -in 'stats', 'events' } {
-            $null = Invoke-CopilotShimCli -Command $action -Argument @($Argv | Select-Object -Skip 1)
+            Invoke-CopilotShimCli -Command $action -Argument @($Argv | Select-Object -Skip 1)
         }
         'bench' {
             if (-not (Test-CopilotAlive)) { Write-Error 'copilot-proxy: bench requires the proxy to be running.'; return }
             if (-not (Assert-CopilotShim)) { return }
-            $null = Invoke-CopilotShimCli -Command bench -Argument @($Argv | Select-Object -Skip 1)
+            Invoke-CopilotShimCli -Command bench -Argument @($Argv | Select-Object -Skip 1)
         }
         'auth' {
             # One-time device login -> stores a ghu_ token copilot-api can exchange.
@@ -1631,7 +1734,7 @@ function copilot-proxy {
             }
         }
         { $_ -in '-h', '--help', 'help' } {
-            Write-Host "Usage: copilot-proxy [start|stop|restart|status|doctor [--live]|logs [shim|N [gen]]|shim [on|off|status]|stats|events|quota|bench|update VERSION|rollback|whoami|auth|reinstall]"
+            Write-Host "Usage: copilot-proxy [start|stop|restart|status|doctor [--live]|logs [shim|lifecycle|N [gen]]|shim [on|off|status]|stats|events|quota|bench|update VERSION|rollback|whoami|auth|reinstall]"
             Write-Host "  doctor (alias: test)  diagnose prereqs, package, auth, proxy, Claude catalog, Codex Apps"
             Write-Host "                        (direct vs via proxy), upstream. --live costs 1 quota unit."
             Write-Host "  COPILOT_HTTP_PROXY    auto|always|never|http://127.0.0.1:PORT  (default auto)"
