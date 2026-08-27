@@ -1,8 +1,42 @@
 # Ship prebuilt Windows binaries for `translate` and install it via scoop
 
-**Status**: P2 — not started (the `go install` path shipped 2026-07-27 and works)
+**Status**: shipped (2026-08-27)
 **Effort**: M
 **Related**: `TODO.md` · `.chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl` (translate block) · `Justfile` (`upgrade-translate`) · `docs/translate.md` · upstream repo `daviddwlee84/translate`
+
+## Shipped (2026-08-27)
+
+Done end to end. What actually landed, and where it differed from the plan below:
+
+- **Upstream** (`daviddwlee84/translate`): first-ever `.github/` — a CI workflow
+  plus an on-tag release workflow driving `.goreleaser.yaml`. One
+  `ubuntu-latest` runner cross-compiles all six targets; because the binary is
+  pure Go, `CGO_ENABLED=0` covers windows/{amd64,arm64} with no docker images,
+  no Windows runner, and no self-hosted hardware.
+- **Bucket**: `daviddwlee84/scoop-bucket` created. GoReleaser's `scoops:` block
+  pushes `bucket/translate.json` on every tag.
+- **`checkver` / `autoupdate` were not needed.** This note assumed a
+  hand-maintained manifest that polls upstream for new versions. GoReleaser
+  pushes the manifest instead, so the manifest is always exact and never has to
+  guess a URL. Do not hand-edit `bucket/translate.json`.
+- **This repo**: the translate block is `scoop bucket add` +
+  `Scoop-Install @('daviddwlee84/translate')`, plus a migration guard.
+- **One behaviour change worth knowing**: the block used to run
+  `Scoop-Install @('go')` unconditionally ("self-contained: installExtraRuntimes
+  may well be off"), which incidentally gave `herdr-plus` and `specstory` a Go
+  toolchain on re-applies. It no longer does. Both skip cleanly without go;
+  enable *Extra runtimes* if you want them on a box where nothing else pulls go
+  in.
+
+### The trap this created
+
+`go install` put `translate.exe` in `~\.local\bin`, which precedes
+`~\scoop\shims` on `PATH`. A leftover copy shadows the scoop shim **forever**:
+`scoop update translate` reports success while `translate --version` keeps
+printing the old build. The packages script now removes the stale file — but only
+once the scoop shim actually exists, so a failed install never leaves the box
+with no `translate`. Diagnose with
+`Get-Command translate -All | Select-Object -ExpandProperty Source`.
 
 ## Context
 

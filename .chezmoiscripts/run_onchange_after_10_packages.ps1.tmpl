@@ -638,44 +638,38 @@ if (Have gem) {
 
 {{ if .installTranslate -}}
 # translate -- terminal translator CLI+TUI (github.com/daviddwlee84/translate).
-# There is no scoop/winget manifest and no prebuilt Windows release, so it is
-# built from source with `go install` -- the same path the parent repo takes on
-# Linux (dot_ansible/roles/go_tools); macOS there uses the Homebrew tap.
-# GOBIN/GOPATH mirror that unix convention: the binary lands in ~/.local/bin
-# (already on PATH via profile.d/00_env.ps1) and the module cache in
-# ~/.local/share/go rather than recreating ~/go.
+# Installed from the author's own scoop bucket. Since 2026-08 that repo's release
+# workflow cross-compiles windows/{amd64,arm64} on every tag and GoReleaser pushes
+# the manifest here, so this is now a seconds-long download of a prebuilt binary.
 #
-# It is pure Go (modernc.org/sqlite -- no cgo) and cross-compiles cleanly for
-# windows/amd64 and windows/arm64. The FIRST build is slow (several minutes: the
-# embedded swagger-ui bundle + sqlite); later applies no-op via the version check
-# below. Bump $translateVersion to upgrade -- editing it re-renders this script,
-# which is what re-fires the run_onchange. go.mod needs go >= 1.26.4; the default
-# GOTOOLCHAIN=auto fetches a newer toolchain if scoop's go is older.
-$translateVersion = 'v0.5.2'
-Scoop-Install @('go')   # self-contained: installExtraRuntimes may well be off
-if (Have go) {
-    $trBin  = Join-Path $HOME '.local\bin\translate.exe'
-    $trHave = ''
-    # `translate --version` prints "translate version v0.5.2 ..."; a module-proxy
-    # build carries no VCS metadata, so token 3 is exactly the module version. An
-    # absent/unparseable answer just falls through to a reinstall, which is cheap
-    # once the module cache is warm.
-    if (Test-Path -LiteralPath $trBin) {
-        try { $trHave = ((& $trBin --version 2>$null) -split '\s+')[2] } catch { $trHave = '' }
-    }
-    if ($trHave -eq $translateVersion) {
-        Info "translate $translateVersion already installed"
+# It used to be `go install` from source: no manifest and no prebuilt Windows
+# artifact existed, so a fresh box spent several minutes compiling (embedded
+# swagger-ui + sqlite) and needed a whole Go toolchain for one CLI. That is also
+# why this block used to `Scoop-Install @('go')` unconditionally; it no longer
+# does. herdr-plus and specstory still build from source and skip cleanly when go
+# is absent -- turn on installExtraRuntimes (or `scoop install go`) if you want
+# those on a box where nothing else pulls go in.
+#
+# Upgrades are `scoop update translate` (see `just upgrade-translate`); there is
+# no version pin to bump here any more.
+scoop bucket add daviddwlee84 https://github.com/daviddwlee84/scoop-bucket *> $null
+Scoop-Install @('daviddwlee84/translate')
+
+# Migration off the go-install era: that path put translate.exe in ~\.local\bin,
+# which precedes ~\scoop\shims on PATH. A leftover copy therefore shadows the
+# scoop one permanently -- `scoop update translate` reports success while
+# `translate --version` keeps printing the old build. Drop it, but only once the
+# shim is genuinely in place, so a failed scoop install never leaves the box with
+# no translate at all.
+$trOld = Join-Path $HOME '.local\bin\translate.exe'
+if (Test-Path -LiteralPath $trOld) {
+    $scoopRoot = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $HOME 'scoop' }
+    if (Test-Path -LiteralPath (Join-Path $scoopRoot 'shims\translate.exe')) {
+        Info 'removing stale ~\.local\bin\translate.exe (it shadows the scoop shim)'
+        Remove-Item -LiteralPath $trOld -Force -ErrorAction SilentlyContinue
     } else {
-        Info "go install translate@$translateVersion (first build takes several minutes)"
-        $env:GOBIN  = Join-Path $HOME '.local\bin'
-        $env:GOPATH = Join-Path $HOME '.local\share\go'
-        go install "github.com/daviddwlee84/translate@$translateVersion" 2>&1 | Out-Host
-        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $trBin)) {
-            Register-Failure "go:translate@$translateVersion"
-        }
+        Info 'translate: keeping ~\.local\bin\translate.exe until the scoop shim exists'
     }
-} else {
-    Register-Failure 'translate (needs go; enable Extra runtimes or run: scoop install go)'
 }
 {{ end -}}
 

@@ -42,10 +42,10 @@
     installHerdr         = {{ promptBoolOnce . "installHerdr" "Install herdr (native Windows terminal multiplexer, preview beta)" false }}
     installClink         = {{ promptBoolOnce . "installClink" "Install Clink + starship/zoxide/fzf for cmd.exe (DOS prompt)" false }}
     installTry           = {{ promptBoolOnce . "installTry" "Install try (Ruby ephemeral-workspace CLI, needs Ruby)" false }}
-    # translate has no scoop/winget manifest and no prebuilt Windows release, so
-    # it is built from source with `go install` (go is pulled in by the block
-    # itself). First apply on a fresh box therefore spends a few minutes here.
-    installTranslate     = {{ promptBoolOnce . "installTranslate" "Install translate (terminal translator CLI and TUI, built from source with Go)" $full }}
+    # translate installs from the author's own scoop bucket (prebuilt binary, a
+    # few seconds). It used to be built from source with `go install`, which cost
+    # several minutes on a fresh box plus a Go toolchain.
+    installTranslate     = {{ promptBoolOnce . "installTranslate" "Install translate (terminal translator CLI and TUI)" $full }}
     # Rime input method (Weasel / 小狼毫). Same key name as the parent repo's
     # installInputMethod (Squirrel on macOS, ibus-rime on Linux) so the shared
     # Rime YAML in .chezmoitemplates/rime/ is gated identically on both sides.

@@ -91,7 +91,7 @@ jobs:
             # exercises the go-install block and the apply step deploys the
             # translate tv channel; `chezmoi apply --exclude scripts` means the
             # multi-minute `go install` never actually runs in CI.
-            '--promptBool','Install translate (terminal translator CLI and TUI, built from source with Go)=true',
+            '--promptBool','Install translate (terminal translator CLI and TUI)=true',
             # true so the render+parse step exercises the Install-Weasel block and
             # the rime redeploy script, and the apply step deploys the
             # AppData/Roaming/Rime YAML; --exclude scripts means winget never runs.

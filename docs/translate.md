@@ -6,40 +6,51 @@ local LLM providers, a free web API, and an offline bilingual dictionary.
 
 It is the same tool the cross-platform
 [dotfiles](https://github.com/daviddwlee84/dotfiles) install on macOS (Homebrew tap) and
-Linux (`go install`). This repo brings it to native Windows.
+Linux (`go install`). This repo installs it from a Scoop bucket.
 
 Enable it with the **translate** init prompt (on by default for the `workstation`
 role).
 
 ## How it gets installed
 
-There is no scoop or winget manifest for it, and no prebuilt Windows release, so
-`.chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl` builds it from source:
+From the author's own Scoop bucket — a prebuilt binary, so installing takes
+seconds and needs no Go toolchain:
 
 ```powershell
-go install github.com/daviddwlee84/translate@v0.5.2
+scoop bucket add daviddwlee84 https://github.com/daviddwlee84/scoop-bucket
+scoop install daviddwlee84/translate
 ```
 
-- **`go` is installed by the block itself** (scoop), so the toggle works even with
-  *Extra runtimes* off.
-- `GOBIN=~\.local\bin` — already on `PATH` via `profile.d/00_env.ps1` — and
-  `GOPATH=~\.local\share\go`, so the module cache doesn't recreate `~\go`. Same
-  convention as the Linux side of the parent repo.
-- It's pure Go (`modernc.org/sqlite`, no cgo) and builds for **windows/amd64** and
-  **windows/arm64**.
-- The **first build takes several minutes** (an embedded Swagger UI bundle plus
-  SQLite). Later applies check `translate --version` against the pinned version and
-  no-op.
+`.chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl` does both for you when
+the **translate** toggle is on.
+
+- The upstream repo's release workflow cross-compiles **windows/amd64** and
+  **windows/arm64** on every tag (it's pure Go — `modernc.org/sqlite`, no cgo)
+  and GoReleaser pushes the manifest to the bucket.
+- The binary lands on `PATH` as a normal scoop shim (`~\scoop\shims\translate.exe`).
+- There is **no version pin to bump** in this repo any more.
+
+!!! warning "Migrating off the old go-install build"
+    Until 2026-08 this repo built translate from source with `go install` into
+    `~\.local\bin`, which comes **before** `~\scoop\shims` on `PATH`. A leftover
+    `~\.local\bin\translate.exe` therefore shadows the scoop one forever:
+    `scoop update translate` reports success while `translate --version` keeps
+    printing the old build. The packages script removes the stale copy
+    automatically — but only once the scoop shim exists, so a failed install never
+    leaves you with no `translate` at all. Check with:
+
+    ```powershell
+    Get-Command translate -All | Select-Object -ExpandProperty Source
+    ```
 
 !!! tip "Upgrading"
     Install and upgrade are separate here, like everything else in this repo:
 
     ```powershell
-    just upgrade-translate      # go install …@latest
+    just upgrade-translate      # scoop update translate
     ```
 
-    The pinned version in the packages script is the *install-time floor*; bumping it
-    re-fires the `run_onchange` and rebuilds.
+    `just upgrade-scoop` also covers it once installed.
 
 ## Quick start
 

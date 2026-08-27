@@ -5,37 +5,49 @@
 LLM provider、免費的網頁 API，以及離線雙語辭典。
 
 跨平台的 [dotfiles](https://github.com/daviddwlee84/dotfiles) 在 macOS（Homebrew tap）
-與 Linux（`go install`）都已經裝了同一個工具，這個 repo 把它補到原生 Windows。
+與 Linux（`go install`）都已經裝了同一個工具，這個 repo 從 Scoop bucket 裝它。
 
 用 **translate** 這個 init 提問開啟（`workstation` role 預設開）。
 
 ## 安裝方式
 
-它沒有 scoop 或 winget manifest，也還沒有預先編譯的 Windows release，所以
-`.chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl` 直接從原始碼編：
+從作者自己的 Scoop bucket 安裝 —— 預先編譯好的執行檔，幾秒鐘就好，不需要 Go
+toolchain：
 
 ```powershell
-go install github.com/daviddwlee84/translate@v0.5.2
+scoop bucket add daviddwlee84 https://github.com/daviddwlee84/scoop-bucket
+scoop install daviddwlee84/translate
 ```
 
-- **`go` 由這個區塊自己裝**（scoop），所以就算「Extra runtimes」是關的也能用。
-- `GOBIN=~\.local\bin`（已由 `profile.d/00_env.ps1` 加進 `PATH`）、
-  `GOPATH=~\.local\share\go`，module cache 不會另外生出一個 `~\go`。這與母 repo
-  在 Linux 上的慣例一致。
-- 它是純 Go（`modernc.org/sqlite`，不需要 cgo），**windows/amd64** 與
-  **windows/arm64** 都編得過。
-- **第一次編譯要好幾分鐘**（內嵌的 Swagger UI bundle 加上 SQLite）。之後每次 apply
-  會拿 `translate --version` 比對釘住的版本，相同就跳過。
+打開 **translate** 開關後，`.chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl`
+會替你做完這兩步。
+
+- 上游 repo 的 release workflow 每打一個 tag 就交叉編譯 **windows/amd64** 與
+  **windows/arm64**（它是純 Go —— `modernc.org/sqlite`，不需要 cgo），再由
+  GoReleaser 把 manifest 推到 bucket。
+- 執行檔會以一般的 scoop shim 形式出現在 `PATH` 上（`~\scoop\shims\translate.exe`）。
+- 這個 repo 裡**不再有版本號要手動更新**。
+
+!!! warning "從舊的 go install 版本遷移"
+    2026-08 之前，這個 repo 是用 `go install` 從原始碼編到 `~\.local\bin`，而
+    `~\.local\bin` 在 `PATH` 上**排在** `~\scoop\shims` **前面**。所以殘留的
+    `~\.local\bin\translate.exe` 會永遠遮蔽 scoop 那份：`scoop update translate`
+    顯示成功，但 `translate --version` 印的還是舊的。packages 腳本會自動移除舊檔
+    —— 但只在 scoop shim 確實存在之後才動手，這樣就算安裝失敗也不會讓你連
+    `translate` 都沒得用。可以這樣確認：
+
+    ```powershell
+    Get-Command translate -All | Select-Object -ExpandProperty Source
+    ```
 
 !!! tip "升級"
     跟這個 repo 的其他東西一樣，安裝與升級是分開的：
 
     ```powershell
-    just upgrade-translate      # go install …@latest
+    just upgrade-translate      # scoop update translate
     ```
 
-    packages 腳本裡釘住的版本是*安裝時的下限*；改動它會重新觸發 `run_onchange`
-    並重編。
+    裝好之後 `just upgrade-scoop` 也會一併升級它。
 
 ## 快速開始
 

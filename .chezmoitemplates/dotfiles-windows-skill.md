@@ -106,10 +106,12 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   prompt parity for **prompt + navigation only** (no pwsh funcs/aliases/modules).
   `starship.lua` is chezmoi-managed at `%LocalAppData%\clink`; the zoxide/fzf Clink
   bridges are fetched from upstream at apply. pwsh stays the default shell.
-- **`translate`** (`installTranslate`, on for workstation) is the one tool built from
-  source: no scoop/winget manifest, so the packages script runs a version-pinned
-  `go install` into `~\.local\bin` (it installs `go` itself). First build takes
-  minutes; re-applies no-op via a `--version` check. Upgrade with
-  `just upgrade-translate`, not `upgrade-scoop`.
+- **`translate`** (`installTranslate`, on for workstation) installs from the author's
+  own scoop bucket (`scoop bucket add daviddwlee84 …` + `Scoop-Install
+  @('daviddwlee84/translate')`) — prebuilt, no version pin in this repo. It used to
+  be a version-pinned `go install` into `~\.local\bin`; a leftover
+  `~\.local\bin\translate.exe` from that era **shadows the scoop shim** (that dir
+  precedes `~\scoop\shims` on PATH), so the script deletes it once the shim exists.
+  Upgrade with `just upgrade-translate` (= `scoop update translate`).
 - This skill body is shared: `dot_agents/skills/dotfiles-windows/` and
   `dot_claude/skills/dotfiles-windows/` both render `.chezmoitemplates/dotfiles-windows-skill.md`.
