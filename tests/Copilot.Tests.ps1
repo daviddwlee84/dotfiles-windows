@@ -1504,8 +1504,8 @@ Describe 'Copilot module' {
     Context 'Responses compatibility shim' {
         It 'matches the reviewed Unix shim artifact without a sibling checkout' {
             $shimContract = [ordered]@{
-                UnixSourceCommit = 'ee5612c57278df5540ac80ad28ede91b57c3f09c'
-                Sha256 = '8FBADA960E5A06E62F4B81CD873574DB85129C2FB7C7156E96CD5BDCE5F0E8BA'
+                UnixSourceCommit = 'b205a2adbe09413d641c19a57f67fd27621dcff2'
+                Sha256 = '9B60237B2C1ABF1616ECA5EC6E91C4B8FAC209CC41472E23BF23498BB1940D67'
             }
             $windowsShim = Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-throttle-shim.js'
             $shimContract.UnixSourceCommit | Should -Match '^[0-9a-f]{40}$'
@@ -1655,6 +1655,31 @@ upstream.stop(true);
                 ($result.lateError.events -join ',') | Should -BeExactly 'error'
             } finally {
                 if ([System.IO.File]::Exists($testScript)) { [System.IO.File]::Delete($testScript) }
+            }
+        }
+
+        It 'passes the canonical slow-stream hardening fixture' {
+            if (-not (Get-Command bun -ErrorAction SilentlyContinue)) { Set-ItResult -Skipped -Because 'bun is unavailable'; return }
+            $shim = (Resolve-Path (Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-throttle-shim.js')).Path
+            $fixture = (Resolve-Path (Join-Path $PSScriptRoot 'fixtures' 'copilot-shim-hardening.mjs')).Path
+            $metricsDb = Join-Path ([System.IO.Path]::GetTempPath()) "copilot-shim-hardening-$([guid]::NewGuid()).sqlite"
+            try {
+                $output = & bun $fixture $shim $metricsDb
+                $LASTEXITCODE | Should -Be 0
+                $jsonLine = @($output | Where-Object { "$_" -like '{"cancelBarrier"*' })[-1]
+                $jsonLine | Should -Not -BeNullOrEmpty
+                $result = $jsonLine | ConvertFrom-Json
+
+                $result.cancelBarrier.waited | Should -BeTrue
+                $result.retryReplay.sameBody | Should -BeTrue
+                $result.retryReplay.sameTrace | Should -BeTrue
+                $result.responseCodes.status402 | Should -BeExactly 'insufficient_quota'
+                $result.responseCodes.status500 | Should -BeExactly 'server_error'
+                $result.fastNonSse.status | Should -Be 502
+                $result.cancellation.deadResult | Should -BeExactly 'AbortError'
+            } finally {
+                Get-ChildItem -LiteralPath ([System.IO.Path]::GetDirectoryName($metricsDb)) -Filter "$([System.IO.Path]::GetFileName($metricsDb))*" -ErrorAction SilentlyContinue |
+                    Remove-Item -Force -ErrorAction SilentlyContinue
             }
         }
     }
