@@ -452,17 +452,31 @@ function script:Install-CopilotPkgDependencies {
         Write-Error 'copilot-proxy: npm.cmd is required to install CDN package dependencies through the configured registry'
         return $false
     }
+    $packageJson = Join-Path $PackageDir 'package.json'
+    $originalPackageJson = $null
     try {
+        $originalPackageJson = [System.IO.File]::ReadAllText($packageJson)
+        $package = $originalPackageJson | ConvertFrom-Json -ErrorAction Stop
+        $minimal = [ordered]@{ name = $package.name; version = $package.version; private = $true; dependencies = $package.dependencies } | ConvertTo-Json -Depth 10
+        [System.IO.File]::WriteAllText($packageJson, $minimal, [System.Text.UTF8Encoding]::new($false))
         $npmArgs = @('install', '--omit=dev', '--ignore-scripts', '--no-save', '--package-lock=false', '--no-audit', '--no-fund')
         $p = Start-Process -FilePath $npm.Source -ArgumentList $npmArgs -WorkingDirectory $PackageDir -PassThru -NoNewWindow -ErrorAction Stop
         if (-not $p.WaitForExit($BudgetSeconds * 1000)) {
             Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
             return $false
         }
-        return (Test-CopilotPkgDependencies)
+        for ($i = 0; $i -lt 40; $i++) {
+            if (Test-CopilotPkgDependencies) { return $true }
+            Start-Sleep -Milliseconds 250
+        }
+        return $false
     } catch {
         Write-Error "copilot-proxy: could not install CDN package dependencies ($_)"
         return $false
+    } finally {
+        if ($null -ne $originalPackageJson) {
+            [System.IO.File]::WriteAllText($packageJson, $originalPackageJson, [System.Text.UTF8Encoding]::new($false))
+        }
     }
 }
 
@@ -475,14 +489,26 @@ function script:Install-CopilotPkgFromCdn {
     $downloadDir = Join-Path (Get-CopilotPkgPrefix) ".cdn-$([guid]::NewGuid())"
     try {
         New-Item -ItemType Directory -Force -Path $downloadDir | Out-Null
+        $baseUrls = @($manifest.BaseUrl, ($manifest.BaseUrl -replace '^https://cdn\.jsdelivr\.net/', 'https://fastly.jsdelivr.net/')) | Select-Object -Unique
         foreach ($relativePath in $manifest.Files.Keys) {
             $downloadPath = Join-Path $downloadDir ($relativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
             New-Item -ItemType Directory -Force -Path (Split-Path -Parent $downloadPath) | Out-Null
-            Invoke-WebRequest -Uri ($manifest.BaseUrl + $relativePath) -OutFile $downloadPath -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
-            $actualHash = Get-CopilotSha256Base64 -Path $downloadPath
-            if ($actualHash -cne $manifest.Files[$relativePath]) {
-                throw "hash mismatch for $relativePath"
+            $downloaded = $false
+            $lastError = $null
+            foreach ($baseUrl in $baseUrls) {
+                foreach ($attempt in 1..2) {
+                    try {
+                        Remove-Item -LiteralPath $downloadPath -Force -ErrorAction SilentlyContinue
+                        Invoke-WebRequest -Uri ($baseUrl + $relativePath) -OutFile $downloadPath -UseBasicParsing -TimeoutSec 60 -ErrorAction Stop
+                        $actualHash = Get-CopilotSha256Base64 -Path $downloadPath
+                        if ($actualHash -cne $manifest.Files[$relativePath]) { throw "hash mismatch for $relativePath" }
+                        $downloaded = $true
+                        break
+                    } catch { $lastError = $_ }
+                }
+                if ($downloaded) { break }
             }
+            if (-not $downloaded) { throw "could not download verified $relativePath ($lastError)" }
         }
 
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $packageDir) | Out-Null
