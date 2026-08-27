@@ -160,6 +160,19 @@ function script:Get-CopilotPkgExactVersion {
     $null
 }
 
+function script:Get-CopilotDependencyRegistry {
+    try {
+        $raw = @(& chezmoi data --format json 2>$null)
+        if ($LASTEXITCODE -eq 0 -and $raw) {
+            $data = ($raw -join "`n") | ConvertFrom-Json -ErrorAction Stop
+            if ([bool]$data.managedMachine) { return 'https://packagefeedproxy.microsoft.io/npm/' }
+            if ([bool]$data.useChineseMirror) { return 'https://registry.npmmirror.com' }
+        }
+    } catch { $null }
+    if ($env:npm_config_registry) { return $env:npm_config_registry }
+    'https://registry.npmjs.org/'
+}
+
 function script:Get-CopilotPkgMetadata {
     $name = Get-CopilotPkgName
     if (-not $name) { return $null }
@@ -452,6 +465,8 @@ function script:Install-CopilotPkgDependencies {
         Write-Error 'copilot-proxy: npm.cmd is required to install CDN package dependencies through the configured registry'
         return $false
     }
+    $emptyUserConfig = Join-Path $PackageDir '.copilot-empty-user.npmrc'
+    $emptyGlobalConfig = Join-Path $PackageDir '.copilot-empty-global.npmrc'
     $packageJson = Join-Path $PackageDir 'package.json'
     $originalPackageJson = $null
     try {
@@ -459,7 +474,11 @@ function script:Install-CopilotPkgDependencies {
         $package = $originalPackageJson | ConvertFrom-Json -ErrorAction Stop
         $minimal = [ordered]@{ name = $package.name; version = $package.version; private = $true; dependencies = $package.dependencies } | ConvertTo-Json -Depth 10
         [System.IO.File]::WriteAllText($packageJson, $minimal, [System.Text.UTF8Encoding]::new($false))
-        $npmArgs = @('install', '--omit=dev', '--ignore-scripts', '--no-save', '--package-lock=false', '--no-audit', '--no-fund')
+        $npmArgs = @(
+            'install', '--omit=dev', '--ignore-scripts', '--no-save', '--package-lock=false', '--no-audit', '--no-fund',
+            "--userconfig=$emptyUserConfig", "--globalconfig=$emptyGlobalConfig"
+        )
+        $npmArgs += "--registry=$(Get-CopilotDependencyRegistry)"
         $p = Start-Process -FilePath $npm.Source -ArgumentList $npmArgs -WorkingDirectory $PackageDir -PassThru -NoNewWindow -ErrorAction Stop
         if (-not $p.WaitForExit($BudgetSeconds * 1000)) {
             Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue

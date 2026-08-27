@@ -201,6 +201,30 @@ Describe 'Copilot module' {
             }
         }
 
+        It 'forces the configured registry over parent npm config for CDN dependencies' {
+            InModuleScope Copilot {
+                $packageDir = Join-Path $TestDrive 'cdn-dependencies'
+                New-Item -ItemType Directory -Force $packageDir | Out-Null
+                '{"name":"@jeffreycao/copilot-api","version":"2.3.4","dependencies":{}}' |
+                    Set-Content -LiteralPath (Join-Path $packageDir 'package.json')
+                $env:npm_config_registry = 'https://packagefeedproxy.microsoft.io/npm/'
+                $process = [pscustomobject]@{ Id = 4242 }
+                $process | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value { param($Milliseconds) $null = $Milliseconds; $true }
+                Mock Get-Command { [pscustomobject]@{ Source = 'npm.cmd' } } -ParameterFilter { $Name -eq 'npm.cmd' }
+                Mock Get-CopilotDependencyRegistry { 'https://packagefeedproxy.microsoft.io/npm/' }
+                Mock Start-Process { $process }
+                Mock Test-CopilotPkgDependencies { $true }
+
+                Install-CopilotPkgDependencies -PackageDir $packageDir | Should -BeTrue
+
+                Should -Invoke Start-Process -Times 1 -ParameterFilter {
+                    $ArgumentList -contains '--registry=https://packagefeedproxy.microsoft.io/npm/' -and
+                    @($ArgumentList | Where-Object { $_ -like '--userconfig=*' }).Count -eq 1 -and
+                    @($ArgumentList | Where-Object { $_ -like '--globalconfig=*' }).Count -eq 1
+                }
+            }
+        }
+
         It 'rejects stale metadata even when the binlink remains' {
             Set-TestCopilotPackage -Version '1.13.14'
             InModuleScope Copilot { Test-CopilotPkgInstalled | Should -BeFalse }
