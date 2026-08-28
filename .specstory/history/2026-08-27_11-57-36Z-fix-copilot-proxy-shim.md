@@ -8072,6 +8072,58 @@ _**Agent (copilot/gpt-5.6-sol)**_
 <summary>Tool use: **run_in_terminal**</summary>
 
 Running `$root=Join-Path $env:TEMP 'dotfiles-parent-shim-fix'; git -C $root diff -- do...`
+
+Review the temporary parent change and current Windows worktree before deciding which edits are evidence-backed.
+
+```bash
+$root=Join-Path $env:TEMP 'dotfiles-parent-shim-fix'; git -C $root diff -- dot_config/shell/copilot-throttle-shim.js tests/fixtures/copilot-shim-hardening.mjs tests/unit/copilot_proxy.bats; git status --short
+```
+
+**Result:**
+
+```
+diff --git a/dot_config/shell/copilot-throttle-shim.js b/dot_config/shell/copilot-throttle-shim.js
+index ce74958..d0161a0 100644
+--- a/dot_config/shell/copilot-throttle-shim.js
++++ b/dot_config/shell/copilot-throttle-shim.js
+@@ -149,7 +149,11 @@ function requestMetadata(pathname, body, headers) {
+   };
+ }
+ 
+-export function createMetricTracker(meta, db = getMetricsDb(), clock = () => performance.now()) {
++export function createMetricTracker(meta, db = null, clock = () => performance.now()) {
++  if (!db) {
++    try { db = getMetricsDb(); }
++    catch (error) { console.error(`[shim] metrics unavailable (${error?.name ?? typeof error})`); }
++  }
+   const wall = Date.now();
+   const started = clock();
+   let permitAt = null;
+@@ -166,18 +170,22 @@ export function createMetricTracker(meta, db = getMetricsDb(), clock = () => per
+       if (finished) return;
+       finished = true;
+       const ended = clock();
+-      db.query(`INSERT OR IGNORE INTO request_metrics
+-        (trace_id,created_at_ms,endpoint,model,scope,streaming,status,attempts,retries,
+-         queue_ms,upstream_headers_ms,first_byte_ms,stream_ms,e2e_ms,error_kind)
+-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+-          state.traceId, wall, state.endpoint, state.model, state.scope,
+-          state.streaming ? 1 : 0, status, attempts, Math.max(0, attempts - 1),
+-          permitAt === null ? null : permitAt - started,
+-          permitAt === null || state.headersAt === undefined ? null : state.headersAt - permitAt,
+-          firstAt === null ? null : firstAt - started,
+-          firstAt === null ? null : ended - firstAt,
+-          ended - started, errorKind,
+-        );
++      if (db) {
++        try {
++          db.query(`INSERT OR IGNORE INTO request_metrics
++            (trace_id,created_at_ms,endpoint,model,scope,streaming,status,attempts,retries,
++             queue_ms,upstream_headers_ms,first_byte_ms,stream_ms,e2e_ms,error_kind)
++            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+
+… (output truncated)
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
@@ -8080,22 +8132,148 @@ _**Agent (copilot/gpt-5.6-sol)**_
 <summary>Tool use: **run_in_terminal**</summary>
 
 Running `$bun14='C:\\Users\\hanruzhou\\AppData\\Local\\Temp\\bun-1.4.0-arm64-isolated\\expand...`
+
+Capture sanitized child stderr for one run on each Bun version to identify the exact exit trigger.
+
+```bash
+$bun14='C:\Users\hanruzhou\AppData\Local\Temp\bun-1.4.0-arm64-isolated\expanded\bun-windows-aarch64\bun.exe'; $fixture=(Resolve-Path '.\tests\fixtures\copilot-shim-process-survival.mjs').Path; $shim=(Resolve-Path '.\dot_config\powershell\copilot-throttle-shim.js').Path; foreach($runtime in @(@{Name='1.3.14';Exe=(Get-Command bun).Source},@{Name='1.4.0';Exe=$bun14})){ Write-Host "=== $($runtime.Name) ==="; & $runtime.Exe $fixture $shim 1>$env:TEMP\shim-survival-$($runtime.Name).out 2>$env:TEMP\shim-survival-$($runtime.Name).err; Write-Host "exit=$LASTEXITCODE"; Get-Content $env:TEMP\shim-survival-$($runtime.Name).out -Tail 3; Write-Host 'stderr:'; Get-Content $env:TEMP\shim-survival-$($runtime.Name).err -Tail 20 }
+```
+
+**Result:**
+
+```
+=== 1.3.14 ===
+exit=0
+{"bun":"1.3.14","results":[{"name":"server-unhandled-rejection","healthy":true,"exited":true,"code":0,"logged":true},{"name":"upstream-truncate","healthy":true,"exited":false,"code":null},{"name":"downstream-fast-abort","healthy":true,"exited":false,"code":null,"sawKeepalive":true},{"name":"downstream-slow-abort","healthy":true,"exited":false,"code":null,"sawKeepalive":true},{"name":"downstream-post-complete-close","healthy":true,"exited":false,"code":null,"completed":true,"error":null,"responseBytes":263,"sawMarker":true,"sawTerminator":false,"status":200,"events":["response.output_text.delta"],"connection":"keep-alive","transferEncoding":null,"contentLength":80,"bodyBytes":80,"run":250}]}
+stderr:
+=== 1.4.0 ===
+exit=0
+{"bun":"1.4.0","results":[{"name":"server-unhandled-rejection","healthy":true,"exited":true,"code":0,"logged":true},{"name":"upstream-truncate","healthy":true,"exited":false,"code":null},{"name":"downstream-fast-abort","healthy":true,"exited":false,"code":null,"sawKeepalive":true},{"name":"downstream-slow-abort","healthy":true,"exited":false,"code":null,"sawKeepalive":true},{"name":"downstream-post-complete-close","healthy":true,"exited":false,"code":null,"completed":true,"error":null,"responseBytes":282,"sawMarker":true,"sawTerminator":true,"status":200,"events":["response.output_text.delta"],"connection":"keep-alive","transferEncoding":"chunked","contentLength":0,"bodyBytes":91,"run":250}]}
+stderr:
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_readFile"><details>
-<summary>Tool use: **copilot_readFile**</summary>
+<tool-use data-tool-type="read" data-tool-name="read_file"><details>
+<summary>Tool use: **read_file**</summary>
 
 Read `copilot-shim-process-survival.mjs`
+
+**Input:**
+
+- endLine: `360`
+- filePath: `c:\Users\hanruzhou\.local\share\chezmoi\tests\fixtures\copilot-shim-process-survival.mjs`
+- startLine: `1`
+
+**Result:**
+
+```
+import net from "node:net";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function runGuardChild(shimPath) {
+  const root = mkdtempSync(join(tmpdir(), "copilot-shim-guard-"));
+  process.env.COPILOT_SHIM_PORT = "0";
+  process.env.COPILOT_SHIM_UPSTREAM = "http://127.0.0.1:1";
+  process.env.COPILOT_SHIM_METRICS_DB = join(root, "metrics.sqlite");
+  process.env.COPILOT_API_SQLITE_DB_PATH = join(root, "tokens.sqlite");
+  const { startServer } = await import(pathToFileURL(shimPath).href);
+  const server = startServer();
+  let healthy = false;
+  try {
+    Promise.reject(new Error("fixture server rejection"));
+    await sleep(100);
+    const response = await fetch(`http://127.0.0.1:${server.port}/_shim/health`);
+    healthy = response.ok && (await response.json()).ok === true;
+  } finally {
+    server.stop(true);
+    rmSync(root, { recursive: true, force: true });
+  }
+  console.log(JSON.stringify({ name: "server-unhandled-rejection", healthy }));
+  process.exit(healthy ? 0 : 1);
+}
+
+if (process.argv[2] === "--guard-child") {
+  if (!process.argv[3]) throw new Error("missing guard child shim path");
+  await runGuardChild(process.argv[3]);
+}
+
+const shimPath = process.argv[2];
+if (!shimPath) throw new Error("usage: copilot-shim-process-survival.mjs SHIM_PATH");
+
+async function listen(server) {
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  return server.address().port;
+}
+
+async function reservePort() {
+  const server = net.createServer();
+  const port = await listen(server);
+  await new Promise((resolve) => server.close(resolve));
+  return port;
+}
+
+function chunk(value) {
+  return `${Buffer.byteLength(value).toString(16)}\r\n${value}\r\n`;
+}
+
+function res
+… (output truncated)
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_readFile"><details>
-<summary>Tool use: **copilot_readFile**</summary>
+<tool-use data-tool-type="read" data-tool-name="read_file"><details>
+<summary>Tool use: **read_file**</summary>
 
 Read `content.txt`, lines 1 to 700
+
+**Input:**
+
+- endLine: `700`
+- filePath: `c:\Users\hanruzhou\AppData\Roaming\Code\User\workspaceStorage\ef2a05428fd4007c4933f9521f4cbe51\GitHub.copilot-chat\chat-session-resources\873d89c9-ef88-49eb-8302-fdc0b9d61afa\call_7YJIVIQTzGXs0ojCDb1oF3AB__vscode-1787826367226\content.txt`
+- startLine: `1`
+
+**Result:**
+
+```
+**Conclusion**
+
+The evidence points to two separate classes of failure:
+
+1. **Highest-confidence candidate: a Windows ARM64 process-exit race involving background JSC/Wasm activity.**
+2. **Next: native lifetime or memory corruption in the request-body/decompression path, potentially exposed by a malformed zstd frame or large body.**
+3. **Lower confidence: proxied `ReadableStream` completion/cancellation.** Upstream has several real bugs here, but your successful synthetic truncation and downstream-abort fixture weakens this as the direct cause.
+
+No official Bun issue I found reports the exact combination of **Bun 1.3.14 + Windows ARM64 + Bun.serve + exit code 3**. Upstream records usually report a panic, segmentation fault, silent abort, or hang rather than numeric exit code `3`. Treat the numeric code as a local wrapper/process interpretation until a Bun crash report or stderr stack trace identifies it.
+
+## Ranked hypotheses
+
+### 1. Windows ARM64 exit-time thread-suspension race
+
+**Confidence: high for explaining “request completed, then process exits abnormally”; low for tying it specifically to zstd.**
+
+Upstream commit [6d13a3a9](https://github.com/oven-sh/bun/commit/6d13a3a9bf59720fae6c442e422616f7a53db984), dated **2026-08-26**, fixes a Windows ARM64-only `ExitProcess` race:
+
+- A background JSC/Wasm compiler thread suspends another thread during instruction-cache synchronization.
+- `ExitProcess` kills the compiler thread before it resumes the suspended thread.
+- The exiting process can remain suspended indefinitely.
+- Upstream reproduced this on **Windows 11 ARM64**, while Windows x64 did not reproduce it.
+- The unfixed behavior was a process that printed successful output but did not complete termination; the fix changed a `25/300` hang rate to `0/300`.
+
+The added regression test is [process-exit-during-wasm-tier-up.test.ts](https://github.com/oven-sh/bun/blob/6d13a3a9bf59720fae6c442e422616f7a53db984/test/js/node/process/process-exit-during-wasm-tier-up.test.t
+… (output truncated)
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
@@ -8108,30 +8286,181 @@ _**Agent (copilot/gpt-5.6-sol)**_
 <summary>Tool use: **run_in_terminal**</summary>
 
 Running `git diff -- dot\_config/powershell/copilot-throttle-shim.js dot\_config/powersh...`
+
+Capture the current implementation diff for focused inspection and summarize its scope.
+
+```bash
+git diff -- dot_config/powershell/copilot-throttle-shim.js dot_config/powershell/modules/Copilot/Copilot.psm1 dot_config/powershell/copilot-process-watch.ps1 tests/Copilot.Tests.ps1 tests/fixtures/copilot-shim-hardening.mjs | Out-File -Encoding utf8 $env:TEMP\copilot-current.diff; Get-Item $env:TEMP\copilot-current.diff | Select-Object Length,FullName; git diff --stat -- dot_config/powershell/copilot-throttle-shim.js dot_config/powershell/modules/Copilot/Copilot.psm1 dot_config/powershell/copilot-process-watch.ps1 tests/Copilot.Tests.ps1 tests/fixtures/copilot-shim-hardening.mjs docs/copilot-proxy.md docs/copilot-proxy.zh-TW.md .chezmoitemplates/dotfiles-windows-skill.md pitfalls/README.md
+```
+
+**Result:**
+
+```
+
+ .chezmoitemplates/dotfiles-windows-skill.md        |  10 +-
+ docs/copilot-proxy.md                              |  37 ++-
+ docs/copilot-proxy.zh-TW.md                        |  22 +-
+ dot_config/powershell/copilot-process-watch.ps1    | 161 ++++++++--
+ dot_config/powershell/copilot-throttle-shim.js     | 352 ++++++++++++++++++---
+ dot_config/powershell/modules/Copilot/Copilot.psm1 | 171 ++++++++--
+ pitfalls/README.md                                 |   1 +
+ tests/Copilot.Tests.ps1                            | 282 ++++++++++++++++-
+ tests/fixtures/copilot-shim-hardening.mjs          |  16 +-
+ 9 files changed, 931 insertions(+), 121 deletions(-)
+Length FullName
+------ --------
+ 78200 C:\Users\hanruzhou\AppData\Local\Temp\copilot-current.diff
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_findTextInFiles"><details>
-<summary>Tool use: **copilot_findTextInFiles**</summary>
+<tool-use data-tool-type="search" data-tool-name="grep_search"><details>
+<summary>Tool use: **grep_search**</summary>
 
 Searched for regex `Mutex|recovery|recover|Restart|COPILOT_WATCH|stable|300|restart_scheduled|restart_exhausted|Set-CopilotStopIntent` (`**/dot_config/powershell/modules/Copilot/Copilot.psm1`), 57 results
+
+**Input:**
+
+- includePattern: `dot_config/powershell/modules/Copilot/Copilot.psm1`
+- isRegexp: `true`
+- maxResults: `250`
+- query: `Mutex|recovery|recover|Restart|COPILOT_WATCH|stable|300|restart_scheduled|restart_exhausted|Set-CopilotStopIntent`
+
+**Result:**
+
+```
+Found 57 matches in 1 file for "Mutex|recovery|recover|Restart|COPILOT_WATCH|stable|300|restart_scheduled|restart_exhausted|Set-CopilotStopIntent"
+
+dot_config/powershell/modules/Copilot/Copilot.psm1
+11:#   copilot-proxy [start|stop|restart|status|doctor [--live]|logs [shim|N]|shim [on|off|status]|whoami|auth|reinstall]
+680:        Write-Host "copilot-proxy: staged and selected $spec; restart explicitly when ready."
+713:        Write-Host "copilot-proxy: rolled back to $($selected.spec); restart explicitly when ready."
+781:# restart forces an immediate refresh. GitHub geo-filters the Claude catalog on
+1354:        [int] $RecoveryAttempt = 0,
+1364:        COPILOT_WATCH_SCRIPT = $watchScript
+1365:        COPILOT_WATCH_PID = [string]$Process.Id
+1366:        COPILOT_WATCH_COMPONENT = $Component
+1367:        COPILOT_WATCH_LOG = Get-CopilotLifecycleLog
+1368:        COPILOT_WATCH_INTENT = Get-CopilotStopIntent -Component $Component -ProcessId $Process.Id
+1369:        COPILOT_WATCH_READY = Get-CopilotReadyMarker -Component $Component -ProcessId $Process.Id
+1370:        COPILOT_WATCH_PACKAGE = if ($metadata) { [string]$metadata.Name } else { '' }
+1371:        COPILOT_WATCH_VERSION = if ($metadata) { [string]$metadata.Version } else { '' }
+1372:        COPILOT_WATCH_PORT = [string]$Port
+1373:        COPILOT_WATCH_MODULE = Get-CopilotModuleManifest
+1374:        COPILOT_WATCH_PROXY_HEALTH = "$(Get-CopilotBase)/v1/models"
+1375:        COPILOT_WATCH_SHIM_HEALTH = "$(Get-CopilotShimBase)/_shim/health"
+1376:        COPILOT_WATCH_SHIM_STATE = Get-CopilotShimState
+1377:        COPILOT_WATCH_STARTED = $StartedAt.ToUniversalTime().ToString('o')
+1378:        COPILOT_WATCH_RECOVERY = [string]$RecoveryAttempt
+1380:    Remove-Item -LiteralPath $watchEnv.COPILOT_WATCH_INTENT, $watchEnv.COPILOT_WATCH_READY -Force -ErrorAction SilentlyContinue
+1383:    $command = '& $env:COPILOT_WATCH_SCRIPT -ProcessId ([int]$env:COPILOT_WATCH_PID) -Component $env:COPILOT_WATCH_COMPONENT -LogPath $env:CO [matc
+… (output truncated)
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_findTextInFiles"><details>
-<summary>Tool use: **copilot_findTextInFiles**</summary>
+<tool-use data-tool-type="search" data-tool-name="grep_search"><details>
+<summary>Tool use: **grep_search**</summary>
 
 Searched for regex `unhandledRejection|cancelStream|createMetricTracker|metrics unavailable|metric write` (`**/dot_config/powershell/copilot-throttle-shim.js`), 3 results
+
+**Input:**
+
+- includePattern: `dot_config/powershell/copilot-throttle-shim.js`
+- isRegexp: `true`
+- maxResults: `100`
+- query: `unhandledRejection|cancelStream|createMetricTracker|metrics unavailable|metric write`
+
+**Result:**
+
+```
+Found 3 matches in 1 file for "unhandledRejection|cancelStream|createMetricTracker|metrics unavailable|metric write"
+
+dot_config/powershell/copilot-throttle-shim.js
+107:  process.on("unhandledRejection", (reason) => logNonFatal("contained unhandled rejection", reason));
+195:export function createMetricTracker(meta, db = undefined, clock = () => performance.now()) {
+1060:    const tracker = createMetricTracker({ ...meta, traceId });
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_readFile"><details>
-<summary>Tool use: **copilot_readFile**</summary>
+<tool-use data-tool-type="read" data-tool-name="read_file"><details>
+<summary>Tool use: **read_file**</summary>
 
 Read `copilot-process-watch.ps1`
+
+**Input:**
+
+- endLine: `360`
+- filePath: `c:\Users\hanruzhou\.local\share\chezmoi\dot_config\powershell\copilot-process-watch.ps1`
+- startLine: `1`
+
+**Result:**
+
+```
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '', Justification = 'Parameters are consumed by nested watcher helper functions.')]
+param(
+    [Parameter(Mandatory)] [int] $ProcessId,
+    [Parameter(Mandatory)] [ValidateSet('proxy', 'shim')] [string] $Component,
+    [Parameter(Mandatory)] [string] $LogPath,
+    [Parameter(Mandatory)] [string] $IntentPath,
+    [string] $ReadyPath,
+    [string] $Package,
+    [string] $Version,
+    [int] $Port,
+    [string] $ModulePath,
+    [string] $ProxyHealthUri,
+    [string] $ShimHealthUri,
+    [string] $ShimStatePath,
+    [string] $StartedAt,
+    [int] $RecoveryAttempt = 0,
+    [int[]] $RecoveryDelaySeconds = @(1, 5, 30)
+)
+
+$ErrorActionPreference = 'SilentlyContinue'
+
+function Write-WatchEvent {
+    param(
+        [Parameter(Mandatory)] [string] $EventName,
+        [Nullable[int]] $ExitCode,
+        [string] $Detail,
+        [Nullable[int]] $Attempt,
+        [Nullable[int]] $UptimeSeconds
+    )
+    $row = [ordered]@{
+        timestamp = [DateTime]::UtcNow.ToString('o')
+        component = $Component
+        event = $EventName
+        pid = $ProcessId
+        port = $Port
+        package = $Package
+        version = $Version
+        exit_code = $ExitCode
+        detail = $Detail
+        attempt = $Attempt
+        uptime_seconds = $UptimeSeconds
+    }
+    $directory = Split-Path -Parent $LogPath
+    [System.IO.Directory]::CreateDirectory($directory) | Out-Null
+    $line = ($row | ConvertTo-Json -Compress) + [Environment]::NewLine
+    for ($writeAttempt = 0; $writeAttempt -lt 10; $writeAttempt++) {
+        try {
+            [System.IO.File]::AppendAllText($LogPath, $line, [System.Text.UTF8Encoding]::new($false))
+            break
+        } catch { Start-Sleep -Milliseconds 100 }
+    }
+}
+
+function Test-WatchHealth {
+    param([Parameter(Mandatory)] [string] $Uri, [switch] $RequireShimIdentity)
+    if ([string]::IsNullOrWhiteSpace($Uri)) { return $false }
+    try {
+        $response = Invoke-RestMethod -Ur
+… (output truncated)
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
@@ -8140,6 +8469,27 @@ _**Agent (copilot/gpt-5.6-sol)**_
 <summary>Tool use: **runSubagent**</summary>
 
 Review current shim diff
+
+**Input:**
+
+- agentName: `Explore`
+- description: `Review current shim diff`
+- prompt: `Read-only code review of the CURRENT WORKTREE diff in c:\Users\hanruzhou\.local\share\chezmoi. Do not edit or run mutating commands. Review only the in-progress copilot shim/recovery changes in dot_config/powershell/copilot-throttle-shim.js, dot_config/powershell/modules/Copilot/Copilot.psm1, dot_config/powershell/copilot-process-watch.ps1, tests/Copilot.Tests.ps1, tests/fixtures/copilot-shim-hardening.mjs, tests/fixtures/copilot-shim-process-survival.mjs, docs/copilot-proxy*.md, .chezmoitemplates/dotfiles-windows-skill.md, and pitfalls/bun-serve-stream-abort-kills-copilot-shim.md. User-requested contract: root-cause hardening plus race-safe bounded shim-only restart (1/5/30 sec, max 3 quick crashes, reset after 5 min stable, only shim enabled + proxy healthy, deliberate stops suppressed, fail closed), parent shim byte-identical with a parent commit/SHA contract, no production restart while active sessions, no prompt/secret logging. Evidence changed: original Bun 1.3.14 stream abort fixture did not deterministically kill the process; Bun 1.4.0 old shim did exit code 1 on downstream abort; current modified Windows shim survives both; production incident was code 3 ~94ms after metrics finalize. Return findings first by severity with exact file/line refs, missing tests, and whether each diff is justified by observed evidence. Pay special attention to unhandledRejection guard breadth, watcher recursion/budget persistence, named mutex abandonment/release, intentional kill stop intents, command exposure, argument quoting, and PowerShell child environment.`
+
+**Result:**
+
+```
+**Findings**
+
+1. **High: recovery does not enforce the “no production restart while active sessions” contract.**  
+   The watcher restarts a ready shim as soon as the state, health, and intent checks pass: [copilot-process-watch.ps1](dot_config/powershell/copilot-process-watch.ps1#L112-L145). There is no active-session counter, drain marker, lock, or other coordination with `copilot-run`, Claude, or Codex sessions. The manual `copilot-proxy restart` path also unconditionally stops and starts both processes: [Copilot.psm1](dot_config/powershell/modules/Copilot/Copilot.psm1#L1725). The documentation’s instruction to wait for active turns is advisory only: [copilot-proxy.md](docs/copilot-proxy.md#L265-L278).  
+   This is not justified by the observed evidence. The incident justifies shim recovery, but the requested operational contract requires either an explicit active-session gate or a clearly scoped exception stating that recovery is allowed after the shim has already failed.
+
+2. **High: the `unhandledRejection` guard is broader than its stated compatibility scope.**  
+   `installServerRejectionGuard()` installs a process-wide listener that logs and suppresses every unhandled rejection after `startServer()` is called: [copilot-throttle-shim.js](dot_config/powershell/copilot-throttle-shim.js#L101-L108). “Scoped to `startServer()`” currently means only that installation occurs from that function; it does not scope handling to Bun response-stream/cancellation failures. Any unrelated programming error, metrics bug, or future rejected operation becomes non-fatal and may leave the server running in an invalid state.  
+   The guard itself is justified by the Bun 1.3.14 evidence and the upstream fixes documented in [bun-serve-stream-abort-kills-copilot-shim.md](pitfalls/bun-serve-stream-abort-kills-copilot-shim.md#L25-L39), but its breadth is not. At minimum, the tests should establish the intended policy for unrelated rejections, or the implementation should narrow/disable
+… (output truncated)
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
@@ -8610,66 +8960,468 @@ _**Agent (copilot/gpt-5.6-sol)**_
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_readFile"><details>
-<summary>Tool use: **copilot_readFile**</summary>
+<tool-use data-tool-type="read" data-tool-name="read_file"><details>
+<summary>Tool use: **read_file**</summary>
 
 Read `Copilot.psm1`, lines 1800 to 1875
+
+**Input:**
+
+- endLine: `1875`
+- filePath: `c:\Users\hanruzhou\.local\share\chezmoi\dot_config\powershell\modules\Copilot\Copilot.psm1`
+- startLine: `1800`
+
+**Result:**
+
+```
+        'rollback' { $null = Invoke-CopilotPkgRollback }
+        'reinstall' {
+            # Force a clean re-install of the pinned spec (normally only needed if the
+            # prefix got corrupted — a version bump re-installs on its own via the stamp).
+            Write-Host "copilot-proxy: removing $(Get-CopilotPkgPrefix) ..."
+            Remove-Item -Recurse -Force (Get-CopilotPkgPrefix) -ErrorAction SilentlyContinue
+            if (-not (Install-CopilotPkg)) { return }
+            $installed = Get-CopilotPkgMetadata
+            Write-Host "copilot-proxy: installed $($installed.Name)@$($installed.Version) (requested $(Get-CopilotPkg)) -> $(Get-CopilotPkgPrefix)"
+        }
+        { $_ -in 'whoami', 'usage', 'quota' } {
+            if (-not (Test-Path (Get-CopilotToken))) { Write-Error "copilot-proxy: not authenticated — run 'copilot-proxy auth'."; return }
+            if ((Get-CopilotPkgFlavor) -eq 'original') {
+                Invoke-CopilotPkgCommand check-usage
+            }
+            elseif (Test-CopilotAlive) {
+                try {
+                    $u = Invoke-RestMethod -Uri "$(Get-CopilotBase)/usage" -TimeoutSec 5 -ErrorAction Stop
+                    [pscustomobject]@{
+                        plan        = if ($u.copilot_plan) { $u.copilot_plan } elseif ($u.access_type_sku) { $u.access_type_sku } else { 'unknown' }
+                        quota_reset = $u.quota_reset_date
+                        quotas      = $u.quota_snapshots
+                    } | ConvertTo-Json -Depth 6
+                } catch { Write-Error "copilot-proxy: /usage query failed: $_" }
+            } else {
+                Write-Host "copilot-proxy: not running — showing auth/debug info instead of quota."
+                Invoke-CopilotPkgCommand debug
+            }
+        }
+        'shim' {
+            $sf = Get-CopilotShimState
+            $sub = if ($Argv.Count -ge 2) { $Argv[1] } else { 'status' }
+            switch ($sub) {
+                'on' {
+                    New-Ite
+… (output truncated)
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_readFile"><details>
-<summary>Tool use: **copilot_readFile**</summary>
+<tool-use data-tool-type="read" data-tool-name="read_file"><details>
+<summary>Tool use: **read_file**</summary>
 
 Read `copilot-throttle-shim.js`, lines 480 to 900
+
+**Input:**
+
+- endLine: `900`
+- filePath: `c:\Users\hanruzhou\.local\share\chezmoi\dot_config\powershell\copilot-throttle-shim.js`
+- startLine: `480`
+
+**Result:**
+
+```
+    const timer = setTimeout(done, ms);
+    const onAbort = () => { cleanup(); reject(abortError()); };
+    function cleanup() {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    }
+    function done() { cleanup(); resolve(); }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+// A cancellable timer promise. Racing a bare timer would leave one live timer
+// per pull; this token is always canceled when another branch wins.
+function timeoutToken(ms) {
+  let id;
+  const promise = new Promise((res) => { id = setTimeout(() => res({ tick: true }), ms); });
+  return { promise, cancel: () => clearTimeout(id) };
+}
+
+// Headers resolve fetch() before its body is consumed. Retain the per-attempt
+// controller so a retry/protocol rejection can terminate that physical request
+// before a replacement attempt starts.
+const responseAborters = new WeakMap();
+function abortResponse(resp) {
+  const abort = resp && responseAborters.get(resp);
+  if (!abort) return;
+  responseAborters.delete(resp);
+  abort();
+}
+
+export async function closeResponse(resp, reason) {
+  abortResponse(resp);
+  if (!resp?.body) return;
+  const deadline = timeoutToken(ERROR_BODY_TIMEOUT_MS);
+  try {
+    await Promise.race([
+      settleCancellation(resp.body, reason, "response body cancellation failed"),
+      deadline.promise,
+    ]);
+  } finally { deadline.cancel(); }
+}
+
+// ---- adaptive semaphore (canceled waiters are removed eagerly) ----------------
+let active = 0;
+const waiters = [];
+const limiter = createAdaptiveLimiter({
+  onChange({ previous, limit, reason }) {
+    log(`limiter ${previous} -> ${limit} (${reason}; active=${active}, queued=${waiters.length})`);
+    drainWaiters();
+  },
+});
+
+function drainWaiters() {
+  while (active < limiter.limit && waiters.length) {
+    const next = waiters.shift();
+    next.signal?.removeEventListener("abort", next.onAbort);
+    if (next.signal?.aborted) { next.reject(abortError()); continue; }
+    active++;
+    ne
+… (output truncated)
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_readFile"><details>
-<summary>Tool use: **copilot_readFile**</summary>
+<tool-use data-tool-type="read" data-tool-name="read_file"><details>
+<summary>Tool use: **read_file**</summary>
 
 Read `copilot-throttle-shim.js`, lines 1020 to 1160
+
+**Input:**
+
+- endLine: `1160`
+- filePath: `c:\Users\hanruzhou\.local\share\chezmoi\dot_config\powershell\copilot-throttle-shim.js`
+- startLine: `1020`
+
+**Result:**
+
+```
+      try {
+        const limit = Math.min(500, Math.max(1, Number(url.searchParams.get("limit") ?? 50)));
+        return jsonResponse(queryEvents({
+          period: url.searchParams.get("period") ?? "day",
+          scope: url.searchParams.get("scope") ?? "normal",
+          model: url.searchParams.get("model") || null,
+          limit,
+        }));
+      } catch (err) { return jsonResponse({ error: String(err) }, 400); }
+    }
+
+    // Health / metadata reads: straight passthrough, no permit, no retry.
+    if (method === "GET" || method === "HEAD") {
+      try {
+        const { target, makeInit } = buildUpstream(req, undefined);
+        return streamThrough(await fetch(target, makeInit(req.signal)), () => {});
+      } catch (err) {
+        return new Response(`shim: upstream unreachable: ${err}`, { status: 502 });
+      }
+    }
+
+    // Mutating requests (POST /v1/messages …): buffer body so we can resend on
+    // retry, then throttle + retry. A peer may disappear while Bun is still
+    // assembling a large Codex tools payload; contain that handler rejection.
+    let bodyBuf;
+    try { bodyBuf = await req.arrayBuffer(); }
+    catch (error) {
+      const aborted = req.signal?.aborted;
+      log(`${method} ${url.pathname} request body ${aborted ? "aborted" : "read failed"}: ${errorSummary(error)}`);
+      return new Response(aborted ? "client aborted" : "shim: request body read failed", { status: aborted ? 499 : 400 });
+    }
+    const normalized = normalizeRequestBody(url.pathname, bodyBuf, req.headers.get("content-encoding") ?? "");
+    if (normalized.parseError) {
+      log(`${method} ${url.pathname} could not inspect JSON (${bodyBuf.byteLength} bytes, content-type=${req.headers.get("content-type") ?? "unset"}, content-encoding=${req.headers.get("content-encoding") ?? "unset"}): ${normalized.parseError}`);
+    }
+    if (normalized.changed > 0) {
+      log(`${method} ${url.pathname} filled ${normalized.changed} empty tool description(s): ${normalized.patched.join
+… (output truncated)
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_readFile"><details>
-<summary>Tool use: **copilot_readFile**</summary>
+<tool-use data-tool-type="read" data-tool-name="read_file"><details>
+<summary>Tool use: **read_file**</summary>
 
 Read `copilot-throttle-shim.js`, lines 80 to 230
+
+**Input:**
+
+- endLine: `230`
+- filePath: `c:\Users\hanruzhou\.local\share\chezmoi\dot_config\powershell\copilot-throttle-shim.js`
+- startLine: `80`
+
+**Result:**
+
+```
+const PING_AFTER_MS = Math.max(0, Number(process.env.COPILOT_SHIM_PING_AFTER_MS ?? 10000));
+const STALL_MS = Math.max(0, Number(process.env.COPILOT_SHIM_STALL_MS ?? 240000));
+const RETRY_STATUS = new Set([403, 429, 500, 502, 503, 504]);
+const MAX_BACKOFF_MS = 30000;
+const MAX_RETRY_AFTER_MS = 300000;
+const ADAPT_SUCCESS_THRESHOLD = 32;
+const ADAPT_INCREASE_INTERVAL_MS = 60000;
+const ADAPT_THROTTLE_COOLDOWN_MS = 300000;
+const ERROR_BODY_TIMEOUT_MS = 2000;
+const ERROR_BODY_MAX_BYTES = 2048;
+const RETENTION_MS = 90 * 86400 * 1000;
+
+function errorSummary(error) {
+  return String(error?.message ?? error ?? "unknown error").replace(/\s+/g, " ").slice(0, 500);
+}
+
+function logNonFatal(context, error) {
+  try { console.error(new Date().toISOString(), "[shim]", `${context}: ${errorSummary(error)}`); }
+  catch {}
+}
+
+// Bun releases before oven-sh/bun@80729349 and @3da09633 can turn a rejected
+// Response-body stream or peer-abort cancellation into a process-wide exit.
+// This belongs only to the long-running server path; CLI failures stay fatal.
+let serverRejectionGuardInstalled = false;
+export function installServerRejectionGuard() {
+  if (serverRejectionGuardInstalled) return false;
+  process.on("unhandledRejection", (reason) => logNonFatal("contained unhandled rejection", reason));
+  serverRejectionGuardInstalled = true;
+  return true;
+}
+
+// Stream cancellation is cleanup. Neither a synchronous throw nor a rejected
+// cancel Promise may become an unhandled rejection in the Bun server process.
+export function settleCancellation(target, reason, context = "stream cancellation failed") {
+  try {
+    return Promise.resolve(target?.cancel(reason)).catch((error) => logNonFatal(context, error));
+  } catch (error) {
+    logNonFatal(context, error);
+    return Promise.resolve();
+  }
+}
+
+function xdgPath(kind, ...parts) {
+  const home = process.env.HOME ?? ".";
+  const root = kind === "state"
+    ? (process.env.XDG_STATE_HOME ?? join(home, ".local/state"))
+    : (process.env.XDG_DATA_H
+… (output truncated)
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_readFile"><details>
-<summary>Tool use: **copilot_readFile**</summary>
+<tool-use data-tool-type="read" data-tool-name="read_file"><details>
+<summary>Tool use: **read_file**</summary>
 
 Read `Copilot.psm1`, lines 1320 to 1565
+
+**Input:**
+
+- endLine: `1565`
+- filePath: `c:\Users\hanruzhou\.local\share\chezmoi\dot_config\powershell\modules\Copilot\Copilot.psm1`
+- startLine: `1320`
+
+**Result:**
+
+```
+        $block.DISABLE_NON_ESSENTIAL_MODEL_CALLS = '1'
+    }
+    $block
+}
+
+function script:Write-CopilotLifecycleEvent {
+    param(
+        [Parameter(Mandatory)] [string] $Component,
+        [Parameter(Mandatory)] [string] $EventName,
+        [int] $ProcessId,
+        [int] $Port,
+        [string] $Detail
+    )
+    $metadata = Get-CopilotPkgMetadata
+    $row = [ordered]@{
+        timestamp = [DateTime]::UtcNow.ToString('o')
+        component = $Component
+        event = $EventName
+        pid = if ($ProcessId) { $ProcessId } else { $null }
+        port = if ($Port) { $Port } else { $null }
+        package = if ($metadata) { [string]$metadata.Name } else { [string](Get-CopilotPkgName) }
+        version = if ($metadata) { [string]$metadata.Version } else { $null }
+        detail = $Detail
+    }
+    $path = Get-CopilotLifecycleLog
+    [System.IO.Directory]::CreateDirectory((Split-Path -Parent $path)) | Out-Null
+    [System.IO.File]::AppendAllText($path, (($row | ConvertTo-Json -Compress) + [Environment]::NewLine), [System.Text.UTF8Encoding]::new($false))
+}
+
+function script:Start-CopilotProcessWatcher {
+    param(
+        [Parameter(Mandatory)] $Process,
+        [Parameter(Mandatory)] [ValidateSet('proxy', 'shim')] [string] $Component,
+        [Parameter(Mandatory)] [int] $Port,
+        [int] $RecoveryAttempt = 0,
+        [DateTime] $StartedAt = [DateTime]::UtcNow
+    )
+    $watchScript = Get-CopilotProcessWatchScript
+    if (-not (Test-Path -LiteralPath $watchScript -PathType Leaf)) {
+        Write-CopilotLifecycleEvent -Component $Component -EventName 'watch_unavailable' -ProcessId $Process.Id -Port $Port -Detail $watchScript
+        return
+    }
+    $metadata = Get-CopilotPkgMetadata
+    $watchEnv = @{
+        COPILOT_WATCH_SCRIPT = $watchScript
+        COPILOT_WATCH_PID = [string]$Process.Id
+        COPILOT_WATCH_COMPONENT = $Component
+        COPILOT_WATCH_LOG = Get-CopilotLifecycleLog
+        COPILOT_WATCH_INTENT = Get-CopilotStopIntent -Component $Component -Pro
+… (output truncated)
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_readFile"><details>
-<summary>Tool use: **copilot_readFile**</summary>
+<tool-use data-tool-type="read" data-tool-name="read_file"><details>
+<summary>Tool use: **read_file**</summary>
 
 Read `Copilot.Tests.ps1`, lines 1780 to 1940
+
+**Input:**
+
+- endLine: `1940`
+- filePath: `c:\Users\hanruzhou\.local\share\chezmoi\tests\Copilot.Tests.ps1`
+- startLine: `1780`
+
+**Result:**
+
+```
+    }
+
+    Context 'adaptive shim limiter control' {
+        It 'reads the live limiter status from the identity endpoint' {
+            InModuleScope Copilot {
+                Mock Test-CopilotShimAlive { $true }
+                Mock Get-CopilotShimBase { 'http://localhost:4999' }
+                Mock Invoke-RestMethod { [pscustomobject]@{ limit = 4; min = 4; max = 8; active = 1; queued = 0; adaptive = $true } }
+
+                $result = Invoke-CopilotLimiter -Argument @('status')
+
+                $result.limit | Should -Be 4
+                Should -Invoke Invoke-RestMethod -Times 1 -Exactly -ParameterFilter {
+                    $Uri -eq 'http://localhost:4999/_shim/config' -and $Method -eq 'Get'
+                }
+            }
+        }
+
+        It 'patches validated live limits through the loopback admin endpoint' {
+            InModuleScope Copilot {
+                Mock Test-CopilotShimAlive { $true }
+                Mock Get-CopilotShimBase { 'http://localhost:4999' }
+                Mock Invoke-RestMethod { [pscustomobject]@{ limit = 6; min = 3; max = 9; active = 0; queued = 0; adaptive = $true } }
+
+                $result = Invoke-CopilotLimiter -Argument @('set', '--min', '3', '--max', '9', '--limit', '6')
+
+                $result.limit | Should -Be 6
+                Should -Invoke Invoke-RestMethod -Times 1 -Exactly -ParameterFilter {
+                    $Uri -eq 'http://localhost:4999/_shim/config' -and
+                    $Method -eq 'Patch' -and
+                    $Headers['x-copilot-shim-admin'] -eq '1' -and
+                    ($Body | ConvertFrom-Json).min -eq 3 -and
+                    ($Body | ConvertFrom-Json).max -eq 9 -and
+                    ($Body | ConvertFrom-Json).limit -eq 6
+                }
+            }
+        }
+
+        It 'rejects invalid limits without making a request' {
+            InModuleScope Copilot {
+                Mock Test-CopilotShimAlive { $true }
+                Mock Invoke-RestMethod { throw 'must not call the shim'
+… (output truncated)
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_readFile"><details>
-<summary>Tool use: **copilot_readFile**</summary>
+<tool-use data-tool-type="read" data-tool-name="read_file"><details>
+<summary>Tool use: **read_file**</summary>
 
 Read `Copilot.Tests.ps1`, lines 1390 to 1645
+
+**Input:**
+
+- endLine: `1645`
+- filePath: `c:\Users\hanruzhou\.local\share\chezmoi\tests\Copilot.Tests.ps1`
+- startLine: `1390`
+
+**Result:**
+
+```
+                Mock Test-CopilotAlive { $true }
+                Mock Get-CopilotStaleInstaller { @() }
+                Mock Get-CopilotShimEnabled { $true }
+                Mock Test-CopilotShimAlive { $true }
+                Mock Get-CopilotShimBase { 'http://localhost:4999' }
+                Mock Resolve-CopilotHttpProxy { $null }
+                Mock Get-CopilotUpstreamModel { @('gpt-5.6-sol') }
+                Mock Get-CopilotModelCatalog { $catalog }
+                Mock Get-CopilotEffectiveModel { 'gpt-5.6-sol[1m]|test pin' }
+                Mock Invoke-WebRequest {
+                    if ($Uri -like '*/v1/messages?beta=true') {
+                        return [pscustomobject]@{
+                            StatusCode = 402
+                            Content = '{"error":{"code":"billing_not_configured","message":"No billing"}}'
+                        }
+                    }
+                    [pscustomobject]@{ StatusCode = 401; Content = '' }
+                }
+
+                Invoke-CopilotDoctor -Live
+
+                $directMessagesUri = "$(Get-CopilotBase)/v1/messages?beta=true"
+                Should -Invoke Get-CopilotModelCatalog -Times 1 -Exactly
+                Should -Invoke Invoke-WebRequest -Times 1 -Exactly -ParameterFilter { $Uri -eq $directMessagesUri }
+                Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Uri -like 'http://localhost:4999/*' }
+            }
+        }
+    }
+
+    Context 'process lifecycle diagnostics' {
+        It 'records unexpected exits and deliberate stop intent separately' {
+            $watcher = Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-process-watch.ps1'
+            $log = Join-Path $TestDrive 'lifecycle.jsonl'
+
+            $unexpected = Start-Process -FilePath (Get-Command pwsh).Source -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Milliseconds 100; exit 7') -PassThru
+            & $watcher -ProcessId $unexpected.Id -Component proxy -LogPath $log -IntentP
+… (output truncated)
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_readFile"><details>
-<summary>Tool use: **copilot_readFile**</summary>
+<tool-use data-tool-type="read" data-tool-name="read_file"><details>
+<summary>Tool use: **read_file**</summary>
 
 Read `AGENTS.md`
+
+**Input:**
+
+- endLine: `260`
+- filePath: `c:\Users\HANRUZ~1\AppData\Local\Temp\dotfiles-parent-shim-fix\AGENTS.md`
+- startLine: `1`
+
+**Result:**
+
+```
+CLAUDE.md
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
@@ -8682,38 +9434,177 @@ _**Agent (copilot/gpt-5.6-sol)**_
 <summary>Tool use: **run_in_terminal**</summary>
 
 Running `$root=Join-Path $env:TEMP 'dotfiles-parent-shim-fix'; git -C $root status --s...`
+
+Verify whether the parent commit recorded in the Windows test actually exists and inspect the temporary checkout state.
+
+```bash
+$root=Join-Path $env:TEMP 'dotfiles-parent-shim-fix'; git -C $root status --short; git -C $root rev-parse HEAD; git -C $root log --oneline --all --grep='harden.*shim\|stream.*shim' -8; if (git -C $root cat-file -e '2799866e2074da080a6afd115578ab3350847aa9^{commit}' 2>$null) { git -C $root show --stat --oneline 2799866e2074da080a6afd115578ab3350847aa9 } else { Write-Host 'contract commit is absent' }
+```
+
+**Result:**
+
+```
+ M dot_config/shell/copilot-throttle-shim.js
+1a7ae00f248adadb5a77bf732195b224ea4e9af7
+b3c5008 feat(shell): copilot-proxy throttle shim + log rotation
+contract commit is absent
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_findTextInFiles"><details>
-<summary>Tool use: **copilot_findTextInFiles**</summary>
+<tool-use data-tool-type="search" data-tool-name="grep_search"><details>
+<summary>Tool use: **grep_search**</summary>
 
 Searched for regex `installServerRejectionGuard|settleCancellation|metrics disabled|request body|process survival|unhandled` (`**/tests/**/*`), 9 results
+
+**Input:**
+
+- includePattern: `tests/**/*`
+- isRegexp: `true`
+- maxResults: `200`
+- query: `installServerRejectionGuard|settleCancellation|metrics disabled|request body|process survival|unhandled`
+
+**Result:**
+
+```
+Found 9 matches in 3 files for "installServerRejectionGuard|settleCancellation|metrics disabled|request body|process survival|unhandled"
+
+tests/Copilot.Tests.ps1
+2094:            ($result.results | Where-Object name -EQ 'server-unhandled-rejection').logged | Should -BeTrue
+
+tests/fixtures/copilot-shim-hardening.mjs
+53:const { closeResponse, createMetricTracker, settleCancellation, startServer } = await import(pathToFileURL(process.argv[2]).href);
+60:await settleCancellation({ cancel() { return Promise.reject(new Error("fixture rejected cancel")); } });
+61:await settleCancellation({ cancel() { throw new Error("fixture throwing cancel"); } });
+
+tests/fixtures/copilot-shim-process-survival.mjs
+27:  console.log(JSON.stringify({ name: "server-unhandled-rejection", healthy }));
+247:  const line = stdout.split(/\r?\n/).find((entry) => entry.startsWith('{"name":"server-unhandled-rejection"'));
+248:  const result = line ? JSON.parse(line) : { name: "server-unhandled-rejection", healthy: false };
+249:  return { ...result, exited: true, code, logged: stderr.includes("contained unhandled rejection") };
+320:if (!results.find((result) => result.name === "server-unhandled-rejection")?.logged) {
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_findTextInFiles"><details>
-<summary>Tool use: **copilot_findTextInFiles**</summary>
+<tool-use data-tool-type="search" data-tool-name="grep_search"><details>
+<summary>Tool use: **grep_search**</summary>
 
 Searched for regex `Start-CopilotShim|Invoke-CopilotShimStart|quoted|space|ArgumentList|stop intent|mutex|Abandoned` (`**/tests/Copilot.Tests.ps1`), 40 results
+
+**Input:**
+
+- includePattern: `tests/Copilot.Tests.ps1`
+- isRegexp: `true`
+- maxResults: `200`
+- query: `Start-CopilotShim|Invoke-CopilotShimStart|quoted|space|ArgumentList|stop intent|mutex|Abandoned`
+
+**Result:**
+
+```
+Found 40 matches in 1 file for "Start-CopilotShim|Invoke-CopilotShimStart|quoted|space|ArgumentList|stop intent|mutex|Abandoned"
+
+tests/Copilot.Tests.ps1
+221:                    $ArgumentList -contains '--registry=https://packagefeedproxy.microsoft.io/npm/' -and
+222:                    @($ArgumentList | Where-Object { $_ -like '--userconfig=*' }).Count -eq 1 -and
+223:                    @($ArgumentList | Where-Object { $_ -like '--globalconfig=*' }).Count -eq 1
+518:                    Mock Start-CopilotShim { $true }
+580:                    Mock Start-CopilotShim { $true }
+607:                    Mock Start-CopilotShim { $true }
+950:        It 'reads an uncommented double-quoted claude_cmd' {
+966:        It 'reads a single-quoted claude_cmd' {
+1018:        It 'preserves argument order, duplicates, spaces, and embedded quotes' {
+1420:        It 'records unexpected exits and deliberate stop intent separately' {
+1424:            $unexpected = Start-Process -FilePath (Get-Command pwsh).Source -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Milliseconds 100; exit 7') -PassThru
+1427:            $deliberate = Start-Process -FilePath (Get-Command pwsh).Source -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Milliseconds 100; exit 0') -PassThru
+1467:                $child = Start-Process -FilePath (Get-Command pwsh).Source -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Milliseconds 100; exit 7') -PassThru
+1492:            $child = Start-Process -FilePath (Get-Command pwsh).Source -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Milliseconds 100; exit 7') -PassThru
+1508:            $unready = Start-Process -FilePath (Get-Command pwsh).Source -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Milliseconds 100; exit 7') -PassThru
+1518:            $proxyDown = Start-Process -FilePath (Get-Command pwsh).Source -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Milliseconds 100; exit 7') -PassThru
+1547:                $child = Start-Process
+… (output truncated)
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_getErrors"><details>
-<summary>Tool use: **copilot_getErrors**</summary>
+<tool-use data-tool-type="generic" data-tool-name="get_errors"><details>
+<summary>Tool use: **get_errors**</summary>
 
 Checked `copilot-throttle-shim.js`, `Copilot.psm1`, `copilot-process-watch.ps1`, `Copilot.Tests.ps1`, `copilot-shim-process-survival.mjs`, no problems found
+
+**Input:**
+
+- filePaths:
+
+```
+[
+  "c:\\Users\\hanruzhou\\.local\\share\\chezmoi\\dot_config\\powershell\\copilot-throttle-shim.js",
+  "c:\\Users\\hanruzhou\\.local\\share\\chezmoi\\dot_config\\powershell\\modules\\Copilot\\Copilot.psm1",
+  "c:\\Users\\hanruzhou\\.local\\share\\chezmoi\\dot_config\\powershell\\copilot-process-watch.ps1",
+  "c:\\Users\\hanruzhou\\.local\\share\\chezmoi\\tests\\Copilot.Tests.ps1",
+  "c:\\Users\\hanruzhou\\.local\\share\\chezmoi\\tests\\fixtures\\copilot-shim-process-survival.mjs"
+]
+```
+
+
+**Result:**
+
+```
+<errors path="c:\\Users\\hanruzhou\\.local\\share\\chezmoi\\dot_config\\powershell\\copilot-throttle-shim.js">
+No errors found
+</errors>
+<errors path="c:\\Users\\hanruzhou\\.local\\share\\chezmoi\\dot_config\\powershell\\modules\\Copilot\\Copilot.psm1">
+No errors found
+</errors>
+<errors path="c:\\Users\\hanruzhou\\.local\\share\\chezmoi\\dot_config\\powershell\\copilot-process-watch.ps1">
+No errors found
+</errors>
+<errors path="c:\\Users\\hanruzhou\\.local\\share\\chezmoi\\tests\\Copilot.Tests.ps1">
+No errors found
+</errors>
+<errors path="c:\\Users\\hanruzhou\\.local\\share\\chezmoi\\tests\\fixtures\\copilot-shim-process-survival.mjs">
+No errors found
+</errors>
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_readFile"><details>
-<summary>Tool use: **copilot_readFile**</summary>
+<tool-use data-tool-type="read" data-tool-name="read_file"><details>
+<summary>Tool use: **read_file**</summary>
 
 Read `CLAUDE.md`
+
+**Input:**
+
+- endLine: `320`
+- filePath: `c:\Users\HANRUZ~1\AppData\Local\Temp\dotfiles-parent-shim-fix\CLAUDE.md`
+- startLine: `1`
+
+**Result:**
+
+```
+# Dotfiles Repository — Agent Contract
+
+Cross-platform dotfiles managed by **chezmoi** (configs) + **ansible** (system deps). This file is the agent-facing contract: edit rules and cross-file invariants. User-facing intro: [README.md](README.md).
+
+> **Headroom rule**: keep this file under ~30k chars. Push handbook content into `docs/`; keep only rules an agent must obey *without* opening another file. `AGENTS.md` and `GEMINI.md` are symlinks to this file — edit one.
+
+## Cross-file maintenance rules
+
+When you touch one of these surfaces, update the listed mirror in the same commit.
+
+| Surface you change | Also update | Reference |
+|---|---|---|
+| Config files / ansible roles / platforms / setup steps | `README.md` (What You Get, Supported Platforms, Quick Setup) | — |
+| Console logging in any shell script | **Never re-hand-roll `info`/`warn`/`success`/`error` + a colour block** — `scripts/lib/log_shared.sh` is the SSOT for 13 consumers. run-scripts `{{ include }}` it (they render to a temp path) and MUST set `LOG_STREAM=stdout` first, or fleet-apply's local-host `_classify_drift()` demotes their stderr from `drift` to `failed`; `scripts/*.sh` `source` it; `$HOME`-deployed files can't use it (`scripts/**` is chezmoi-ignored). Editing it rehashes every `run_onchange_after_*` that inlines it → full ansible + brew re-run everywhere, so batch edits. New consumer → add it to the wiring guard in `tests/unit/log_shared.bats`. | [shell-logging](docs/this_repo/shell-logging.md) — API, config vars, and the `set -e`/`set -u`/`IFS`/top-level-`return` traps |
+| New `docs/**/*.md` | Nav entry in `mkdocs.yml`; run `uv run mkdocs build --strict` | known anchor-drift is tracked in [`backlog/mkdocs-anchor-drift.md`](backlog/mkdocs-anchor-drift.md) — don't tighten `validation.links.not_found` until cleared |
+| New tool installed by any mechanism (ansible role / Brewfile / curl-installer / mise / uv / npm / cargo / gem / dotnet), or removed, or switched | Add / update / remove its row in
+… (output truncated)
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
@@ -8726,6 +9617,12 @@ _**Agent (copilot/gpt-5.6-sol)**_
 <summary>Tool use: **run_in_terminal**</summary>
 
 Running `pwsh -NoProfile -Command "Invoke-Pester -Path ./tests/Copilot.Tests.ps1 -Outp...`
+
+Run the focused Copilot test suite against the current in-progress implementation before making corrective edits.
+
+```bash
+pwsh -NoProfile -Command "Invoke-Pester -Path ./tests/Copilot.Tests.ps1 -Output Detailed"
+```
 
 **Result:**
 
@@ -8746,6 +9643,32 @@ _**Agent (copilot/gpt-5.6-sol)**_
 <summary>Tool use: **run_in_terminal**</summary>
 
 Running `pwsh -NoProfile -Command "Invoke-Pester -Path ./tests/Copilot.Tests.ps1"`
+
+Rerun the focused suite with syntax compatible with the installed Pester version.
+
+```bash
+pwsh -NoProfile -Command "Invoke-Pester -Path ./tests/Copilot.Tests.ps1"
+```
+
+**Result:**
+
+```
+
+
+
+
+
+ [-] Error occurred in test script './tests/Copilot.Tests.ps1' 1.76s
+   RuntimeException: The BeforeAll command may only be used inside a Describe block.
+   at Assert-DescribeInProgress, C:\Program Files\WindowsPowerShell\Modules\Pester\3.4.0\Functions\Describe.ps1: line 125
+   at BeforeAll, C:\Program Files\WindowsPowerShell\Modules\Pester\3.4.0\Functions\SetupTeardown.ps1: line 56
+   at <ScriptBlock>, C:\Users\hanruzhou\.local\share\chezmoi\tests\Copilot.Tests.ps1: line 6
+   at <ScriptBlock>, C:\Program Files\WindowsPowerShell\Modules\Pester\3.4.0\Pester.psm1: line 297
+   at Invoke-Pester, C:\Program Files\WindowsPowerShell\Modules\Pester\3.4.0\Pester.psm1: line 310
+   at <ScriptBlock>, <No file>: line 1
+Tests completed in 1.76s
+Passed: 0 Failed: 1 Skipped: 0 Pending: 0 Inconclusive: 0
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
@@ -8758,6 +9681,18 @@ _**Agent (copilot/gpt-5.6-sol)**_
 <summary>Tool use: **run_in_terminal**</summary>
 
 Running `Get-Module -ListAvailable Pester | Sort-Object Version -Descending | Select-O...`
+
+Locate an installed Pester 5 module before deciding whether installation is necessary.
+
+```bash
+Get-Module -ListAvailable Pester | Sort-Object Version -Descending | Select-Object Name,Version,Path | Format-Table -AutoSize; Get-Command Invoke-Pester -All | Select-Object Source,Version,CommandType | Format-Table -AutoSize
+```
+
+**Result:**
+
+```
+Pester 3.4.0      Function
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
@@ -8766,22 +9701,83 @@ _**Agent (copilot/gpt-5.6-sol)**_
 <summary>Tool use: **run_in_terminal**</summary>
 
 Running `git diff --numstat -- dot\_config/powershell/copilot-throttle-shim.js; Get-Ite...`
+
+Check whether another active agent is still writing the same implementation files before patching them.
+
+```bash
+git diff --numstat -- dot_config/powershell/copilot-throttle-shim.js; Get-Item .\dot_config\powershell\copilot-throttle-shim.js, .\dot_config\powershell\modules\Copilot\Copilot.psm1, .\dot_config\powershell\copilot-process-watch.ps1, .\tests\Copilot.Tests.ps1 | Select-Object LastWriteTime,Length,FullName | Format-Table -AutoSize; Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match '(?i)(codex|claude).*chezmoi' } | Select-Object ProcessId,Name,CreationDate,@{n='Command';e={($_.CommandLine -replace '(?i)(token|key|secret)[= ][^ ]+','$1=<redacted>').Substring(0,[Math]::Min(240,($_.CommandLine).Length))}} | Format-List
+```
+
+**Result:**
+
+```
+302     50      dot_config/powershell/copilot-throttle-shim.js
+
+LastWriteTime      Length FullName
+-------------      ------ --------
+2026/8/28 0:47:54   55907 C:\Users\hanruzhou\.local\share\chezmoi\dot_config\p…
+2026/8/28 10:06:22 149897 C:\Users\hanruzhou\.local\share\chezmoi\dot_config\p…
+2026/8/28 1:10:59    7106 C:\Users\hanruzhou\.local\share\chezmoi\dot_config\p…
+2026/8/28 10:07:28 109309 C:\Users\hanruzhou\.local\share\chezmoi\tests\Copilo…
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_findTextInFiles"><details>
-<summary>Tool use: **copilot_findTextInFiles**</summary>
+<tool-use data-tool-type="search" data-tool-name="grep_search"><details>
+<summary>Tool use: **grep_search**</summary>
 
 Searched for regex `createAdaptiveLimiter|limiter|MAX_RETRY_AFTER|STARTUP_MIN|STARTUP_MAX` (`**/tests/**/*`), 5 results
+
+**Input:**
+
+- includePattern: `tests/**/*`
+- isRegexp: `true`
+- maxResults: `200`
+- query: `createAdaptiveLimiter|limiter|MAX_RETRY_AFTER|STARTUP_MIN|STARTUP_MAX`
+
+**Result:**
+
+```
+Found 5 matches in 1 file for "createAdaptiveLimiter|limiter|MAX_RETRY_AFTER|STARTUP_MIN|STARTUP_MAX"
+
+tests/Copilot.Tests.ps1
+1782:    Context 'adaptive shim limiter control' {
+1783:        It 'reads the live limiter status from the identity endpoint' {
+1789:                $result = Invoke-CopilotLimiter -Argument @('status')
+1804:                $result = Invoke-CopilotLimiter -Argument @('set', '--min', '3', '--max', '9', '--limit', '6')
+1824:                Invoke-CopilotLimiter -Argument @('set', '--limit', '0')
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_findTextInFiles"><details>
-<summary>Tool use: **copilot_findTextInFiles**</summary>
+<tool-use data-tool-type="search" data-tool-name="grep_search"><details>
+<summary>Tool use: **grep_search**</summary>
 
 Searched for regex `adaptive|limiter` (`**/docs/copilot-proxy*.md`), 5 results
+
+**Input:**
+
+- includePattern: `docs/copilot-proxy*.md`
+- isRegexp: `true`
+- maxResults: `100`
+- query: `adaptive|limiter`
+
+**Result:**
+
+```
+Found 5 matches in 2 files for "adaptive|limiter"
+
+docs/copilot-proxy.md
+21:| `copilot-proxy limiter [status\|set\|reset]` | inspect or temporarily tune the running shim's adaptive concurrency limit |
+246:  it to the floor for a five-minute cooldown. `copilot-proxy limiter status`,
+247:  `limiter set --min 4 --max 8 --limit 6`, and `limiter reset` change only the
+
+docs/copilot-proxy.zh-TW.md
+21:| `copilot-proxy limiter [status\|set\|reset]` | 檢查或暫時調整執行中 shim 的 adaptive concurrency limit |
+217:  `copilot-proxy limiter status`、`limiter set --min 4 --max 8 --limit 6`、`limiter reset`
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
@@ -8794,30 +9790,146 @@ _**Agent (copilot/gpt-5.6-sol)**_
 <summary>Tool use: **run_in_terminal**</summary>
 
 Running `Get-Date -Format o; git status --short; git diff --check -- dot\_config/powers...`
+
+Confirm current time, dirty paths, and whitespace integrity immediately before the corrective patch.
+
+```bash
+Get-Date -Format o; git status --short; git diff --check -- dot_config/powershell/copilot-throttle-shim.js dot_config/powershell/modules/Copilot/Copilot.psm1 dot_config/powershell/copilot-process-watch.ps1 tests/Copilot.Tests.ps1 tests/fixtures/copilot-shim-hardening.mjs tests/fixtures/copilot-shim-process-survival.mjs
+```
+
+**Result:**
+
+```
+ M docs/copilot-proxy.zh-TW.md
+ M dot_config/powershell/copilot-process-watch.ps1
+ M dot_config/powershell/copilot-throttle-shim.js
+ M dot_config/powershell/modules/Copilot/Copilot.psm1
+ M pitfalls/README.md
+ M tests/Copilot.Tests.ps1
+ M tests/fixtures/copilot-shim-hardening.mjs
+?? .claude/plans/fluttering-exploring-meerkat.md
+?? .specstory/history/2026-08-27_11-57-36Z-fix-copilot-proxy-shim.md
+?? .specstory/history/2026-08-27_15-46-29Z-untitled.md
+?? pitfalls/bun-serve-stream-abort-kills-copilot-shim.md
+?? tests/fixtures/copilot-shim-process-survival.mjs
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_findTextInFiles"><details>
-<summary>Tool use: **copilot_findTextInFiles**</summary>
+<tool-use data-tool-type="search" data-tool-name="grep_search"><details>
+<summary>Tool use: **grep_search**</summary>
 
 Searched for regex `ConvertTo-Copilot.*Arg|Quote.*Arg|ArgumentList.*script|Start-Process.*ArgumentList` (`**/dot_config/powershell/modules/Copilot/Copilot.psm1`), 8 results
+
+**Input:**
+
+- includePattern: `dot_config/powershell/modules/Copilot/Copilot.psm1`
+- isRegexp: `true`
+- maxResults: `100`
+- query: `ConvertTo-Copilot.*Arg|Quote.*Arg|ArgumentList.*script|Start-Process.*ArgumentList`
+
+**Result:**
+
+```
+Found 8 matches in 1 file for "ConvertTo-Copilot.*Arg|Quote.*Arg|ArgumentList.*script|Start-Process.*ArgumentList"
+
+dot_config/powershell/modules/Copilot/Copilot.psm1
+267:# Start-Process joins -ArgumentList with spaces and does no quoting, so a prefix
+406:        $p = Start-Process -FilePath $installer.File -ArgumentList $installer.Args `
+490:        $p = Start-Process -FilePath $npm.Source -ArgumentList $npmArgs -WorkingDirectory $PackageDir -PassThru -NoNewWindow -ErrorAction Stop
+1387:        Start-Process -FilePath (Get-Command pwsh).Source -ArgumentList @('-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded) -WindowStyle Hidden | Out-Null
+1469:        $p = Start-Process -FilePath 'bun' -ArgumentList @($script) -PassThru -WindowStyle Hidden `
+2431:# Single-quote ONE argument for embedding in specstory's `-c` command STRING.
+2433:# and necessary — an unquoted join flattens `-p "two words"` into two arguments.
+2455:            $command = "$command $(ConvertTo-CopilotShQuote $argument)"
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_findTextInFiles"><details>
-<summary>Tool use: **copilot_findTextInFiles**</summary>
+<tool-use data-tool-type="search" data-tool-name="grep_search"><details>
+<summary>Tool use: **grep_search**</summary>
 
 Searched for regex `UnixSourceCommit|Sha256|server-unhandled-rejection|process-survival|contained unhandled` (`**/tests/Copilot.Tests.ps1`), 8 results
+
+**Input:**
+
+- includePattern: `tests/Copilot.Tests.ps1`
+- isRegexp: `true`
+- maxResults: `100`
+- query: `UnixSourceCommit|Sha256|server-unhandled-rejection|process-survival|contained unhandled`
+
+**Result:**
+
+```
+Found 8 matches in 1 file for "UnixSourceCommit|Sha256|server-unhandled-rejection|process-survival|contained unhandled"
+
+tests/Copilot.Tests.ps1
+183:                    $sha = [Security.Cryptography.SHA256]::Create()
+1901:                UnixSourceCommit = '2799866e2074da080a6afd115578ab3350847aa9'
+1902:                Sha256 = 'E82333BAD5AAF7A7352600C21583838ACD8C32DE22992275CD4C692FB2AA3452'
+1905:            $shimContract.UnixSourceCommit | Should -Match '^[0-9a-f]{40}$'
+1906:            (Get-FileHash -Algorithm SHA256 $windowsShim).Hash |
+1907:                Should -BeExactly $shimContract.Sha256
+2084:            $fixture = (Resolve-Path (Join-Path $PSScriptRoot 'fixtures' 'copilot-shim-process-survival.mjs')).Path
+2094:            ($result.results | Where-Object name -EQ 'server-unhandled-rejection').logged | Should -BeTrue
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_readFile"><details>
-<summary>Tool use: **copilot_readFile**</summary>
+<tool-use data-tool-type="read" data-tool-name="read_file"><details>
+<summary>Tool use: **read_file**</summary>
 
 Read `Copilot.psm1`, lines 240 to 295
+
+**Input:**
+
+- endLine: `295`
+- filePath: `c:\Users\hanruzhou\.local\share\chezmoi\dot_config\powershell\modules\Copilot\Copilot.psm1`
+- startLine: `240`
+
+**Result:**
+
+```
+    $stamp = Get-CopilotPkgStampMetadata
+    $spec = if ($stamp -and $stamp.Name -ceq $metadata.Name -and $stamp.Version -ceq $metadata.Version) {
+        $stamp.RequestedSpec
+    } else { Get-CopilotPkgLegacyStamp }
+    if ($spec -notmatch '^@jeffreycao/copilot-api@(?<version>\d+\.\d+\.\d+)$' -or $Matches.version -cne $metadata.Version) { return }
+    $integrity = Get-CopilotVerifiedIntegrity -Version $metadata.Version
+    if (-not $integrity -or -not (Test-CopilotPkgDependencies -Metadata $metadata) -or $null -eq (Get-CopilotPkgLaunch)) { return }
+    Write-CopilotPkgSelection -Spec $spec -Integrity $integrity
+}
+
+# The binlink bun wrote, if any. Bun on Windows writes node_modules/.bin/<name>.exe
+# (plus a .bunx sidecar); the other extensions cover an npm/yarn-populated prefix.
+# Returns $null when no directly-runnable shim exists — Get-CopilotPkgLaunch then
+# falls back to `bun run`, which resolves from the local node_modules offline.
+function script:Get-CopilotPkgBin {
+    $binDir = Join-Path (Get-CopilotPkgPrefix) 'node_modules/.bin'
+    foreach ($ext in '.exe', '.cmd', '.bat', '', '.ps1') {
+        $p = Join-Path $binDir "copilot-api$ext"
+        if (Test-Path -LiteralPath $p -PathType Leaf) { return $p }
+    }
+    $null
+}
+
+# How to invoke the installed proxy: @{ Exe; Pre; Cwd }. Cwd is non-null only for
+# the `bun run` fallback, which must resolve node_modules/.bin from the prefix.
+#
+# The prefix is deliberately NOT passed as an argument (`bun run --cwd <path>`):
+# Start-Process joins -ArgumentList with spaces and does no quoting, so a prefix
+# under a $HOME containing a space ("C:\Users\Da-Wei Lee\...") would arrive split
+# across two argv entries. -WorkingDirectory takes the path as a real parameter.
+function script:Get-CopilotPkgLaunch {
+    $bin = Get-CopilotPkgBin
+    # .ps1 can't be Start-Process'd directly, and a bare extensionless shim is a
+    # shell script — route both through `bun run`, which finds node_modules/.bin.
+    if ($bin -and [System.IO.Pa
+… (output truncated)
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
@@ -8828,34 +9940,213 @@ _**Agent (copilot/gpt-5.6-sol)**_
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_readFile"><details>
-<summary>Tool use: **copilot_readFile**</summary>
+<tool-use data-tool-type="read" data-tool-name="read_file"><details>
+<summary>Tool use: **read_file**</summary>
 
 Read `Copilot.Tests.ps1`, lines 1825 to 1875
+
+**Input:**
+
+- endLine: `1875`
+- filePath: `c:\Users\hanruzhou\.local\share\chezmoi\tests\Copilot.Tests.ps1`
+- startLine: `1825`
+
+**Result:**
+
+```
+
+                Should -Invoke Invoke-RestMethod -Times 0 -Exactly
+                Should -Invoke Write-Error -Times 1 -Exactly -ParameterFilter { $Message -match 'integer from 1 to 32' }
+            }
+        }
+    }
+
+    Context 'managed clients fail closed on an enabled shim' {
+        It 'recovers the shim without changing its persisted state' {
+            InModuleScope Copilot {
+                Mock Get-Command { [pscustomobject]@{ Source = 'bun' } } -ParameterFilter { $Name -eq 'bun' }
+                Mock Get-CopilotShimEnabled { $true }
+                Mock Test-CopilotAlive { $true }
+                Mock Start-CopilotShim { $true }
+                Mock Set-Content {}
+                $arguments = @('shim', 'recover', '--attempt', '2')
+
+                copilot-proxy @arguments
+
+                Should -Invoke Start-CopilotShim -Times 1 -Exactly -ParameterFilter { $RecoveryAttempt -eq 2 }
+                Should -Invoke Set-Content -Times 0 -Exactly
+            }
+        }
+        It 'Assert-CopilotShim is a no-op when the shim is switched off' {
+            InModuleScope Copilot {
+                Mock Get-CopilotShimEnabled { $false }
+                Mock Start-CopilotShim { throw 'must not start a disabled shim' }
+                Assert-CopilotShim | Should -BeTrue
+            }
+        }
+        It 'Assert-CopilotShim refuses rather than silently using the bare proxy' {
+            InModuleScope Copilot {
+                Mock Get-CopilotShimEnabled { $true }
+                Mock Start-CopilotShim { $false }
+                Mock Write-Error {}
+
+                Assert-CopilotShim | Should -BeFalse
+
+                Should -Invoke Write-Error -Times 1 -Exactly -ParameterFilter {
+                    $Message -match 'refused to bypass the enabled metrics shim'
+                }
+            }
+        }
+        It 'client base stays on the shim when it is enabled but down' {
+            InModuleScope Copilot {
+                Mock Get-CopilotShimEnabled { $true }
+ 
+… (output truncated)
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_readFile"><details>
-<summary>Tool use: **copilot_readFile**</summary>
+<tool-use data-tool-type="read" data-tool-name="read_file"><details>
+<summary>Tool use: **read_file**</summary>
 
 Read `Copilot.Tests.ps1`, lines 1640 to 1780
+
+**Input:**
+
+- endLine: `1780`
+- filePath: `c:\Users\hanruzhou\.local\share\chezmoi\tests\Copilot.Tests.ps1`
+- startLine: `1640`
+
+**Result:**
+
+```
+
+                Should -Invoke Write-Error -Times 1 -Exactly -ParameterFilter {
+                    $Message -match 'held by another process.*4242\(python\.exe\)'
+                }
+                Should -Invoke Stop-Process -Times 0 -Exactly
+                Should -Invoke Start-Process -Times 0 -Exactly
+            }
+        }
+        It 'reclaims the port from one of our own stale shims' {
+            InModuleScope Copilot {
+                $script:ownerCalls = 0
+                Mock Get-CopilotPortOwner {
+                    $script:ownerCalls++
+                    if ($script:ownerCalls -eq 1) {
+                        [pscustomobject]@{ Owner = 'ours'; Pids = @(4242); Labels = @() }
+                    } else {
+                        [pscustomobject]@{ Owner = 'free'; Pids = @(); Labels = @() }
+                    }
+                }
+                # Not alive: an OLDER shim build answers nothing we recognise, which
+                # is what used to be misread as "port free" -> EADDRINUSE forever.
+                Mock Test-CopilotShimAlive { $script:ownerCalls -gt 1 }
+                Mock Get-Command { [pscustomobject]@{ Source = 'bun' } } -ParameterFilter { $Name -eq 'bun' }
+                Mock Test-Path { $true }
+                Mock Stop-Process {}
+                Mock Set-CopilotStopIntent {}
+                Mock Start-Process { [pscustomobject]@{ Id = 9001 } }
+                Mock Start-CopilotProcessWatcher {}
+                Mock Rotate-CopilotLog {}
+                Mock Set-Content {}
+                Start-CopilotShim | Should -BeTrue
+                Should -Invoke Set-CopilotStopIntent -Times 1 -Exactly -ParameterFilter { $Component -eq 'shim' -and $ProcessId -eq 4242 }
+                Should -Invoke Stop-Process -Times 1 -Exactly -ParameterFilter { $Id -eq 4242 }
+                Should -Invoke Start-Process -Times 1 -Exactly
+            }
+        }
+        It 'serializes concurrent shim starts with a per-port mutex' {
+            InModuleScope Cop
+… (output truncated)
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_readFile"><details>
-<summary>Tool use: **copilot_readFile**</summary>
+<tool-use data-tool-type="read" data-tool-name="read_file"><details>
+<summary>Tool use: **read_file**</summary>
 
 Read `Copilot.Tests.ps1`, lines 2060 to 2099
+
+**Input:**
+
+- endLine: `2115`
+- filePath: `c:\Users\hanruzhou\.local\share\chezmoi\tests\Copilot.Tests.ps1`
+- startLine: `2060`
+
+**Result:**
+
+```
+            try {
+                $output = & bun $fixture $shim $metricsDb
+                $LASTEXITCODE | Should -Be 0
+                $jsonLine = @($output | Where-Object { "$_" -like '{"cancelBarrier"*' })[-1]
+                $jsonLine | Should -Not -BeNullOrEmpty
+                $result = $jsonLine | ConvertFrom-Json
+
+                $result.cancelBarrier.waited | Should -BeTrue
+                $result.retryReplay.sameBody | Should -BeTrue
+                $result.retryReplay.sameTrace | Should -BeTrue
+                $result.responseCodes.status402 | Should -BeExactly 'insufficient_quota'
+                $result.responseCodes.status500 | Should -BeExactly 'server_error'
+                $result.fastNonSse.status | Should -Be 502
+                $result.cancellation.deadResult | Should -BeExactly 'AbortError'
+                $result.cleanupFailures.metricFailureContained | Should -BeTrue
+            } finally {
+                Get-ChildItem -LiteralPath ([System.IO.Path]::GetDirectoryName($metricsDb)) -Filter "$([System.IO.Path]::GetFileName($metricsDb))*" -ErrorAction SilentlyContinue |
+                    Remove-Item -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'keeps the Bun shim process alive across stream aborts and server rejections' {
+            if (-not (Get-Command bun -ErrorAction SilentlyContinue)) { Set-ItResult -Skipped -Because 'bun is unavailable'; return }
+            $shim = (Resolve-Path (Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-throttle-shim.js')).Path
+            $fixture = (Resolve-Path (Join-Path $PSScriptRoot 'fixtures' 'copilot-shim-process-survival.mjs')).Path
+            $output = & bun $fixture $shim
+            $LASTEXITCODE | Should -Be 0
+            $jsonLine = @($output | Where-Object { "$_" -like '{"bun"*' })[-1]
+            $jsonLine | Should -Not -BeNullOrEmpty
+            $result = $jsonLine | ConvertFrom-Json
+            foreach ($scenario in $result.results) {
+               
+… (output truncated)
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_findTextInFiles"><details>
-<summary>Tool use: **copilot_findTextInFiles**</summary>
+<tool-use data-tool-type="search" data-tool-name="grep_search"><details>
+<summary>Tool use: **grep_search**</summary>
 
 Searched for regex `installServerRejectionGuard\(\)|export function startServer|server-unhandled-rejection|runGuardScenario` (`**/{dot_config/powershell/copilot-throttle-shim.js,tests/fixtures/copilot-shim-process-survival.mjs}`), 9 results
+
+**Input:**
+
+- includePattern: `{dot_config/powershell/copilot-throttle-shim.js,tests/fixtures/copilot-shim-process-survival.mjs}`
+- isRegexp: `true`
+- maxResults: `100`
+- query: `installServerRejectionGuard\(\)|export function startServer|server-unhandled-rejection|runGuardScenario`
+
+**Result:**
+
+```
+Found 9 matches in 2 files for "installServerRejectionGuard\(\)|export function startServer|server-unhandled-rejection|runGuardScenario"
+
+dot_config/powershell/copilot-throttle-shim.js
+105:export function installServerRejectionGuard() {
+985:export function startServer() {
+986:  installServerRejectionGuard();
+
+tests/fixtures/copilot-shim-process-survival.mjs
+27:  console.log(JSON.stringify({ name: "server-unhandled-rejection", healthy }));
+236:async function runGuardScenario() {
+247:  const line = stdout.split(/\r?\n/).find((entry) => entry.startsWith('{"name":"server-unhandled-rejection"'));
+248:  const result = line ? JSON.parse(line) : { name: "server-unhandled-rejection", healthy: false };
+312:results.push(await runGuardScenario());
+320:if (!results.find((result) => result.name === "server-unhandled-rejection")?.logged) {
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
@@ -8868,6 +10159,26 @@ _**Agent (copilot/gpt-5.6-sol)**_
 <summary>Tool use: **run_in_terminal**</summary>
 
 Running `bun .\\tests\\fixtures\\copilot-shim-process-survival.mjs .\\dot\_config\\powershel...`
+
+Validate stream abort and completion survival after narrowing rejection handling.
+
+```bash
+bun .\tests\fixtures\copilot-shim-process-survival.mjs .\dot_config\powershell\copilot-throttle-shim.js; $code=$LASTEXITCODE; Write-Host "fixture exit=$code"; exit $code
+```
+
+**Result:**
+
+```
+{"bun":"1.3.14","results":[{"name":"upstream-truncate","healthy":true,"exited":f
+alse,"code":null},{"name":"downstream-fast-abort","healthy":true,"exited":false,
+"code":null,"sawKeepalive":false},{"name":"downstream-slow-abort","healthy":true
+,"exited":false,"code":null,"sawKeepalive":true},{"name":"downstream-post-comple
+te-close","healthy":true,"exited":false,"code":null,"completed":true,"error":nul
+l,"responseBytes":263,"sawMarker":true,"sawTerminator":false,"status":200,"event
+s":["response.output_text.delta"],"connection":"keep-alive","transferEncoding":n
+ull,"contentLength":80,"bodyBytes":80,"run":250}]}
+fixture exit=0
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
@@ -8880,6 +10191,20 @@ _**Agent (copilot/gpt-5.6-sol)**_
 <summary>Tool use: **run_in_terminal**</summary>
 
 $(info) Enable `shell integration` to improve command detection
+
+Run the canonical shim retry, cancellation, metrics, and adaptive limiter fixture.
+
+```bash
+$db=Join-Path $env:TEMP "copilot-shim-hardening-$([guid]::NewGuid()).sqlite"; try { bun .\tests\fixtures\copilot-shim-hardening.mjs .\dot_config\powershell\copilot-throttle-shim.js $db; exit $LASTEXITCODE } finally { Get-ChildItem (Split-Path $db) -Filter "$([IO.Path]::GetFileName($db))*" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue }
+```
+
+**Result:**
+
+```
+
+
+Command produced no output
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
@@ -8888,6 +10213,20 @@ _**Agent (copilot/gpt-5.6-sol)**_
 <summary>Tool use: **run_in_terminal**</summary>
 
 Running `$root=Join-Path $env:TEMP 'dotfiles-parent-shim-fix'; Get-ChildItem "$root\\te...`
+
+Inspect the parent repo's existing fixture and Bats wiring before mirroring the shared implementation.
+
+```bash
+$root=Join-Path $env:TEMP 'dotfiles-parent-shim-fix'; Get-ChildItem "$root\tests\fixtures" -Filter '*copilot*shim*' | Select-Object Name,Length; Select-String -Path "$root\tests\unit\copilot_proxy.bats" -Pattern 'copilot-shim-hardening' -Context 8,12 | ForEach-Object { $_.Context.PreContext; $_.Line; $_.Context.PostContext }
+```
+
+**Result:**
+
+```
+
+
+Command produced no output
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
@@ -8896,6 +10235,53 @@ _**Agent (copilot/gpt-5.6-sol)**_
 <summary>Tool use: **run_in_terminal**</summary>
 
 Running `git diff --check -- dot\_config/powershell/copilot-throttle-shim.js dot\_config...`
+
+Check the corrected slice for whitespace errors and review its size.
+
+```bash
+git diff --check -- dot_config/powershell/copilot-throttle-shim.js dot_config/powershell/modules/Copilot/Copilot.psm1 tests/Copilot.Tests.ps1 tests/fixtures/copilot-shim-process-survival.mjs; git diff --stat -- dot_config/powershell/copilot-throttle-shim.js dot_config/powershell/modules/Copilot/Copilot.psm1 tests/Copilot.Tests.ps1 tests/fixtures/copilot-shim-process-survival.mjs
+```
+
+**Result:**
+
+```
+
+chezmoi on  fix/copilot-shim-process-survival [$!?] 
+❯ $db=Join-Path $env:TEMP "copilot-shim-hardening-$([guid]::NewGuid()).sqlite";
+try { bun .\tests\fixtures\copilot-shim-hardening.mjs .\dot_config\powershell\co
+pilot-throttle-shim.js $db; exit $LASTEXITCODE } finally { Get-ChildItem (Split-
+Path $db) -Filter "$([IO.Path]::GetFileName($db))*" -ErrorAction SilentlyContinu
+e | Remove-Item -Force -ErrorAction SilentlyContinue }
+2026-08-28T04:10:06.986Z [shim] stream cancellation failed: fixture rejected can
+cel
+2026-08-28T04:10:07.003Z [shim] stream cancellation failed: fixture throwing can
+cel
+2026-08-28T04:10:07.008Z [shim] metrics write failed: fixture metric write failu
+re
+2026-08-28T04:10:07.033Z [shim] listening on :65425 -> http://127.0.0.1:65424 (l
+imit=1, range=1..1, retries=1, backoff=10ms, ping=50ms after 100ms, stall=5000ms
+)
+2026-08-28T04:10:07.197Z [shim] POST /v1/messages silent for 100ms; keepalive en
+gaged (phase=upstream, active=1/1, queued=0)
+2026-08-28T04:10:07.383Z [shim] POST /v1/messages -> 500; retry 1/1 in 16ms
+2026-08-28T04:10:07.690Z [shim] POST /v1/messages -> 200 after 1 retry
+2026-08-28T04:10:07.840Z [shim] POST /v1/responses silent for 100ms; keepalive e
+ngaged (phase=upstream, active=1/1, queued=0)
+2026-08-28T04:10:07.948Z [shim] POST /v1/responses -> 500; retry 1/1 in 14ms
+2026-08-28T04:10:08.290Z [shim] POST /v1/responses -> 500 after 1 retry
+2026-08-28T04:10:08.312Z [shim] POST /v1/responses committed as SSE but upstream
+ answered 500
+2026-08-28T04:10:08.546Z [shim] POST /v1/responses silent for 100ms; keepalive e
+ngaged (phase=upstream, active=1/1, queued=0)
+2026-08-28T04:10:08.644Z [shim] POST /v1/responses committed as SSE but upstream
+ answered 400
+2026-08-28T04:10:08.796Z [shim] POST /v1/responses silent for 100ms; keepalive e
+ngaged (phase=upstream, active=1/1, queued=0)
+2026-08-28T04:10:08.913Z [shim] POST /v1/responses committed as SSE but upstream
+ answered 401
+2026-08-28T04:10:09.084Z [shim] POST /v1/responses silent for 
+… (output truncated)
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
@@ -8904,6 +10290,18 @@ _**Agent (copilot/gpt-5.6-sol)**_
 <summary>Tool use: **manage_todo_list**</summary>
 
 Starting: *Fix shared shim upstream* (2/5)
+
+- [x] Reproduce stream crash safely
+- [ ] Fix shared shim upstream _(in progress)_
+- [ ] Add bounded shim recovery
+- [ ] Update tests and docs
+- [ ] Validate isolated and production
+
+**Result:**
+
+```
+Successfully wrote todo list
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
@@ -8916,14 +10314,571 @@ _**Agent (copilot/gpt-5.6-sol)**_
 <summary>Tool use: **run_in_terminal**</summary>
 
 $(info) Enable `shell integration` to improve command detection
+
+Rerun the canonical fixture while preserving both its JSON output and explicit exit code.
+
+```bash
+$db=Join-Path $env:TEMP "copilot-shim-hardening-$([guid]::NewGuid()).sqlite"; & bun .\tests\fixtures\copilot-shim-hardening.mjs .\dot_config\powershell\copilot-throttle-shim.js $db; $code=$LASTEXITCODE; Write-Host "hardening-exit=$code"; Get-ChildItem (Split-Path $db) -Filter "$([IO.Path]::GetFileName($db))*" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue; if ($code -ne 0) { exit $code }
+```
+
+**Result:**
+
+```
+
+
+Command produced no output
+```
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
 
-<tool-use data-tool-type="generic" data-tool-name="copilot_listDirectory"><details>
-<summary>Tool use: **copilot_listDirectory**</summary>
+<tool-use data-tool-type="generic" data-tool-name="list_dir"><details>
+<summary>Tool use: **list_dir**</summary>
 
 Read `fixtures`
+
+**Input:**
+
+- path: `c:\Users\HANRUZ~1\AppData\Local\Temp\dotfiles-parent-shim-fix\tests\fixtures`
+
+**Result:**
+
+```
+copilot-shim-hardening.mjs
+```
+</details></tool-use>
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file"><details>
+<summary>Tool use: **read_file**</summary>
+
+Read `content.txt`
+
+**Input:**
+
+- endLine: `400`
+- filePath: `c:\Users\hanruzhou\AppData\Roaming\Code\User\workspaceStorage\ef2a05428fd4007c4933f9521f4cbe51\GitHub.copilot-chat\chat-session-resources\873d89c9-ef88-49eb-8302-fdc0b9d61afa\call_iBp9sQgp7XRT155fZE1cvgw0__vscode-1787826367506\content.txt`
+- startLine: `1`
+
+**Result:**
+
+```
+
+chezmoi on  fix/copilot-shim-process-survival [$!?] 
+❯ $db=Join-Path $env:TEMP "copilot-shim-hardening-$([guid]::NewGuid()).sqlite";
+try { bun .\tests\fixtures\copilot-shim-hardening.mjs .\dot_config\powershell\co
+pilot-throttle-shim.js $db; exit $LASTEXITCODE } finally { Get-ChildItem (Split-
+Path $db) -Filter "$([IO.Path]::GetFileName($db))*" -ErrorAction SilentlyContinu
+e | Remove-Item -Force -ErrorAction SilentlyContinue }
+2026-08-28T04:10:06.986Z [shim] stream cancellation failed: fixture rejected can
+cel
+2026-08-28T04:10:07.003Z [shim] stream cancellation failed: fixture throwing can
+cel
+2026-08-28T04:10:07.008Z [shim] metrics write failed: fixture metric write failu
+re
+2026-08-28T04:10:07.033Z [shim] listening on :65425 -> http://127.0.0.1:65424 (l
+imit=1, range=1..1, retries=1, backoff=10ms, ping=50ms after 100ms, stall=5000ms
+)
+2026-08-28T04:10:07.197Z [shim] POST /v1/messages silent for 100ms; keepalive en
+gaged (phase=upstream, active=1/1, queued=0)
+2026-08-28T04:10:07.383Z [shim] POST /v1/messages -> 500; retry 1/1 in 16ms
+2026-08-28T04:10:07.690Z [shim] POST /v1/messages -> 200 after 1 retry
+2026-08-28T04:10:07.840Z [shim] POST /v1/responses silent for 100ms; keepalive e
+ngaged (phase=upstream, active=1/1, queued=0)
+2026-08-28T04:10:07.948Z [shim] POST /v1/responses -> 500; retry 1/1 in 14ms
+2026-08-28T04:10:08.290Z [shim] POST /v1/responses -> 500 after 1 retry
+2026-08-28T04:10:08.312Z [shim] POST /v1/responses committed as SSE but upstream
+ answered 500
+2026-08-28T04:10:08.546Z [shim] POST /v1/responses silent for 100ms; keepalive e
+ngaged (phase=upstream, active=1/1, queued=0)
+2026-08-28T04:10:08.644Z [shim] POST /v1/responses committed as SSE but upstream
+ answered 400
+2026-08-28T04:10:08.796Z [shim] POST /v1/responses silent for 100ms; keepalive e
+ngaged (phase=upstream, active=1/1, queued=0)
+2026-08-28T04:10:08.913Z [shim] POST /v1/responses committed as SSE but upstream
+ answered 401
+2026-08-28T04:10:09.084Z [shim] POST /v1/responses silent for 
+… (output truncated)
+```
+</details></tool-use>
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+<tool-use data-tool-type="search" data-tool-name="grep_search"><details>
+<summary>Tool use: **grep_search**</summary>
+
+No matches found. Your search pattern might be excluded completely by either the search.exclude settings or .*ignore files.
+If you believe that it should have results, you can check into the .*ignore files and the exclude setting (here are some excluded patterns for reference:[**/node_modules,**/bower_components,**/*.code-search]).
+Then if you want to include those files you can call the tool again by setting "includeIgnoredFiles" to true.
+
+**Input:**
+
+- includePattern: `c:/Users/HANRUZ~1/AppData/Local/Temp/dotfiles-parent-shim-fix/tests/unit/copilot_proxy.bats`
+- isRegexp: `true`
+- maxResults: `100`
+- query: `copilot-shim|throttle shim|hardening fixture`
+</details></tool-use>
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+補充確認：workspace 已被切到 `fix/copilot-shim-process-survival`，而且部分先前 dirty 檔案已不在狀態清單，表示有另一個工作流正同步推進。為避免覆蓋，我先讀 branch/reflog 與 parent Bats 的精確 wiring；接下來只做 byte-identical mirror 和尚未覆蓋的測試，不重寫現有 adaptive/recovery 區塊。
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+<tool-use data-tool-type="generic" data-tool-name="run_in_terminal"><details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+Running `git status --short; git log --oneline --decorate -8; git reflog -8 --date=iso...`
+
+Understand the externally changed branch and commit state before continuing.
+
+```bash
+git status --short; git log --oneline --decorate -8; git reflog -8 --date=iso; git diff --name-only; git diff --cached --name-only
+```
+
+**Result:**
+
+```
+Note: The command is running in terminal ID ce10571d-3d2b-4e6f-bc09-7538c1069824 and may be waiting for input.
+This note is not a signal to end the turn — pick one of the actions below and continue.
+  1. If the output clearly ends with a non-secret input prompt (Continue? (y/n), Enter selection, etc. — a normal shell prompt like `$` or `#` does NOT count), determine the answer and immediately call send_to_terminal with id="ce10571d-3d2b-4e6f-bc09-7538c1069824" (which returns the next few lines of output). Repeat one prompt at a time. Never guess passwords, passphrases, tokens, or other secrets — if the prompt requires a secret you do not have, inform the user and stop.
+  2. If the command may still be producing output or the shell prompt has not returned, call get_terminal_output with id="ce10571d-3d2b-4e6f-bc09-7538c1069824" to continue polling.
+
+❯ $db=Join-Path $env:TEMP "copilot-shim-hardening-$([guid]::NewGuid()).sqlite"; & bun .\tests\fixtures\copilot-shim-hardening.mjs .\dot_config\powershell\copilot-throttle-shim.js $db; $code=$LASTEXITCODE; Write-Host "hardening-exit=$code"; Get-ChildItem (Split-Path $db) -Filter "$([IO.Path]::GetFileName($db))*" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAct
+```
+</details></tool-use>
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+<tool-use data-tool-type="generic" data-tool-name="run_in_terminal"><details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+Running `$root=Join-Path $env:TEMP 'dotfiles-parent-shim-fix'; rg -n -C 10 'copilot-sh...`
+
+Locate parent test wiring and determine which Unix test runners are available on Windows.
+
+```bash
+$root=Join-Path $env:TEMP 'dotfiles-parent-shim-fix'; rg -n -C 10 'copilot-shim-hardening|throttle shim|shim artifact' "$root\tests\unit\copilot_proxy.bats"; Get-Command bash,bats -ErrorAction SilentlyContinue | Select-Object Name,Source,Version | Format-Table -AutoSize
+```
+
+**Result:**
+
+```
+[Output too large (21KB). Full output saved to: c:\Users\hanruzhou\AppData\Roaming\Code\copilot-terminal-output\copilot-terminal-output-f8719441-e9d1-4f35-a18c-9e95c4a13dec.txt]
+[Use readFile or grep to examine the full output.]
+
+[WARN] - (starship::utils): Executing command "C:\\Program Files\\Git\\cmd\\git.
+exe" timed out.
+[WARN] - (starship::utils): You can set command_timeout in your config to a high
+er value to allow longer-running commands to keep executing.
+
+
+chezmoi on  main [$] took 6s 
+❯ $db=Join-Path $env:TEMP "copilot-shim-hardening-$([guid]::NewGuid()).sqlite";
+& bun .\tests\fixtures\copilot-shim-hardening.mjs .\dot_config\powershell\copilo
+t-throttle-shim.js $db; $code=$LASTEXITCODE; Write-Host "hardening-e
+
+[... middle of output truncated ...]
+
+4:18:15.755Z [shim] POST /v1/responses silent for 100ms; keepalive e
+ngaged (phase=upstream, active=1/1, queued=0)
+2026-08-28T04:18:15.895Z [shim] POST /v1/responses committed as SSE but upstream
+ answered 401
+2026-08-28T04:18:16.214Z [shim] POST /v1/responses silent for 100ms; keepalive e
+ngaged (phase=upstream, active=1/1, queued=0)
+2026-08-28T04:18:16.456Z [shim] POST /v1/responses committed as SSE but upstream
+ answered 402
+2026-08-28T04:18:16.814Z [shim] POST /v1/responses silent for 100ms; keepalive e
+ngaged (phase=upstream, active=1/1, queued=0)
+2026-08-28T04:18:16.923Z [shim] POST /v1/responses -> 429; retry 1/1 in 15ms
+2026-08-28T04:18:17.466Z [shim] POST /v1/responses -> 429 after 1 retry
+2026-08-28T04:18:17.524Z [shim] POST /v1/responses committed as SSE but upstream
+ answered 429
+2026-08-28T04:18:17.886Z [shim] POST /v1/messages silent for 100ms; keepalive en
+gaged (phase=upstream, active=1/1, queued=0)
+2026-08-28T04:18:18.052Z [shim] POST /v1/messages committed as SSE but upstream
+returned non-SSE application/json;charset=utf-8
+2026-08-28T04:18:18.536Z [shim] POST /v1/messages upstream returned non-SSE appl
+ication/json;charset=utf-8 for a streaming request
+2026-08-28T04:18:18.990Z [shim] POST /v1/
+… (output truncated)
+```
+</details></tool-use>
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+<tool-use data-tool-type="generic" data-tool-name="run_in_terminal"><details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+$(info) Enable `shell integration` to improve command detection
+
+Check the temporary parent checkout before replacing its shared artifacts mechanically.
+
+```bash
+$root=Join-Path $env:TEMP 'dotfiles-parent-shim-fix'; git -C $root diff --stat; git -C $root status --short; git -C $root diff --check
+```
+
+**Result:**
+
+```
+
+
+Command produced no output
+```
+</details></tool-use>
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file"><details>
+<summary>Tool use: **read_file**</summary>
+
+Read `bun-serve-stream-abort-kills-copilot-shim.md`
+
+**Input:**
+
+- endLine: `260`
+- filePath: `c:\Users\hanruzhou\.local\share\chezmoi\pitfalls\bun-serve-stream-abort-kills-copilot-shim.md`
+- startLine: `1`
+
+**Result:**
+
+````
+# Codex stream disconnect leaves the Copilot shim down
+
+**Symptoms** (grep this section): `stream disconnected before completion: error sending request for url (http://localhost:4142/responses)`, `shim: ON but DOWN`, lifecycle `unexpected_exit`, shim exit code `3`, port 4141 still healthy while port 4142 refuses connections
+
+**First seen**: 2026-08-27
+**Affects**: Windows, Bun 1.3.14, `copilot-throttle-shim.js`, streamed Codex/Responses clients
+**Status**: contained locally; bounded shim-only recovery added; relevant Bun fixes exist upstream after 1.3.14
+
+## Symptom
+
+A Codex turn can begin streaming and then report:
+
+```text
+stream disconnected before completion: error sending request for url (http://localhost:4142/responses)
+```
+
+Afterward:
+
+```text
+copilot-proxy: RUNNING on http://localhost:4141
+  shim:   ON but DOWN (managed clients fail closed; break glass: copilot-proxy shim off)
+```
+
+The lifecycle journal captured a real process death rather than a bad health probe:
+
+```json
+{"component":"shim","event":"unexpected_exit","port":4142,"exit_code":3}
+```
+
+The independent port-4141 proxy remained alive. Shim stderr may be empty because the fatal rejection is reported by Bun's internal response-stream pump, not by the application's normal request error path.
+
+## Root cause
+
+Bun 1.3.14 predates two directly relevant `Bun.serve` fixes:
+
+- [`80729349`](https://github.com/oven-sh/bun/commit/80729349a71adac9dcc4dbaae26441db3d2910bf): an error from a streamed `Response` body must not become an unhandled rejection that terminates the server.
+- [`3da09633`](https://github.com/oven-sh/bun/commit/3da09633125a1dc63bd3e602e27ccf1b39c44356): when the peer aborts mid-stream, mark the internal `readableStreamCancel()` Promise as handled.
+
+The shim exposed the same class of failure in three ways:
+
+1. Its `ReadableStream` sources call `controller.error()` for a genuinely truncated upstream body.
+2. Its fast and post-keepalive downstream `cancel()` callbacks discarded the Promise ret
+… (output truncated)
+````
+</details></tool-use>
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+Canonical hardening fixture 印出完整結果但 process 沒有退出，這本身是新的可重現缺陷（測試 server/stream cleanup 留下 handle）；我先收回該隔離測試 terminal 的輸出並終止它，再讀 branch 與 parent wiring，避免後續命令被卡住的 shell 串住。
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+<tool-use data-tool-type="generic" data-tool-name="get_terminal_output"><details>
+<summary>Tool use: **get_terminal_output**</summary>
+
+Checked terminal output
+
+**Input:**
+
+- id: `ce10571d-3d2b-4e6f-bc09-7538c1069824`
+
+**Result:**
+
+```
+Error: No active terminal execution found with ID ce10571d-3d2b-4e6f-bc09-7538c1069824. The ID must be the exact value returned by run_in_terminal in async mode.
+```
+</details></tool-use>
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+該 execution 已被系統清理，沒有殘留可 kill 的 process。現在我改用獨立、具 timeout 的一次性命令檢查 branch/reflog 與 parent 測試位置，並確認 canonical fixture 是否真的留下 Bun child。
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+<tool-use data-tool-type="generic" data-tool-name="run_in_terminal"><details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+Running `git branch --show-current; git status --short; git log --oneline --decorate -...`
+
+Read the current branch and recent branch movements after the concurrent workspace changes.
+
+```bash
+git branch --show-current; git status --short; git log --oneline --decorate -8; git reflog -8 --date=iso
+```
+
+**Result:**
+
+```
+main
+ M .specstory/history/2026-08-26_07-06-13Z-codex-copilot-once-copilot.md
+ M .specstory/history/2026-08-27_11-57-36Z-fix-copilot-proxy-shim.md
+ M .specstory/statistics.json
+c3f193d (HEAD -> main) chore: capture final chat history
+3c0f483 (fix/copilot-shim-process-survival) chore: update chat history
+3b8279d fix(copilot): survive and recover shim crashes
+65d2aa0 Backup chat history
+e93a950 test(ci): isolate package and watcher cases
+40ee483 test(ci): align package and shim lifecycle checks
+fd255cb fix(copilot): expose and rotate stderr logs
+804ef4e fix(copilot): persist process lifecycle diagnostics
+c3f193d (HEAD -> main) HEAD@{2026-08-28 12:14:10 +0800}: commit: chore: capture final chat history
+3c0f483 (fix/copilot-shim-process-survival) HEAD@{2026-08-28 12:13:13 +0800}: 
+3c0f483 (fix/copilot-shim-process-survival) HEAD@{2026-08-28 12:12:08 +0800}: commit: chore: update chat history
+3b8279d HEAD@{2026-08-28 12:10:40 +0800}: commit: fix(copilot): survive and recover shim crashes
+65d2aa0 HEAD@{2026-08-28 12:09:32 +0800}: checkout: moving from main to fix/copilot-shim-process-survival
+65d2aa0 HEAD@{2026-08-27 19:48:20 +0800}: commit: Backup chat history
+e93a950 HEAD@{2026-08-27 19:37:00 +0800}: commit: test(ci): isolate package and watcher cases
+40ee483 HEAD@{2026-08-27 19:30:25 +0800}: commit: test(ci): align package and shim lifecycle checks
+```
+</details></tool-use>
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+<tool-use data-tool-type="generic" data-tool-name="run_in_terminal"><details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+Running `$root=Join-Path $env:TEMP 'dotfiles-parent-shim-fix'; rg -n -C 10 'copilot-sh...`
+
+Locate parent test wiring and available Unix test executables.
+
+```bash
+$root=Join-Path $env:TEMP 'dotfiles-parent-shim-fix'; rg -n -C 10 'copilot-shim-hardening|throttle shim|shim artifact' "$root\tests\unit\copilot_proxy.bats"; Get-Command bash,bats -ErrorAction SilentlyContinue | Select-Object Name,Source,Version | Format-Table -AutoSize
+```
+
+**Result:**
+
+```
+Note: This terminal execution was moved to the background using the ID 6c7b8d7b-18ab-4ddb-b593-86c80c01302b
+Note: Command timed out after 20000ms. The command may still be running in terminal ID 6c7b8d7b-18ab-4ddb-b593-86c80c01302b. You will be automatically notified on your next turn when it completes.
+This note is not a signal to end the turn — pick one of the actions below and continue.
+  1. If the output clearly ends with a non-secret input prompt (Continue? (y/n), Enter selection, etc. — a normal shell prompt like `$` or `#` does NOT count), determine the answer and immediately call send_to_terminal with id="6c7b8d7b-18ab-4ddb-b593-86c80c01302b" (which returns the next few lines of output). Repeat one prompt at a time. Never guess passwords, passphrases, tokens, or other secrets — if the prompt requires a secret you do not have, inform the user and stop.
+  2. If the command may still be producing output or the shell prompt has not returned, call get_terminal_output with id="6c7b8d7b-18ab-4ddb-b593-86c80c01302b" to continue polling.
+  3. A timeout does not mean the command failed — call get_terminal_output with id="6c7b8d7b-18ab-4ddb-b593-86c80c01302b" to continue polling. Only call kill_terminal if the command is genuinely hung and you need to retry with a different approach.
+
+❯ $root=Join-Path $env
+```
+</details></tool-use>
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+<tool-use data-tool-type="generic" data-tool-name="run_in_terminal"><details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+$(info) Enable `shell integration` to improve command detection
+
+Check whether an isolated test process is still running and holding the terminal open.
+
+```bash
+Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'copilot-shim-hardening\.mjs|copilot-shim-process-survival\.mjs' } | Select-Object ProcessId,ParentProcessId,Name,CreationDate,CommandLine | Format-List
+```
+
+**Result:**
+
+```
+
+
+Command produced no output
+```
+</details></tool-use>
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file"><details>
+<summary>Tool use: **read_file**</summary>
+
+Read `content.txt`
+
+**Input:**
+
+- endLine: `500`
+- filePath: `c:\Users\hanruzhou\AppData\Roaming\Code\User\workspaceStorage\ef2a05428fd4007c4933f9521f4cbe51\GitHub.copilot-chat\chat-session-resources\873d89c9-ef88-49eb-8302-fdc0b9d61afa\call_MUS4oCgeJDyZj9pFOmnsE4Dy__vscode-1787826367513\content.txt`
+- startLine: `1`
+
+**Result:**
+
+```
+[Output too large (21KB). Full output saved to: c:\Users\hanruzhou\AppData\Roaming\Code\copilot-terminal-output\copilot-terminal-output-f8719441-e9d1-4f35-a18c-9e95c4a13dec.txt]
+[Use readFile or grep to examine the full output.]
+
+[WARN] - (starship::utils): Executing command "C:\\Program Files\\Git\\cmd\\git.
+exe" timed out.
+[WARN] - (starship::utils): You can set command_timeout in your config to a high
+er value to allow longer-running commands to keep executing.
+
+
+chezmoi on  main [$] took 6s 
+❯ $db=Join-Path $env:TEMP "copilot-shim-hardening-$([guid]::NewGuid()).sqlite";
+& bun .\tests\fixtures\copilot-shim-hardening.mjs .\dot_config\powershell\copilo
+t-throttle-shim.js $db; $code=$LASTEXITCODE; Write-Host "hardening-e
+
+[... middle of output truncated ...]
+
+4:18:15.755Z [shim] POST /v1/responses silent for 100ms; keepalive e
+ngaged (phase=upstream, active=1/1, queued=0)
+2026-08-28T04:18:15.895Z [shim] POST /v1/responses committed as SSE but upstream
+ answered 401
+2026-08-28T04:18:16.214Z [shim] POST /v1/responses silent for 100ms; keepalive e
+ngaged (phase=upstream, active=1/1, queued=0)
+2026-08-28T04:18:16.456Z [shim] POST /v1/responses committed as SSE but upstream
+ answered 402
+2026-08-28T04:18:16.814Z [shim] POST /v1/responses silent for 100ms; keepalive e
+ngaged (phase=upstream, active=1/1, queued=0)
+2026-08-28T04:18:16.923Z [shim] POST /v1/responses -> 429; retry 1/1 in 15ms
+2026-08-28T04:18:17.466Z [shim] POST /v1/responses -> 429 after 1 retry
+2026-08-28T04:18:17.524Z [shim] POST /v1/responses committed as SSE but upstream
+ answered 429
+2026-08-28T04:18:17.886Z [shim] POST /v1/messages silent for 100ms; keepalive en
+gaged (phase=upstream, active=1/1, queued=0)
+2026-08-28T04:18:18.052Z [shim] POST /v1/messages committed as SSE but upstream
+returned non-SSE application/json;charset=utf-8
+2026-08-28T04:18:18.536Z [shim] POST /v1/messages upstream returned non-SSE appl
+ication/json;charset=utf-8 for a streaming request
+2026-08-28T04:18:18.990Z [shim] POST /v1/
+… (output truncated)
+```
+</details></tool-use>
+
+---
+
+_**User (2026-08-28 04:23:48Z)**_
+
+[Terminal 6c7b8d7b-18ab-4ddb-b593-86c80c01302b notification: command completed with exit code 1. The terminal has been cleaned up.]
+Terminal output:
+
+chezmoi on  main [$⇕⇡3⇣1] 
+❯ $root=Join-Path $env:TEMP 'dotfiles-parent-shim-fix'; git -C $root diff --stat; git -C $root status --short; git -C $root diff --check
+ dot_config/shell/copilot-throttle-shim.js | 49 +++++++++++++++++++------------
+ 1 file changed, 31 insertions(+), 18 deletions(-)
+ M dot_config/shell/copilot-throttle-shim.js
+
+chezmoi on  main [$!⇕⇡3⇣1] took 3s 
+❯ git branch --show-current; git status --short; git log --oneline --decorate -8; git reflog -8 --date=iso
+main
+ M .specstory/history/2026-08-26_07-06-13Z-codex-copilot-once-copilot.md
+ M .specstory/history/2026-08-27_11-57-36Z-fix-copilot-proxy-shim.md
+ M .specstory/statistics.json
+c3f193d (HEAD -> main) chore: capture final chat history
+3c0f483 (fix/copilot-shim-process-survival) chore: update chat history
+3b8279d fix(copilot): survive and recover shim crashes
+65d2aa0 Backup chat history
+e93a950 test(ci): isolate package and watcher cases
+40ee483 test(ci): align package and shim lifecycle checks
+fd255cb fix(copilot): expose and rotate stderr logs
+804ef4e fix(copilot): persist process lifecycle diagnostics
+c3f193d (HEAD -> main) HEAD@{2026-08-28 12:14:10 +0800}: commit: chore: capture final chat history
+3c0f483 (fix/copilot-shim-process-survival) HEAD@{2026-08-28 12:13:13 +0800}: 
+3c0f483 (fix/copilot-shim-process-survival) HEAD@{2026-08-28 12:12:08 +0800}: commit: chore: update chat history
+3b8279d HEAD@{2026-08-28 12:10:40 +0800}: commit: fix(copilot): survive and recover shim crashes
+65d2aa0 HEAD@{2026-08-28 12:09:32 +0800}: checkout: moving from main to fix/copilot-shim-process-survival
+65d2aa0 HEAD@{2026-08-27 19:48:20 +0800}: commit: Backup chat history
+e93a950 HEAD@{2026-08-27 19:37:00 +0800}: commit: test(ci): isolate package and watcher cases
+40ee483 HEAD@{2026-08-27 19:30:25 +0800}: commit: test(ci): align package and shim lifecycle checks
+
+chezmoi on  main [$!⇕⇡3⇣1] via  took 4s 
+❯ $root=Join-Path $env:TEMP 'dotfiles-parent-shim-fix'; rg -n -C 10 'copilot-shim-hardening|throttle shim|shim artifact' "$root\tests\unit\copilot_proxy.bats"; Get-Command bash,bats -ErrorAction SilentlyContinue | Select-Object Name,Source,Version | Format-Table -AutoSize
+787-  # A non-2xx that arrives AFTER the early commit can only be an SSE error event.
+788-  [ "$(printf '%s' "$j" | jq -r '.lateErr.status')" = "200" ]
+789-  [ "$(printf '%s' "$j" | jq -r '.lateErr.events | join(",")')" = "error" ]
+790-  [ "$(printf '%s' "$j" | jq -r '.metrics | length')" = "4" ]
+791-}
+792-
+793-@test "shim retries delayed 500s and bounds cancellation/error paths" {
+794-  command -v bun >/dev/null 2>&1 || skip "bun not installed"
+795-  command -v jq >/dev/null 2>&1 || skip "jq not installed"
+796-  local shim="$SOURCE_DIR/dot_config/shell/copilot-throttle-shim.js"
+797:  local fixture="$SOURCE_DIR/tests/fixtures/copilot-shim-hardening.mjs"
+798-  run bash -c "bun '$fixture' '$shim' '$TMP/hardening-metrics.sqlite' 2>&1 | tail -n 1"
+799-  [ "$status" -eq 0 ]
+800-  [ "$(printf '%s' "$output" | jq -r '.retryReplay.attempts')" = "2" ]
+801-  [ "$(printf '%s' "$output" | jq -r '.retryReplay.sameBody')" = "true" ]
+802-  [ "$(printf '%s' "$output" | jq -r '.retryReplay.sameTrace')" = "true" ]
+803-  [ "$(printf '%s' "$output" | jq -r '.retry.events | join(",")')" = "message_start,message_stop" ]
+804-  [ "$(printf '%s' "$output" | jq -r '.cancelBarrier.waited')" = "true" ]
+805-  [ "$(printf '%s' "$output" | jq -r '.cancelBarrier.settled')" = "true" ]
+806-  [ "$(printf '%s' "$output" | jq -r '.exhausted.events | last')" = "response.failed" ]
+807-  [ "$(printf '%s' "$output" | jq -r '.responseCodes.status400')" = "invalid_prompt" ]
+
+Name     Source                       Version
+----     ------                       -------
+bash.exe C:\WINDOWS\system32\bash.exe 10.0.26100.28055
+
+[WARN] - (starship::utils): Executing command "C:\\Users\\hanruzhou\\AppData\\Local\\Microsoft\\WindowsApps\\python.exe" timed out.
+[WARN] - (starship::utils): You can set command_timeout in your config to a higher value to allow longer-running commands to keep executing.
+[WARN] - (starship::utils): Executing command "C:\\Users\\hanruzhou\\AppData\\Local\\Microsoft\\WindowsApps\\python3.exe" timed out.
+
+
+
+---
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+另一個工作流已在我們執行期間把 Windows 修復提交成 `3b8279d`，並另提交 transcript；目前程式檔本身乾淨，我會以該 commit 為基線，不改寫歷史。現階段剩下三件可驗證工作：修掉 hardening fixture 的 4 秒脆弱門檻、完成 parent 真實 commit/SHA mirror、以及用 Pester 5 跑完整 recovery 測試。
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+<tool-use data-tool-type="generic" data-tool-name="run_in_terminal"><details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+Running `git show --stat --oneline 3b8279d; git show --format=fuller --no-ext-diff --s...`
+</details></tool-use>
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+<tool-use data-tool-type="generic" data-tool-name="run_in_terminal"><details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+Running `Select-String -Path .\\dot\_config\\powershell\\copilot-throttle-shim.js -Pattern...`
+</details></tool-use>
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+<tool-use data-tool-type="generic" data-tool-name="run_in_terminal"><details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+Running `$root=Join-Path $env:TEMP 'dotfiles-parent-shim-fix'; Get-FileHash -Algorithm...`
+</details></tool-use>
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+<tool-use data-tool-type="generic" data-tool-name="run_in_terminal"><details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+Running `git show 3b8279d:tests/fixtures/copilot-shim-hardening.mjs | Select-String -P...`
+</details></tool-use>
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+`3b8279d` 已包含窄化後的局部 cancellation handling、adaptive limiter、mutex 與 recovery；目前唯一實際測試失敗是 fixture 把「兩次各 2 秒 bounded error cleanup」硬卡在 `<4s`，在 ARM64 實測為 `4.08s`。我先把門檻改成有合理 scheduler 餘裕的 6 秒，並同步清掉文件中已不成立的 global-handler 敘述，再鏡像 parent。
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+<tool-use data-tool-type="generic" data-tool-name="run_in_terminal"><details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+Running `git show 3b8279d:dot\_config/powershell/copilot-throttle-shim.js | Select-Stri...`
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
@@ -8931,7 +10886,15 @@ _**Agent (copilot/gpt-5.6-sol)**_
 <tool-use data-tool-type="generic" data-tool-name="copilot_readFile"><details>
 <summary>Tool use: **copilot_readFile**</summary>
 
-Read `content.txt`
+Read `copilot-shim-hardening.mjs`
+</details></tool-use>
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+<tool-use data-tool-type="generic" data-tool-name="copilot_readFile"><details>
+<summary>Tool use: **copilot_readFile**</summary>
+
+Read `copilot_proxy.bats`
 </details></tool-use>
 
 _**Agent (copilot/gpt-5.6-sol)**_
@@ -8939,7 +10902,39 @@ _**Agent (copilot/gpt-5.6-sol)**_
 <tool-use data-tool-type="generic" data-tool-name="copilot_findTextInFiles"><details>
 <summary>Tool use: **copilot_findTextInFiles**</summary>
 
-No matches found. Your search pattern might be excluded completely by either the search.exclude settings or .*ignore files.
-If you believe that it should have results, you can check into the .*ignore files and the exclude setting (here are some excluded patterns for reference:[**/node_modules,**/bower_components,**/*.code-search]).
-Then if you want to include those files you can call the tool again by setting "includeIgnoredFiles" to true.
+Searched for regex `unhandledRejection|compatibility guard|fatal-rejection|server rejection|2799866e|2799866` (`**/{docs/**,.chezmoitemplates/**,pitfalls/**,tests/**,dot_config/**}`), 7 results
 </details></tool-use>
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+我現在先修正唯一已觀察到的 test defect，並把 pitfall 改成「production root cause 類別高度一致但單一 callback 未被 fixture 證明」，避免文件把推論寫成定論。接著會做三個 shared files 的機械 mirror，再在 parent Bats 加 process-survival gate。
+
+Patch context 已被剛完成的 commit 改動，所以沒有套入任何內容。我先讀目前 pitfall 與 fixture 的確切段落，再用當前文字做小 patch；之後立即重跑 canonical fixture確認 6 秒門檻。
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+<tool-use data-tool-type="generic" data-tool-name="run_in_terminal"><details>
+<summary>Tool use: **run_in_terminal**</summary>
+
+Running `git status --short; git branch --show-current; git log -3 --oneline --decorate`
+</details></tool-use>
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+<tool-use data-tool-type="generic" data-tool-name="copilot_readFile"><details>
+<summary>Tool use: **copilot_readFile**</summary>
+
+Read `bun-serve-stream-abort-kills-copilot-shim.md`
+</details></tool-use>
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+<tool-use data-tool-type="generic" data-tool-name="copilot_readFile"><details>
+<summary>Tool use: **copilot_readFile**</summary>
+
+Read `copilot-shim-hardening.mjs`, lines 168 to 184
+</details></tool-use>
+
+_**Agent (copilot/gpt-5.6-sol)**_
+
+我會修改目前 commit 後仍未修正的兩個 artifact：fixture timeout 與 pitfall 的過度定論；兩者都屬這次修復的驗證/文件，不碰正在寫入的 SpecStory 檔。

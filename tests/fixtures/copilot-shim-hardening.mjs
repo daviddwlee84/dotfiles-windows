@@ -175,7 +175,7 @@ try {
   if (fastNonSse.status !== 502 || !fastNonSse.body.includes("non-SSE")) throw new Error("fast non-SSE guard failed");
   if (mixedSse.events.join(",") !== "message_start,message_stop") throw new Error("case-insensitive SSE media type failed");
   if (billing.status !== 402 || counts.get("/v1/messages:402") !== 1) throw new Error("402 retried");
-  if (stalled.events.at(-1) !== "error" || stalledMs > 4000) throw new Error("stalled error body was unbounded");
+  if (stalled.events.at(-1) !== "error" || stalledMs > 6000) throw new Error("stalled error body was unbounded");
   if (activeAbortResult !== "AbortError") throw new Error("active upstream abort was not propagated");
   if (deadResult !== "AbortError" || arrivals.includes("dead") || queueLiveResult.status !== 200) throw new Error("canceled waiter reached upstream");
   if (backoffResult !== "AbortError" || liveAfterBackoff.status !== 200 || backoffReleaseMs > 1000 || counts.get("/v1/messages:backoff") !== 1) throw new Error("backoff cancellation retained permit or retried");

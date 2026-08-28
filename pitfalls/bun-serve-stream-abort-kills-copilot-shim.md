@@ -4,7 +4,7 @@
 
 **First seen**: 2026-08-27
 **Affects**: Windows, Bun 1.3.14, `copilot-throttle-shim.js`, streamed Codex/Responses clients
-**Status**: contained locally; bounded shim-only recovery added; relevant Bun fixes exist upstream after 1.3.14
+**Status**: contained locally; bounded shim-only recovery added; exact native fault remains unproven
 
 ## Symptom
 
@@ -27,7 +27,7 @@ The lifecycle journal captured a real process death rather than a bad health pro
 {"component":"shim","event":"unexpected_exit","port":4142,"exit_code":3}
 ```
 
-The independent port-4141 proxy remained alive. Shim stderr may be empty because the fatal rejection is reported by Bun's internal response-stream pump, not by the application's normal request error path.
+The independent port-4141 proxy remained alive. Shim stderr was empty, so the process exit did not identify which native or Promise path failed.
 
 ## Root cause
 
@@ -42,7 +42,7 @@ The shim exposed the same class of failure in three ways:
 2. Its fast and post-keepalive downstream `cancel()` callbacks discarded the Promise returned by `reader.cancel()`; synchronous `try/catch` cannot catch a later Promise rejection.
 3. SQLite metric initialization/finalization could throw from inside a stream callback.
 
-The production exit code and timing are consistent with Bun's fatal `unhandledRejection` policy. The raw TCP truncation/abort fixture did **not** make this exact Bun 1.3.14 build exit, so it does not prove which individual production callback supplied the fatal rejection. A deterministic child-process rejection probe is retained alongside the realistic network cases to verify the process-level containment without overstating that distinction.
+The production exit code and timing are consistent with this class of Bun stream-lifecycle failure, but the raw TCP truncation/abort fixture did **not** make this exact Bun 1.3.14 build exit. It therefore does not prove which production callback or native path supplied the fatal fault. The local fix closes the shim's known rejected-cancellation paths, while bounded recovery contains any remaining Bun process fault.
 
 This is separate from a startup race or a foreign process owning port 4142. Those have different lifecycle timing and are covered by [`copilot-proxy-shim-port-held-by-another-process.md`](copilot-proxy-shim-port-held-by-another-process.md).
 
@@ -50,7 +50,6 @@ This is separate from a startup race or a foreign process owning port 4142. Thos
 
 The canonical parent/Windows shim now:
 
-- installs one `startServer()`-scoped `unhandledRejection` compatibility guard while leaving CLI command failures fatal;
 - funnels body/reader cancellation through a helper that consumes synchronous throws and rejected Promises;
 - treats metrics database open/write failures as best-effort;
 - catches request-body assembly failures when a client disappears during a large Codex tools upload;
@@ -79,7 +78,7 @@ A source-file apply does not reload an already-running Bun process. Wait for act
 ## Prevention
 
 - Keep the parent and Windows shim files byte-identical and pin the exact parent commit/SHA-256 in `tests/Copilot.Tests.ps1`.
-- Run `tests/fixtures/copilot-shim-process-survival.mjs` against the supported Bun version. It verifies upstream truncation, fast and post-keepalive downstream aborts, post-completion closes, a fatal-rejection discriminator, and subsequent health on the same process.
+- Run `tests/fixtures/copilot-shim-process-survival.mjs` against the supported Bun version. It verifies upstream truncation, fast and post-keepalive downstream aborts, post-completion closes, and subsequent health on the same process.
 - Keep rejecting-cancellation and throwing-metrics-backend cases in `copilot-shim-hardening.mjs`.
 - Do not replace `settleCancellation()` with bare `reader.cancel()` inside a synchronous `try/catch`.
 - Do not broaden recovery to the port-4141 proxy or remove the ready/intent/state/health gates.
