@@ -13,10 +13,9 @@
 # no workspace-level cwd field either — `herdr workspace get` has no cwd — so it
 # must be derived.)
 #
-# "Space dir" = the workspace's ROOT tab's pane cwd, where the root tab is the
-# lowest-numbered tab — the one whose live-cwd basename herdr uses as the
-# workspace label. We prefer the live cwd (foreground_cwd, matches the label),
-# falling back to the shell startup cwd.
+# "Space dir" = the workspace's oldest surviving tab's pane cwd. The shared
+# derivation lives in Resolve-HerdrSpaceRoot because pane-copy.ps1's
+# `prefix+y -> Copy space: dir` action needs the exact same answer.
 #
 # Bound to prefix+C. prefix+c and the mouse "+" button keep herdr's native
 # follow-the-focused-pane behaviour.
@@ -44,29 +43,9 @@ if (-not $wid) {
     exit 1
 }
 
-# Root tab = lowest tab number in the workspace (herdr labels the space after it).
-$tabs = Invoke-HerdrJson tab list --workspace $wid
-$rootTab = $null
-if ($tabs -and $tabs.result.tabs) {
-    $rootTab = ($tabs.result.tabs | Sort-Object { [int]$_.number } | Select-Object -First 1).tab_id
-}
-if (-not $rootTab) {
-    Show-HerdrNotice "new-tab-at-space-root: no tabs in workspace $wid"
-    exit 1
-}
-
-# `herdr tab get` returns tab metadata only (no pane cwd), so read the root tab's
-# pane cwd from the full pane list. Prefer live cwd so it matches the space label.
-$panes = Invoke-HerdrJson pane list
-$root = $null
-if ($panes -and $panes.result.panes) {
-    $rootPane = $panes.result.panes | Where-Object { $_.tab_id -eq $rootTab } | Select-Object -First 1
-    if ($rootPane) {
-        foreach ($c in $rootPane.foreground_cwd, $rootPane.cwd) { if ($c) { $root = $c; break } }
-    }
-}
+$root = Resolve-HerdrSpaceRoot -WorkspaceId $wid
 if (-not $root) {
-    Show-HerdrNotice "new-tab-at-space-root: could not resolve root dir for $rootTab"
+    Show-HerdrNotice "new-tab-at-space-root: could not resolve root dir for workspace $wid"
     exit 1
 }
 

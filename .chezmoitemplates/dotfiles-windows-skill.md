@@ -22,7 +22,7 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   that dot-sources `~/.config/powershell/profile.d/*.ps1` in sorted order, then
   `~/.config/powershell/local.ps1` (untracked user override, loaded last).
 - Fragments: `00_env` (PATH/XDG/env), `10_tools` (starship, zoxide, atuin,
-  fzf, direnv, tv), `20_aliases` (`ll`/`gs`/`reload`/`cas`/`cau`/`chezmoi-cd`/`run-for`),
+  fzf, direnv, tv, dev/translate completions), `20_aliases` (`ll`/`gs`/`reload`/`cas`/`cau`/`chezmoi-cd`/`run-for`),
   `25_herdr` (`hvibe`/`hcode`/`hhere`/`hroot`/`hmark` workspace helpers, gated on herdr),
   `30_apps` (`applaunch`/`appquit`/`apprestart`/`sysvol`/`sysmute`/`x`), `35_yazi` (`y`),
   `40_copilot` (imports the Copilot module), `90_psreadline` (vi-mode gated on `enableVimMode`).
@@ -80,7 +80,7 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 - China mirrors: {{ .useChineseMirror }} · Managed machine: {{ .managedMachine }} · Public package fallback: {{ get . "allowPublicPackageFallback" | default false }} · Backup mode: {{ .backupMode }} · Vim mode: {{ .enableVimMode }}
 
 ## just recipes
-`just --list`: `apply`/`diff`/`update`, `upgrade-scoop`/`upgrade-winget`/`upgrade-translate`, `lint`/`test`,
+`just --list`: `apply`/`diff`/`update`, `upgrade-scoop`/`upgrade-winget`/`upgrade-dev`/`upgrade-translate`, `lint`/`test`,
 `docs-serve`/`docs-build`, `enable-sshd` (opt-in OpenSSH server, elevated),
 `enable-wsl` (WSL2 for Docker Desktop; self-elevating UAC prompt, reboot after),
 `enable-wsl-ubuntu` (WSL2 Ubuntu distro + cross-platform dotfiles; needs enable-wsl first),
@@ -97,6 +97,8 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   is an opt-in (`installHerdr`) native-Windows multiplexer in preview beta —
   installed via herdr.dev's `irm|iex` script, config at `~/.config/herdr/config.toml`,
   with its official global skill exported from the installed binary on each apply.
+  The same toggle installs Go + `dev` v0.1.0 (`prefix+d`) and uses that Go for
+  herdr-plus (`prefix+y` holds six copy helpers; `prefix+p` stays interactive).
   Runtimes are native via scoop (node/bun/go/rust/ruby) + uv for Python — no mise on Windows.
 - **Rime input method** (opt-in `installInputMethod`): Weasel/小狼毫 via winget
   `Rime.Weasel`. Machine-scope NSIS, so applying raises UAC; and a bare silent

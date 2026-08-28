@@ -106,13 +106,19 @@ focus_agent = "prefix+alt+1..9"          # prefix+alt+N  → jump to agent N's p
 navigate_workspace_down = ["j", "down"]
 navigate_workspace_up = ["k", "up"]
 
-# --- Custom command panes (the tmux-popup recreations) ---
+# --- Custom command panes (interactive TUI launchers) ---
 # type = "pane": a temporary pane that closes when the command exits — herdr's
 # analog of `tmux display-popup -E`. The command runs from the focused pane's
 # cwd and gets $HERDR_SOCKET_PATH / $HERDR_ACTIVE_PANE_ID /
 # $HERDR_ACTIVE_PANE_CWD in its environment.
 # type = "popup" (herdr >= 0.7.4) floats ABOVE the tiled layout instead, so
 # nothing reflows — used for the two bindings you stay inside for a while.
+
+[[keys.command]]
+key = "prefix+d"
+type = "pane"
+command = "dev"
+description = "dev repository/task dashboard (popup pane)"
 
 [[keys.command]]
 key = "prefix+G"
@@ -214,39 +220,16 @@ type = "pane"
 command = "tv herdr-review"
 description = "Review-pending inbox — flagged panes (herdr-aware tv channel)"
 
-# --- Copy focused-pane facts to the clipboard (prefix+P/D/V/S) ---
-# One helper (pane-copy.ps1) distills a pane's data and pipes it to Set-Clipboard.
-# The SAME four ops are also herdr-plus Quick Actions. Uppercase letters resolve
-# to prefix+shift+<letter>; P/D/V/S avoid herdr's reserved shift builtins
-# (shift+H/J/K/L swap-pane) and this repo's shift+B / shift+R.
-[[keys.command]]
-key = "prefix+P"
-type = "pane"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-copy.ps1" process'
-description = "copy pane process info"
-
-[[keys.command]]
-key = "prefix+D"
-type = "pane"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-copy.ps1" coord'
-description = "copy pane coordinate (session>space>tab>pane)"
-
-[[keys.command]]
-key = "prefix+V"
-type = "pane"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-copy.ps1" content --source visible'
-description = "copy pane content (visible screen)"
-
-[[keys.command]]
-key = "prefix+S"
-type = "pane"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-copy.ps1" content --source recent'
-description = "copy pane content (full scrollback)"
+# --- Copy focused-pane facts through Quick Actions (prefix+y) ---
+# pane-copy.ps1 exposes the same six non-interactive copy operations as the unix
+# repo. They live only in herdr-plus Quick Actions so low-frequency clipboard
+# helpers do not consume direct prefix keys. $HERDR_PLUS_PANE_ID identifies the
+# focused pane; the helper falls back to the current pane if it is empty.
 
 # Copy a file PATH from the pane (extrakto-style). Extracts path-like tokens;
 # two-tier: paths that EXIST under the pane cwd (copied as resolved absolute) on
-# top, unverified candidates below a separator. Lowercase p pairs with the
-# uppercase copy family (P/D/V/S), same u/U convention as the unix side.
+# top, unverified candidates below a separator. This stays on a direct key
+# because its interactive fzf needs a PTY/stdin and cannot be a Quick Action.
 [[keys.command]]
 key = "prefix+p"
 type = "pane"

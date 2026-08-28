@@ -181,15 +181,47 @@ function Install-Herdr {
     }
 }
 
+# dev-cli — repository/task/worktree command center, and the interactive TUI
+# behind Herdr prefix+d. The v0.1.0 release has no Windows binary asset or Scoop
+# manifest, so build the official Go install target into ~/.local/bin. Keep this
+# inside installHerdr: it is currently the only managed Windows entry point, and
+# hosts that leave Herdr disabled should not gain a Go toolchain just for it.
+#
+# The build is pure Go and was cross-compiled from macOS for windows/amd64 and
+# windows/arm64. GOTOOLCHAIN=auto lets Scoop Go fetch the go 1.26.4 toolchain
+# required by dev's go.mod when necessary. Apply stays install-only; upgrades use
+# `just upgrade-dev`.
+function Install-DevCli {
+    $devBin = Join-Path $HOME '.local\bin\dev.exe'
+    if ((Have dev) -or (Test-Path -LiteralPath $devBin)) { Info 'dev-cli already installed'; return }
+
+    $devVersion = 'v0.1.0'
+    if (-not (Have go)) {
+        Register-Failure 'dev-cli (needs go; scoop install go)'
+        return
+    }
+
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $devBin) | Out-Null
+    $env:GOBIN = Join-Path $HOME '.local\bin'
+    $env:GOPATH = Join-Path $HOME '.local\share\go'
+    $env:GOTOOLCHAIN = 'auto'
+    Info "go install dev-cli@$devVersion (first build may take several minutes)"
+    go install "github.com/daviddwlee84/dev-cli/cmd/dev@$devVersion" 2>&1 | Out-Host
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $devBin)) {
+        Register-Failure "go:dev-cli@$devVersion"
+    }
+}
+
 # herdr-plus — third-party herdr plugin backing the prefix+y (Quick Actions) and
-# prefix+O (Projects) keybinds, plus the copy-pane Quick Actions this repo deploys
+# prefix+O (Projects) keybinds, plus the pane/workspace copy Quick Actions this repo deploys
 # to ~/.config/herdr/plugins/config/cloudmanic.herdr-plus/. We ship that CONFIG and
 # those KEYBINDS, so not installing the plugin leaves both keys silently dead —
 # hence installing it here rather than leaving it to the user.
 #
 # Requires go: the plugin's Windows build command is `go build -o bin/herdr-plus.exe .`
-# (its sh-based build is skipped on Windows). go is gated behind installExtraRuntimes,
-# so SKIP with an actionable message rather than failing when it is absent.
+# (its sh-based build is skipped on Windows). Install-DevCli runs first and makes
+# Go self-contained for this stack; keep the guard for a failed Scoop install or
+# a user removing Go between the two steps.
 # `--yes` accepts the interactive "Install this plugin? [y/N]" prompt. Keep it
 # after the repository argument: the Windows preview parses options in that order.
 # NB: the keybinds must target the `-windows` action ids — herdr-plus scopes
@@ -201,7 +233,7 @@ function Install-HerdrPlus {
     try { $installed = ((herdr plugin list 2>&1) -join "`n") -match 'cloudmanic\.herdr-plus' } catch { $installed = $false }
     if ($installed) { Info 'herdr-plus plugin already installed'; return }
     if (-not (Have go)) {
-        Info 'herdr-plus: skipped — needs go to build on Windows (scoop install go, or enable Extra runtimes)'
+        Info 'herdr-plus: skipped — needs go to build on Windows (scoop install go)'
         return
     }
     Info 'herdr plugin install cloudmanic/herdr-plus (backs prefix+y / prefix+O)'
@@ -585,6 +617,11 @@ if (Have az) {
 {{ end -}}
 
 {{ if .installHerdr -}}
+# Both dev-cli and herdr-plus build from source on Windows. Make Go a dependency
+# of the stack itself rather than relying on installExtraRuntimes or on dev being
+# absent (an externally installed dev would otherwise skip Install-DevCli early).
+Scoop-Install @('go')
+Install-DevCli
 Install-Herdr
 Install-HerdrPlus
 {{ end -}}
@@ -646,9 +683,9 @@ if (Have gem) {
 # artifact existed, so a fresh box spent several minutes compiling (embedded
 # swagger-ui + sqlite) and needed a whole Go toolchain for one CLI. That is also
 # why this block used to `Scoop-Install @('go')` unconditionally; it no longer
-# does. herdr-plus and specstory still build from source and skip cleanly when go
-# is absent -- turn on installExtraRuntimes (or `scoop install go`) if you want
-# those on a box where nothing else pulls go in.
+# does. The optional Herdr stack still source-builds dev-cli + herdr-plus and
+# therefore installs Go itself; the experimental SpecStory build skips cleanly
+# when Go is absent unless Extra runtimes is enabled.
 #
 # Upgrades are `scoop update translate` (see `just upgrade-translate`); there is
 # no version pin to bump here any more.

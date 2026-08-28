@@ -1,0 +1,7 @@
+{{- $herdrDir := printf "%s/.config/herdr" (.chezmoi.homeDir | replace "\\" "/") -}}
+# herdr-plus Quick Action — copy the focused pane's live working directory.
+# Windows port of the parent repo action; the pwsh script path is baked absolute
+# because `pwsh -File` does not expand a leading ~.
+name = "Copy pane: cwd"
+description = "The focused pane's live working directory (what Get-Location returns)"
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-copy.ps1" cwd "$HERDR_PLUS_PANE_ID"'

@@ -1,0 +1,7 @@
+{{- $herdrDir := printf "%s/.config/herdr" (.chezmoi.homeDir | replace "\\" "/") -}}
+# herdr-plus Quick Action — copy the workspace ("space") root directory.
+# Herdr has no workspace-level cwd, so pane-copy.ps1 shares the exact oldest-tab
+# derivation used by prefix+C. The pwsh script path is baked absolute at render.
+name = "Copy space: dir"
+description = "The workspace root directory represented by the focused pane"
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-copy.ps1" dir "$HERDR_PLUS_PANE_ID"'

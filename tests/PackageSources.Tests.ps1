@@ -45,12 +45,17 @@ BeforeAll {
     }
 
     function Render-PackageInstaller {
-        param([bool] $ManagedMachine, [bool] $UseChineseMirror, [bool] $AllowFallback)
+        param(
+            [bool] $ManagedMachine,
+            [bool] $UseChineseMirror,
+            [bool] $AllowFallback,
+            [bool] $InstallHerdr = $false
+        )
         $data = @{
             installCodingAgents = $true; installSpecstoryBuild = $false
             installWindowsApps = $false; installUtilityApps = $false; installGamingApps = $false
             installExtraRuntimes = $false; installMediaTools = $false; installLlmTools = $true
-            installTunnelTools = $false; installIacTools = $false; installHerdr = $false
+            installTunnelTools = $false; installIacTools = $false; installHerdr = $InstallHerdr
             installClink = $false; installTry = $true; installTranslate = $true
             installInputMethod = $false; useChineseMirror = $UseChineseMirror
             managedMachine = $ManagedMachine; allowPublicPackageFallback = $AllowFallback
@@ -151,11 +156,12 @@ Describe 'package installer source policy' {
     }
 
     It 'wraps corporate-backed commands but leaves other ecosystems direct' {
-        $script = Render-PackageInstaller -ManagedMachine $true -UseChineseMirror $false -AllowFallback $true
+        $script = Render-PackageInstaller -ManagedMachine $true -UseChineseMirror $false -AllowFallback $true -InstallHerdr $true
         $script | Should -Match 'Invoke-PackageSourceCommand -Manager npm'
         $script | Should -Match 'Invoke-PackageSourceCommand -Manager uv'
         $script | Should -Match 'uv python install --default --preview'
-        $script | Should -Match 'go install "github\.com/daviddwlee84/translate@\$translateVersion"'
+        $script | Should -Match 'go install "github\.com/daviddwlee84/dev-cli/cmd/dev@\$devVersion"'
+        $script | Should -Not -Match 'Invoke-PackageSourceCommand -Manager go'
     }
 
     It 'passes the Herdr Plus repository before the non-interactive option' {

@@ -26,12 +26,16 @@ must be confirmed the first time herdr runs on a Windows host.
   2026-07-06, five days *before* this repo's plain file was added.
 - `.chezmoitemplates/herdr/config.toml` — the managed body: `[theme]`, `[ui]`
   (+ `[ui.sidebar.agents]` with the `$review` token), `[terminal]`, `[keys]`
-  rebinds, and **17** of the unix side's 20 command bindings.
+  rebinds, and the Windows-supported subset of the unix command bindings.
 - Six pwsh helpers in `dot_config/herdr/` (`_common.ps1` +
   `run-command` / `new-tab-at-space-root` / `url-pick` / `path-pick` /
   `pane-copy` / `review-mark`).
 - Three tv channels: `herdr-sesh`, `herdr-agent-panes`, `herdr-review`.
 - herdr-plus quick-actions + one project template.
+- 2026-08 alignment: `installHerdr` now also builds `dev` v0.1.0 for both Windows
+  architectures, `prefix+d` launches its dashboard, and the six non-interactive
+  copy helpers moved to `prefix+y`; only the PTY-dependent path picker keeps
+  `prefix+p`. `prefix+C` and *Copy space: dir* share one root-dir derivation.
 
 ## Deliberately NOT ported
 
@@ -119,6 +123,9 @@ Everything below was exercised from macOS with chezmoi + pwsh 7.4 + uv:
 9. **herdr-plus on Windows.** `prefix+O` / `prefix+y` and the quick-actions are
    untested; the plugin may not have a Windows build. The bindings no-op when
    the plugin is absent, so this is safe to leave.
+10. **`prefix+d` dev dashboard.** `dev` v0.1.0 cross-compiles cleanly to PE32+
+    console binaries for windows/amd64 and windows/arm64, but the actual ConPTY
+    dashboard and Herdr runtime handoff still need a real Windows smoke test.
 
 ## Next steps
 

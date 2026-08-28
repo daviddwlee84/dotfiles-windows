@@ -2,7 +2,7 @@
 # Source: dot_config/herdr/pane-copy.ps1 (managed by chezmoi)
 #
 # Copy distilled facts about a herdr pane to the Windows clipboard. PowerShell
-# port of the parent repo's dot_config/herdr/executable_pane-copy.sh. Three targets:
+# port of the parent repo's dot_config/herdr/executable_pane-copy.sh. Five targets:
 #
 #   process  the foreground processes running in the pane (cmdline + pid + cwd)
 #   coord    the pane's coordinate in herdr's Session > Workspace > Tab > Pane
@@ -11,6 +11,8 @@
 #            --session flag on the pane/tab/workspace subcommands)
 #   content  the pane's terminal content — visible screen (--source visible) or
 #            the full retained scrollback (--source recent, the default)
+#   dir      the WORKSPACE ("space") root directory, derived from its oldest tab
+#   cwd      the focused pane's live working directory
 #
 # The pane defaults to $HERDR_ACTIVE_PANE_ID (injected by the keybind), then
 # $HERDR_PLUS_PANE_ID's herdr-plus equivalent, then `herdr pane current`.
@@ -22,9 +24,11 @@
 #   pane-copy.ps1 process [PANE_ID]
 #   pane-copy.ps1 coord   [PANE_ID]
 #   pane-copy.ps1 content [PANE_ID] [--source visible|recent]
+#   pane-copy.ps1 dir     [PANE_ID]
+#   pane-copy.ps1 cwd     [PANE_ID]
 #
-# Consumers: the prefix+P/D/V/S keybinds and the copy-pane-* herdr-plus Quick
-# Actions.
+# Consumers: the copy-pane-* and copy-space-dir herdr-plus Quick Actions under
+# prefix+y. The interactive path picker remains a separate prefix+p binding.
 
 param([Parameter(ValueFromRemainingArguments)] [string[]] $Argument)
 
@@ -32,7 +36,7 @@ param([Parameter(ValueFromRemainingArguments)] [string[]] $Argument)
 
 function Show-Usage {
     # Held: without a pause a bad arg shape looks identical to a dead keybind.
-    Show-HerdrNotice 'usage: pane-copy.ps1 process|coord|content [PANE_ID] [--source visible|recent]' 3
+    Show-HerdrNotice 'usage: pane-copy.ps1 process|coord|content|dir|cwd [PANE_ID] [--source visible|recent]' 3
     exit 64
 }
 
@@ -54,7 +58,9 @@ for ($i = 0; $i -lt $rest.Count; $i++) {
     }
 }
 
-# herdr-plus passes its own pane var; fall through the same chain otherwise.
+# herdr-plus passes its own pane var. Skip a literal unexpanded placeholder —
+# the Windows preview has exhibited this for keybind vars — then use the env.
+if ($paneArg -like '$*') { $paneArg = '' }
 if (-not $paneArg -and $env:HERDR_PLUS_PANE_ID) { $paneArg = $env:HERDR_PLUS_PANE_ID }
 $pane = Resolve-HerdrPane -PaneId $paneArg
 if (-not $pane) { Show-HerdrNotice 'pane-copy: could not determine a pane id'; exit 1 }
@@ -112,6 +118,24 @@ switch ($action) {
         $body = Get-HerdrPaneText -PaneId $pane -Source $source
         if ($null -eq $body) { Show-HerdrNotice "pane-copy: failed to read content of $pane"; exit 1 }
         if (Set-HerdrClipboard $body) { Write-Host "copied $source content for $pane" }
+    }
+    'dir' {
+        $pj = Invoke-HerdrJson pane get $pane
+        $wid = if ($pj) { $pj.result.pane.workspace_id } else { $null }
+        if (-not $wid) { Show-HerdrNotice "pane-copy: could not resolve workspace for pane $pane"; exit 1 }
+        $root = Resolve-HerdrSpaceRoot -WorkspaceId $wid
+        if (-not $root) { Show-HerdrNotice "pane-copy: could not resolve root dir for workspace $wid"; exit 1 }
+        if (Set-HerdrClipboard $root) { Write-Host "copied workspace dir: $root" }
+    }
+    'cwd' {
+        $pj = Invoke-HerdrJson pane get $pane
+        if (-not $pj) { Show-HerdrNotice "pane-copy: failed to read pane $pane"; exit 1 }
+        $cwd = $null
+        foreach ($candidate in $pj.result.pane.foreground_cwd, $pj.result.pane.cwd) {
+            if ($candidate) { $cwd = $candidate; break }
+        }
+        if (-not $cwd) { Show-HerdrNotice "pane-copy: pane $pane has no working directory"; exit 1 }
+        if (Set-HerdrClipboard $cwd) { Write-Host "copied pane cwd: $cwd" }
     }
     default { Show-Usage }
 }

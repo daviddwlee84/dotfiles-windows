@@ -105,8 +105,12 @@ mouse-first native multiplexer (ConPTY) with panes, splits, persistent sessions,
 and detach/attach. It has no scoop/winget manifest — it installs via herdr.dev's
 official installer, and this machine intentionally follows the preview channel.
 Its config is managed at `~/.config/herdr/config.toml` (pwsh as the default shell).
-It's beta, so it stays
-off by default. Windows Terminal stays installed for its panes/tabs; Alacritty
+It stays off by default while the Windows build is beta.
+Enabling the stack also source-builds `dev` v0.1.0 into `~\.local\bin`: Herdr
+`prefix+d` opens its task/worktree dashboard, while the low-frequency clipboard
+helpers live in the `prefix+y` herdr-plus list (the interactive path picker keeps
+`prefix+p`). The required Scoop Go toolchain is therefore self-contained and is
+reused to build herdr-plus. Windows Terminal stays installed for its panes/tabs; Alacritty
 stays as the fast minimal option.
 
 ## starship, not oh-my-posh

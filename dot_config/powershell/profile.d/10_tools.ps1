@@ -72,6 +72,10 @@ Import-CachedInit -Name 'tv' -Exe 'tv' -Generate {
     $o
 }
 
+# dev-cli — Cobra PowerShell completion. The CLI is installed with the optional
+# Herdr stack because it backs prefix+d; this remains a harmless no-op elsewhere.
+Import-CachedInit -Name 'dev' -Exe 'dev' -Generate { dev completion powershell }
+
 # translate — cobra tab-completion for the terminal translator (opt-in
 # installTranslate; built by run_onchange_after_10_packages). The pwsh
 # counterpart of the parent repo's scripts/generate_completions.sh entry.

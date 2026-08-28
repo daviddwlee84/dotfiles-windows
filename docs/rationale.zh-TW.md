@@ -87,8 +87,13 @@ API 腳本化版面。它不是 1:1 的 tmux（session/保留模型不同），�
 **herdr**（選用，`installHerdr`）是更新、最接近 tmux/zellij 的答案：滑鼠優先的原生多工器
 （ConPTY），有 panes、splits、常駐 session 與卸離/重連。它沒有 scoop/winget manifest ——
 透過 herdr.dev 的 `irm | iex` 腳本安裝（Windows 僅有 preview channel），設定則受管於
-`~/.config/herdr/config.toml`（以 pwsh 為預設 shell）。它仍是 beta，所以預設關閉。Windows
-Terminal 保留給 panes/tabs；Alacritty 保留為快速極簡選項。
+`~/.config/herdr/config.toml`（以 pwsh 為預設 shell）。Windows build 仍是 beta，
+所以預設關閉。
+啟用此套件也會把 `dev` v0.1.0 從原始碼建置到 `~\.local\bin`：Herdr 的
+`prefix+d` 開啟 task/worktree dashboard，低頻剪貼簿操作集中在 `prefix+y`
+herdr-plus 清單中（互動式 path picker 保留 `prefix+p`）。所需的 Scoop Go
+toolchain 由此套件自行安裝，並重用來編譯 herdr-plus。Windows Terminal 保留給
+panes/tabs；Alacritty 保留為快速極簡選項。
 
 ## starship，而非 oh-my-posh
 

@@ -36,6 +36,11 @@ upgrade-winget:
 upgrade-npm-agents:
     pwsh -NoProfile -File ./scripts/run-package-source-command.ps1 -Action UpgradeNpmAgents
 
+# Upgrade the Go-installed dev CLI (installed with the optional Herdr stack).
+# Deliberately not in `just upgrade`: on a host without Herdr this would install it.
+upgrade-dev:
+    $env:GOBIN = Join-Path $HOME '.local\bin'; $env:GOPATH = Join-Path $HOME '.local\share\go'; $env:GOTOOLCHAIN = 'auto'; go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
+
 # upgrade everything
 upgrade: upgrade-scoop upgrade-winget
 

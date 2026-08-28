@@ -35,8 +35,9 @@ then applies the dotfiles.
 - **AI agents**: Claude Code, OpenCode, Codex, GitHub Copilot CLI, SpecStory, Antigravity.
 - **Editors**: VSCode, Cursor, Notepad++ (shared settings/keybindings).
 - **Apps** (winget): Windows Terminal, Alacritty, Raycast, PowerToys, Steam.
-- **Optional Herdr**: native preview multiplexer, managed config, and an official
-  global agent skill exported from the installed binary so their versions match.
+- **Optional Herdr**: native preview multiplexer with `prefix+d` launching the
+  `dev` task/worktree dashboard, low-frequency copy helpers under `prefix+y`,
+  managed config, and a binary-matched official global agent skill.
 - **`copilot-proxy`** tool series, rewritten as a native PowerShell module.
 
 ## Package manager
@@ -96,6 +97,7 @@ chezmoi diff            # preview pending changes without applying
 chezmoi apply           # apply local source edits only (no pull)
 just upgrade-scoop      # upgrade CLI tools
 just upgrade-winget     # upgrade GUI apps
+just upgrade-dev        # upgrade the dev task/worktree CLI (Herdr stack)
 just upgrade-herdr      # pane-preserving Herdr update + matching agent skill
 ```
 

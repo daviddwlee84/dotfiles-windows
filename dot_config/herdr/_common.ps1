@@ -194,6 +194,34 @@ function Resolve-HerdrCwd {
     (Get-Location).Path
 }
 
+# Resolve the workspace ("space") root directory. Herdr exposes no workspace
+# cwd, so both prefix+C and the "Copy space: dir" Quick Action derive it from
+# the oldest surviving tab (lowest monotonic .number), preferring that tab's
+# live foreground cwd over its shell-start cwd. Keep this derivation here so the
+# new-tab and clipboard paths cannot drift apart.
+function Resolve-HerdrSpaceRoot {
+    param([string] $WorkspaceId)
+    if (-not $WorkspaceId) { return $null }
+
+    $tabs = Invoke-HerdrJson tab list --workspace $WorkspaceId
+    $rootTab = $null
+    if ($tabs -and $tabs.result.tabs) {
+        $rootTab = ($tabs.result.tabs | Sort-Object { [int]$_.number } | Select-Object -First 1).tab_id
+    }
+    if (-not $rootTab) { return $null }
+
+    $panes = Invoke-HerdrJson pane list
+    if ($panes -and $panes.result.panes) {
+        $rootPane = $panes.result.panes | Where-Object { $_.tab_id -eq $rootTab } | Select-Object -First 1
+        if ($rootPane) {
+            foreach ($candidate in $rootPane.foreground_cwd, $rootPane.cwd) {
+                if ($candidate) { return $candidate }
+            }
+        }
+    }
+    $null
+}
+
 # Read a pane's terminal text. $Source is visible | recent | recent-unwrapped.
 # Returns $null ONLY on a real failure; '' is a legitimate result (a blank pane).
 #
