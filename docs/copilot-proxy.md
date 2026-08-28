@@ -18,6 +18,7 @@ the PowerShell profile. It requires Bun, Node/npm and a Copilot subscription.
 | `copilot-proxy doctor [--live]` | diagnose package, auth, proxy, catalog, roles, upstream and Codex Apps |
 | `copilot-proxy logs [N]` / `logs err` / `logs shim [err]` / `logs lifecycle` | tail proxy stdout/stderr, shim stdout/stderr, or process-lifecycle logs |
 | `copilot-proxy shim [on\|off]` | toggle the metrics/throttle shim (port 4142; default on) |
+| `copilot-proxy limiter [status\|set\|reset]` | inspect or temporarily tune the running shim's adaptive concurrency limit |
 | `copilot-proxy stats` / `events` | query the local metrics databases, including while processes are down |
 | `copilot-proxy quota` | show live account / plan / quota |
 | `copilot-proxy bench --model ID` | run bounded real Responses benchmarks (consumes quota) |
@@ -235,11 +236,20 @@ See Claude Code's [feature availability](https://code.claude.com/docs/en/feature
   foreign listener with `COPILOT_SHIM_PORT`; never infer identity from a generic
   `/v1/models` response. See
   [pitfalls/copilot-proxy-shim-port-held-by-another-process.md](https://github.com/daviddwlee84/windows-dotfiles/blob/main/pitfalls/copilot-proxy-shim-port-held-by-another-process.md).
-- The metrics/throttle shim is pinned byte-for-byte to parent commit `b205a2a`.
-  It limits concurrent requests and retries the **same buffered request and model**
-  on network errors or HTTP 403/429/500/502/503/504 before any upstream body is
-  exposed. HTTP 402 and bare 401 pass through once; no request-time model substitution
-  occurs. Queue/backoff cancellation releases permits promptly.
+- The metrics/throttle shim is pinned byte-for-byte to parent commit `2799866`.
+  It retries the **same buffered request and model** on network errors or HTTP
+  403/429/500/502/503/504 before any upstream body is exposed. HTTP 402 and bare
+  401 pass through once; no request-time model substitution occurs. Queue/backoff
+  cancellation releases permits promptly.
+- Admission starts at `COPILOT_SHIM_MIN=4` and grows toward
+  `COPILOT_SHIM_MAX=8` only under sustained clean queue pressure. A 403/429 returns
+  it to the floor for a five-minute cooldown. `copilot-proxy limiter status`,
+  `limiter set --min 4 --max 8 --limit 6`, and `limiter reset` change only the
+  running process; set `COPILOT_SHIM_MIN/MAX` before restart to persist a range.
+- Bun 1.3.14 predates upstream stream-body/peer-abort fixes `80729349` and
+  `3da09633`. The server installs a compatibility rejection guard, consumes both
+  synchronous and asynchronous cancellation failures, and treats SQLite metrics
+  writes as best-effort so one canceled Codex stream cannot terminate port 4142.
 - For literal `stream:true`, the shim emits keepalive comments after the grace period,
   requires successful upstream bodies to be SSE, and translates late failures to
   Anthropic `error` or Responses `response.failed` terminal events. The stall
@@ -253,10 +263,19 @@ State lives under `~/.local/state/copilot-proxy/`; device login stores the GitHu
 token at `~/.local/share/copilot-api/github_token` without printing it by default.
 A detached watcher appends process lifecycle records to `lifecycle.jsonl`: spawn,
 ready, startup failure, exit code, package/version/PID/port, and whether shutdown
-was deliberate or unexpected. Inspect it with `copilot-proxy logs lifecycle`;
-request-level attempts and stream failures remain in `stats`/`events`. Proxy and
-shim stdout/stderr rotate independently for three sessions, and `logs err` or
-`logs shim err` exposes errors even when a stdout log also exists.
+was deliberate or unexpected. A shim that had reached ready and then exits
+unexpectedly is restarted at most three times after 1s/5s/30s, only while the shim
+remains enabled, port 4141 is healthy, and port 4142 is still down. Five minutes of
+stable uptime resets the budget. Startup failures and deliberate stops never
+restart; the watcher never restarts port 4141 and never fails open to it. Recovery
+adds `restart_scheduled`, `restart_succeeded`, `restart_failed`,
+`restart_suppressed`, or `restart_exhausted` rows.
+
+Inspect the journal with `copilot-proxy logs lifecycle`; request-level attempts and
+stream failures remain in `stats`/`events`. Proxy and shim stdout/stderr rotate
+independently for three sessions, and `logs err` or `logs shim err` exposes errors
+even when a stdout log also exists. Applying a new shim file does not reload the
+already-running Bun process; restart it deliberately after active turns drain.
 
 ## Codex through the gateway
 

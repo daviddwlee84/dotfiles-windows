@@ -10,10 +10,10 @@ import { dirname, join } from "node:path";
 //
 //   agent client ─▶ shim (:4142) ─▶ copilot-api fork (:4141) ─▶ Copilot backend
 //                    │
-//                    ├─ semaphore: at most MAX concurrent in-flight upstream
-//                    │   POSTs; a burst queues instead of hitting the backend
-//                    │   all at once (that simultaneity is what trips abuse
-//                    │   detection). Under the cap there is ZERO added latency.
+//                    ├─ adaptive semaphore: starts at MIN concurrent upstream
+//                    │   POSTs and grows toward MAX only under clean queue
+//                    │   pressure; 403/429 returns it to MIN for a cooldown.
+//                    │   Bursts queue instead of hitting the backend together.
 //                    │
 //                    ├─ transparent retry on 403/429/500/502/503/504 + network
 //                    │   errors, jittered backoff, BEFORE any response body is
@@ -50,7 +50,8 @@ import { dirname, join } from "node:path";
 // Config via env (all optional):
 //   COPILOT_SHIM_PORT       listen port                    (default 4142)
 //   COPILOT_SHIM_UPSTREAM   upstream base URL              (default http://localhost:4141)
-//   COPILOT_SHIM_MAX        max concurrent in-flight POSTs (default 4)
+//   COPILOT_SHIM_MIN        adaptive concurrency floor       (default 4)
+//   COPILOT_SHIM_MAX        adaptive concurrency ceiling     (default 8)
 //   COPILOT_SHIM_RETRIES    retry attempts on transient    (default 3)
 //   COPILOT_SHIM_BACKOFF_MS base backoff ms, doubles/try   (default 500)
 //   COPILOT_SHIM_PING_MS    keepalive interval, 0=off      (default 15000)
@@ -65,7 +66,14 @@ import { dirname, join } from "node:path";
 
 const PORT = Number(process.env.COPILOT_SHIM_PORT ?? 4142);
 const UPSTREAM = (process.env.COPILOT_SHIM_UPSTREAM ?? "http://localhost:4141").replace(/\/+$/, "");
-const MAX = Math.max(1, Number(process.env.COPILOT_SHIM_MAX ?? 4));
+const HARD_MAX_CONCURRENCY = 32;
+const positiveInt = (value, fallback, max = Number.MAX_SAFE_INTEGER) => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? Math.min(parsed, max) : fallback;
+};
+const STARTUP_MAX = positiveInt(process.env.COPILOT_SHIM_MAX, 8, HARD_MAX_CONCURRENCY);
+const STARTUP_MIN = Math.min(STARTUP_MAX,
+  positiveInt(process.env.COPILOT_SHIM_MIN, 4, HARD_MAX_CONCURRENCY));
 const RETRIES = Math.max(0, Number(process.env.COPILOT_SHIM_RETRIES ?? 3));
 const BACKOFF_MS = Math.max(0, Number(process.env.COPILOT_SHIM_BACKOFF_MS ?? 500));
 const PING_MS = Math.max(0, Number(process.env.COPILOT_SHIM_PING_MS ?? 15000));
@@ -73,9 +81,33 @@ const PING_AFTER_MS = Math.max(0, Number(process.env.COPILOT_SHIM_PING_AFTER_MS 
 const STALL_MS = Math.max(0, Number(process.env.COPILOT_SHIM_STALL_MS ?? 240000));
 const RETRY_STATUS = new Set([403, 429, 500, 502, 503, 504]);
 const MAX_BACKOFF_MS = 30000;
+const MAX_RETRY_AFTER_MS = 300000;
+const ADAPT_SUCCESS_THRESHOLD = 32;
+const ADAPT_INCREASE_INTERVAL_MS = 60000;
+const ADAPT_THROTTLE_COOLDOWN_MS = 300000;
 const ERROR_BODY_TIMEOUT_MS = 2000;
 const ERROR_BODY_MAX_BYTES = 2048;
 const RETENTION_MS = 90 * 86400 * 1000;
+
+function errorSummary(error) {
+  return String(error?.message ?? error ?? "unknown error").replace(/\s+/g, " ").slice(0, 500);
+}
+
+function logNonFatal(context, error) {
+  try { console.error(new Date().toISOString(), "[shim]", `${context}: ${errorSummary(error)}`); }
+  catch {}
+}
+
+// Stream cancellation is cleanup. Neither a synchronous throw nor a rejected
+// cancel Promise may become an unhandled rejection in the Bun server process.
+export function settleCancellation(target, reason, context = "stream cancellation failed") {
+  try {
+    return Promise.resolve(target?.cancel(reason)).catch((error) => logNonFatal(context, error));
+  } catch (error) {
+    logNonFatal(context, error);
+    return Promise.resolve();
+  }
+}
 
 function xdgPath(kind, ...parts) {
   const home = process.env.HOME ?? ".";
@@ -149,9 +181,14 @@ function requestMetadata(pathname, body, headers) {
   };
 }
 
-export function createMetricTracker(meta, db = getMetricsDb(), clock = () => performance.now()) {
+export function createMetricTracker(meta, db = undefined, clock = () => performance.now()) {
   const wall = Date.now();
   const started = clock();
+  let metricDb = db;
+  if (metricDb === undefined) {
+    try { metricDb = getMetricsDb(); }
+    catch (error) { metricDb = null; logNonFatal("metrics disabled", error); }
+  }
   let permitAt = null;
   let firstAt = null;
   let attempts = 0;
@@ -165,19 +202,21 @@ export function createMetricTracker(meta, db = getMetricsDb(), clock = () => per
     finalize(status, errorKind = null) {
       if (finished) return;
       finished = true;
-      const ended = clock();
-      db.query(`INSERT OR IGNORE INTO request_metrics
-        (trace_id,created_at_ms,endpoint,model,scope,streaming,status,attempts,retries,
-         queue_ms,upstream_headers_ms,first_byte_ms,stream_ms,e2e_ms,error_kind)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
-          state.traceId, wall, state.endpoint, state.model, state.scope,
-          state.streaming ? 1 : 0, status, attempts, Math.max(0, attempts - 1),
-          permitAt === null ? null : permitAt - started,
-          permitAt === null || state.headersAt === undefined ? null : state.headersAt - permitAt,
-          firstAt === null ? null : firstAt - started,
-          firstAt === null ? null : ended - firstAt,
-          ended - started, errorKind,
-        );
+      try {
+        const ended = clock();
+        metricDb?.query(`INSERT OR IGNORE INTO request_metrics
+          (trace_id,created_at_ms,endpoint,model,scope,streaming,status,attempts,retries,
+           queue_ms,upstream_headers_ms,first_byte_ms,stream_ms,e2e_ms,error_kind)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+            state.traceId, wall, state.endpoint, state.model, state.scope,
+            state.streaming ? 1 : 0, status, attempts, Math.max(0, attempts - 1),
+            permitAt === null ? null : permitAt - started,
+            permitAt === null || state.headersAt === undefined ? null : state.headersAt - permitAt,
+            firstAt === null ? null : firstAt - started,
+            firstAt === null ? null : ended - firstAt,
+            ended - started, errorKind,
+          );
+      } catch (error) { logNonFatal("metrics write failed", error); }
     },
     headers() { state.headersAt = clock(); },
   };
@@ -273,13 +312,17 @@ export function queryStats(options = {}) {
     const values = nums(field);
     timing[field] = { p50: percentile(values, .5), p90: percentile(values, .9), max: percentile(values, 1) };
   }
+  const clientCancels = rows.filter((r) => r.error_kind === "client_cancel").length;
+  const errors = rows.filter((r) => r.error_kind || !(r.status >= 200 && r.status < 400)).length;
   return {
     period: options.period ?? "day",
     scope: options.scope ?? "normal",
     model: options.model ?? null,
     requests: rows.length,
     successes: rows.filter((r) => r.status >= 200 && r.status < 400 && !r.error_kind).length,
-    errors: rows.filter((r) => r.error_kind || !(r.status >= 200 && r.status < 400)).length,
+    errors,
+    client_cancels: clientCancels,
+    upstream_errors: errors - clientCancels,
     retries: rows.reduce((n, r) => n + Number(r.retries ?? 0), 0),
     input_tokens: rows.reduce((n, r) => n + r.input_tokens, 0),
     output_tokens: rows.reduce((n, r) => n + r.output_tokens, 0),
@@ -300,6 +343,125 @@ const PING_FRAME = new TextEncoder().encode(": copilot-shim keepalive\n\n");
 
 const log = (...a) => console.log(new Date().toISOString(), "[shim]", ...a);
 const abortError = () => new DOMException("client aborted", "AbortError");
+
+const validLimit = (value, name) => {
+  if (!Number.isInteger(value) || value < 1 || value > HARD_MAX_CONCURRENCY) {
+    throw new Error(`${name} must be an integer from 1 to ${HARD_MAX_CONCURRENCY}`);
+  }
+  return value;
+};
+
+export function createAdaptiveLimiter({
+  min = STARTUP_MIN,
+  max = STARTUP_MAX,
+  initial = min,
+  successThreshold = ADAPT_SUCCESS_THRESHOLD,
+  increaseIntervalMs = ADAPT_INCREASE_INTERVAL_MS,
+  throttleCooldownMs = ADAPT_THROTTLE_COOLDOWN_MS,
+  clock = () => Date.now(),
+  onChange = () => {},
+} = {}) {
+  let floor = validLimit(min, "min");
+  let ceiling = validLimit(max, "max");
+  if (floor > ceiling) throw new Error("min must not exceed max");
+  let limit = Math.max(floor, Math.min(validLimit(initial, "limit"), ceiling));
+  const startupFloor = floor;
+  const startupCeiling = ceiling;
+  const startupLimit = limit;
+  let pressureSuccesses = 0;
+  let pressureSeen = false;
+  let cooldownUntil = 0;
+  let lastChangeAt = clock();
+  let throttleEvents = 0;
+  let lastThrottleStatus = null;
+
+  const changeLimit = (next, reason) => {
+    const bounded = Math.max(floor, Math.min(next, ceiling));
+    if (bounded === limit) return false;
+    const previous = limit;
+    limit = bounded;
+    lastChangeAt = clock();
+    onChange({ previous, limit, reason });
+    return true;
+  };
+
+  const snapshot = () => ({
+    limit,
+    min: floor,
+    max: ceiling,
+    adaptive: floor !== ceiling,
+    pressure_successes: pressureSuccesses,
+    successes_to_increase: limit >= ceiling
+      ? 0 : Math.max(0, successThreshold - pressureSuccesses),
+    cooldown_ms_remaining: Math.max(0, cooldownUntil - clock()),
+    throttle_events: throttleEvents,
+    last_throttle_status: lastThrottleStatus,
+  });
+
+  return {
+    get limit() { return limit; },
+    noteQueued() { pressureSeen = true; },
+    observeStatus(status, underPressure = false) {
+      const now = clock();
+      if (status === 403 || status === 429) {
+        throttleEvents++;
+        lastThrottleStatus = status;
+        pressureSuccesses = 0;
+        pressureSeen = false;
+        cooldownUntil = Math.max(cooldownUntil, now + throttleCooldownMs);
+        changeLimit(floor, `upstream-${status}`);
+        return snapshot();
+      }
+      if (!(status >= 200 && status < 400) || !(underPressure || pressureSeen)) {
+        return snapshot();
+      }
+      if (now < cooldownUntil) return snapshot();
+      if (limit >= ceiling) {
+        pressureSuccesses = 0;
+        pressureSeen = false;
+        return snapshot();
+      }
+      pressureSuccesses++;
+      if (pressureSuccesses >= successThreshold
+          && now - lastChangeAt >= increaseIntervalMs) {
+        pressureSuccesses = 0;
+        pressureSeen = false;
+        changeLimit(limit + 1, "clean-queue-pressure");
+      }
+      return snapshot();
+    },
+    configure(patch = {}) {
+      const nextFloor = patch.min === undefined ? floor : validLimit(patch.min, "min");
+      const nextCeiling = patch.max === undefined ? ceiling : validLimit(patch.max, "max");
+      if (nextFloor > nextCeiling) throw new Error("min must not exceed max");
+      const nextLimit = patch.limit === undefined
+        ? Math.max(nextFloor, Math.min(limit, nextCeiling))
+        : validLimit(patch.limit, "limit");
+      if (nextLimit < nextFloor || nextLimit > nextCeiling) {
+        throw new Error("limit must be between min and max");
+      }
+      floor = nextFloor;
+      ceiling = nextCeiling;
+      pressureSuccesses = 0;
+      pressureSeen = false;
+      cooldownUntil = 0;
+      lastChangeAt = clock();
+      changeLimit(nextLimit, "live-config");
+      return snapshot();
+    },
+    reset() {
+      floor = startupFloor;
+      ceiling = startupCeiling;
+      pressureSuccesses = 0;
+      pressureSeen = false;
+      cooldownUntil = 0;
+      lastChangeAt = clock();
+      changeLimit(startupLimit, "live-reset");
+      return snapshot();
+    },
+    snapshot,
+  };
+}
 
 function abortableSleep(ms, signal) {
   if (signal?.aborted) return Promise.reject(abortError());
@@ -340,19 +502,36 @@ export async function closeResponse(resp, reason) {
   const deadline = timeoutToken(ERROR_BODY_TIMEOUT_MS);
   try {
     await Promise.race([
-      resp.body.cancel(reason).catch(() => {}),
+      settleCancellation(resp.body, reason, "response body cancellation failed"),
       deadline.promise,
     ]);
-  } catch {}
-  finally { deadline.cancel(); }
+  } finally { deadline.cancel(); }
 }
 
-// ---- semaphore (at most MAX permits; canceled waiters are removed eagerly) ----
+// ---- adaptive semaphore (canceled waiters are removed eagerly) ----------------
 let active = 0;
 const waiters = [];
+const limiter = createAdaptiveLimiter({
+  onChange({ previous, limit, reason }) {
+    log(`limiter ${previous} -> ${limit} (${reason}; active=${active}, queued=${waiters.length})`);
+    drainWaiters();
+  },
+});
+
+function drainWaiters() {
+  while (active < limiter.limit && waiters.length) {
+    const next = waiters.shift();
+    next.signal?.removeEventListener("abort", next.onAbort);
+    if (next.signal?.aborted) { next.reject(abortError()); continue; }
+    active++;
+    next.resolve();
+  }
+}
+
 function acquire(signal) {
   if (signal?.aborted) return Promise.reject(abortError());
-  if (active < MAX) { active++; return Promise.resolve(); }
+  if (active < limiter.limit) { active++; return Promise.resolve(); }
+  limiter.noteQueued();
   return new Promise((resolve, reject) => {
     const waiter = { resolve, reject, signal, onAbort: null };
     waiter.onAbort = () => {
@@ -367,21 +546,14 @@ function acquire(signal) {
 }
 function release() {
   active = Math.max(0, active - 1);
-  while (waiters.length) {
-    const next = waiters.shift();
-    next.signal?.removeEventListener("abort", next.onAbort);
-    if (next.signal?.aborted) { next.reject(abortError()); continue; }
-    active++;
-    next.resolve();
-    break;
-  }
+  drainWaiters();
 }
 
 function backoffMs(attempt, retryAfter) {
   const seconds = Number(retryAfter);
-  if (Number.isFinite(seconds) && seconds > 0) return Math.min(seconds * 1000, MAX_BACKOFF_MS);
+  if (Number.isFinite(seconds) && seconds > 0) return Math.min(seconds * 1000, MAX_RETRY_AFTER_MS);
   const date = retryAfter ? Date.parse(retryAfter) : NaN;
-  if (Number.isFinite(date)) return Math.min(Math.max(0, date - Date.now()), MAX_BACKOFF_MS);
+  if (Number.isFinite(date)) return Math.min(Math.max(0, date - Date.now()), MAX_RETRY_AFTER_MS);
   const jitter = BACKOFF_MS > 0 ? Math.floor(Math.random() * BACKOFF_MS) : 0;
   return Math.min(BACKOFF_MS * 2 ** attempt + jitter, MAX_BACKOFF_MS);
 }
@@ -487,6 +659,48 @@ function isEventStream(contentType) {
   return (contentType ?? "").split(";", 1)[0].trim().toLowerCase() === "text/event-stream";
 }
 
+function limiterStatus() {
+  return {
+    ...limiter.snapshot(),
+    active,
+    queued: waiters.length,
+    startup: { min: STARTUP_MIN, max: STARTUP_MAX },
+  };
+}
+
+function isLoopbackRequest(req, server) {
+  const address = server.requestIP(req)?.address ?? "";
+  return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+}
+
+async function updateLimiter(req) {
+  let payload;
+  try { payload = await req.json(); }
+  catch { return jsonResponse({ error: "request body must be JSON" }, 400); }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return jsonResponse({ error: "request body must be a JSON object" }, 400);
+  }
+  try {
+    if (payload.reset === true) {
+      if (Object.keys(payload).some((key) => key !== "reset")) {
+        throw new Error("reset cannot be combined with other settings");
+      }
+      limiter.reset();
+    }
+    else {
+      const allowed = new Set(["min", "max", "limit"]);
+      const unknown = Object.keys(payload).filter((key) => !allowed.has(key));
+      if (unknown.length) throw new Error(`unknown setting(s): ${unknown.join(", ")}`);
+      if (Object.keys(payload).length === 0) throw new Error("provide min, max, limit, or reset");
+      limiter.configure(payload);
+    }
+    log(`limiter live config -> ${JSON.stringify(limiterStatus())}`);
+    return jsonResponse(limiterStatus());
+  } catch (err) {
+    return jsonResponse({ error: err.message ?? String(err), ...limiterStatus() }, 400);
+  }
+}
+
 // One upstream `fetch` attempt with a ceiling on the silent pre-header window.
 // A wedged upstream otherwise never settles this promise and the agent waits
 // forever; RETRIES then gets a chance to re-issue the request instead.
@@ -554,7 +768,7 @@ async function pumpStep(state, controller, releaseOnce, label, tracker) {
   if (STALL_MS && state.idleMs >= STALL_MS) {
     const secs = Math.round(state.idleMs / 1000);
     log(`${label} stalled mid-stream: no upstream bytes for ${secs}s; failing the response`);
-    try { state.reader.cancel(new Error("stalled")).catch(() => {}); } catch {}
+    void settleCancellation(state.reader, new Error("stalled"), "stalled reader cancellation failed");
     releaseOnce();
     tracker?.finalize(state.status, "upstream_stall");
     controller.error(new Error(`shim: upstream stalled for ${secs}s`));
@@ -592,7 +806,7 @@ function streamThrough(resp, releaseOnce, label = "stream", tracker = null) {
     cancel(reason) {
       abortResponse(resp);
       releaseOnce(); tracker?.finalize(499, "client_cancel");
-      try { state.reader.cancel(reason); } catch {}
+      void settleCancellation(state.reader, reason, "downstream reader cancellation failed");
     },
   });
   return new Response(stream, { status: resp.status, headers });
@@ -631,7 +845,7 @@ async function boundedErrorDetail(resp, err, signal) {
     deadline.cancel();
     signal?.removeEventListener("abort", onAbort);
     abortResponse(resp);
-    try { reader.cancel().catch(() => {}); } catch {}
+    await settleCancellation(reader, undefined, "error reader cancellation failed");
   }
   if (!size) return prefix;
   const bytes = new Uint8Array(size);
@@ -751,8 +965,8 @@ function keepaliveThenForward(pipeline, releaseOnce, label, tracker, pathname, s
       abortResponse(state.response);
       releaseOnce();
       tracker?.finalize(499, "client_cancel");
-      try { state.reader?.cancel(reason); } catch {}
-      pipeline.then((resp) => closeResponse(resp, reason)).catch(() => {});
+      void settleCancellation(state.reader, reason, "delayed reader cancellation failed");
+      pipeline.then((resp) => closeResponse(resp, reason)).catch((error) => logNonFatal("pipeline cancellation failed", error));
     },
   });
 }
@@ -764,12 +978,22 @@ export function startServer() {
     // no longer goes quiet for anywhere near this long, but leave the headroom:
     // it is the last line of defence when pings are disabled.
     idleTimeout: 255,
-    async fetch(req) {
+    async fetch(req, bunServer) {
     const url = new URL(req.url);
     const method = req.method;
 
     if (method === "GET" && url.pathname === "/_shim/health") {
-      return jsonResponse({ ok: true, active, queued: waiters.length });
+      return jsonResponse({ ok: true, ...limiterStatus() });
+    }
+    if (method === "GET" && url.pathname === "/_shim/config") {
+      return jsonResponse(limiterStatus());
+    }
+    if (method === "PATCH" && url.pathname === "/_shim/config") {
+      if (!isLoopbackRequest(req, bunServer)
+          || req.headers.get("x-copilot-shim-admin") !== "1") {
+        return jsonResponse({ error: "loopback admin request required" }, 403);
+      }
+      return updateLimiter(req);
     }
     if (method === "GET" && url.pathname === "/_shim/stats") {
       try {
@@ -803,8 +1027,15 @@ export function startServer() {
     }
 
     // Mutating requests (POST /v1/messages …): buffer body so we can resend on
-    // retry, then throttle + retry.
-    const bodyBuf = await req.arrayBuffer();
+    // retry, then throttle + retry. A peer may disappear while Bun is still
+    // assembling a large Codex tools payload; contain that handler rejection.
+    let bodyBuf;
+    try { bodyBuf = await req.arrayBuffer(); }
+    catch (error) {
+      const aborted = req.signal?.aborted;
+      log(`${method} ${url.pathname} request body ${aborted ? "aborted" : "read failed"}: ${errorSummary(error)}`);
+      return new Response(aborted ? "client aborted" : "shim: request body read failed", { status: aborted ? 499 : 400 });
+    }
     const normalized = normalizeRequestBody(url.pathname, bodyBuf, req.headers.get("content-encoding") ?? "");
     if (normalized.parseError) {
       log(`${method} ${url.pathname} could not inspect JSON (${bodyBuf.byteLength} bytes, content-type=${req.headers.get("content-type") ?? "unset"}, content-encoding=${req.headers.get("content-encoding") ?? "unset"}): ${normalized.parseError}`);
@@ -828,7 +1059,11 @@ export function startServer() {
     // committed. Resolves to a Response whose body has NOT been read yet, or to
     // a synthetic error Response (permit already released in that case).
     const runUpstream = async () => {
-      const willQueue = active >= MAX;
+      const willQueue = active >= limiter.limit;
+      const queuedAt = willQueue ? performance.now() : null;
+      if (willQueue) {
+        log(`queueing ${label} (active=${active}/${limiter.limit}, queued=${waiters.length + 1}, ceiling=${limiter.snapshot().max})`);
+      }
       try { await acquire(req.signal); }
       catch (err) {
         tracker.finalize(499, "client_cancel");
@@ -836,7 +1071,9 @@ export function startServer() {
       }
       acquired = true;
       tracker.acquired();
-      if (willQueue) log(`queued ${label} (${active} in-flight, ${waiters.length} waiting)`);
+      if (queuedAt !== null) {
+        log(`admitted ${label} after ${Math.round(performance.now() - queuedAt)}ms (active=${active}/${limiter.limit}, queued=${waiters.length})`);
+      }
 
       for (let attempt = 0; attempt <= RETRIES; attempt++) {
         tracker.attempt();
@@ -864,6 +1101,8 @@ export function startServer() {
           tracker.finalize(502, "upstream_error");
           return new Response(`shim: upstream unreachable: ${err}`, { status: 502 });
         }
+
+        limiter.observeStatus(resp.status, willQueue || waiters.length > 0);
 
         // Retryable status and attempts left → back off and try again. The 403
         // arrives fast (<2s, before any body), so retrying here is safe.
@@ -924,7 +1163,8 @@ export function startServer() {
     // Slow path — still queued, or the model is still thinking. Commit the SSE
     // response now and start the heartbeat; the real stream is spliced in
     // underneath once the pipeline settles.
-    log(`${label} silent for ${PING_AFTER_MS}ms; committing SSE early and sending keepalives`);
+    const phase = acquired ? "upstream" : "queue";
+    log(`${label} silent for ${PING_AFTER_MS}ms; keepalive engaged (phase=${phase}, active=${active}/${limiter.limit}, queued=${waiters.length})`);
     return new Response(keepaliveThenForward(pipeline, releaseOnce, label, tracker, url.pathname, req.signal), {
       status: 200,
       headers: { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive", "x-trace-id": traceId },
@@ -932,7 +1172,7 @@ export function startServer() {
     },
   });
 
-  log(`listening on :${server.port} -> ${UPSTREAM} (max=${MAX}, retries=${RETRIES}, backoff=${BACKOFF_MS}ms, ping=${PING_MS}ms after ${PING_AFTER_MS}ms, stall=${STALL_MS}ms)`);
+  log(`listening on :${server.port} -> ${UPSTREAM} (limit=${limiter.limit}, range=${STARTUP_MIN}..${STARTUP_MAX}, retries=${RETRIES}, backoff=${BACKOFF_MS}ms, ping=${PING_MS}ms after ${PING_AFTER_MS}ms, stall=${STALL_MS}ms)`);
   return server;
 }
 
@@ -961,7 +1201,7 @@ function n(value, digits = 1) {
 
 function printStats(stats) {
   console.log(`copilot-proxy stats (${stats.period}, ${stats.scope}${stats.model ? `, ${stats.model}` : ""})`);
-  console.log(`  requests ${stats.requests}  success ${stats.successes}  errors ${stats.errors}  retries ${stats.retries}`);
+  console.log(`  requests ${stats.requests}  success ${stats.successes}  errors ${stats.errors}  upstream ${stats.upstream_errors}  cancelled ${stats.client_cancels}  retries ${stats.retries}`);
   console.log(`  tokens   in ${stats.input_tokens}  out ${stats.output_tokens}  total ${stats.total_tokens}  AIU ${n(stats.total_aiu, 6)}`);
   console.log("  metric                    p50        p90        max");
   for (const [field, label] of [["queue_ms","queue ms"],["upstream_headers_ms","headers ms"],["first_byte_ms","first byte ms"],["stream_ms","stream ms"],["e2e_ms","end-to-end ms"],["output_tps","output tok/s"]]) {

@@ -1436,6 +1436,132 @@ Describe 'Copilot module' {
             Test-Path $intent | Should -BeFalse
         }
 
+        It 'recovers a previously ready shim and resets the budget after stable uptime' {
+            $watcher = Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-process-watch.ps1'
+            $log = Join-Path $TestDrive 'recovery-lifecycle.jsonl'
+            $intent = Join-Path $TestDrive 'recovery.intent'
+            $ready = Join-Path $TestDrive 'recovery.ready'
+            $state = Join-Path $TestDrive 'shim-state'
+            $marker = Join-Path $TestDrive 'recovered.marker'
+            $fakeModule = Join-Path $TestDrive 'fake-recovery.psm1'
+            $realModule = $ModulePath
+            @'
+function copilot-proxy {
+    [CmdletBinding()]
+    param([Parameter(ValueFromRemainingArguments)] [string[]] $Argv)
+    'recovered' | Set-Content -LiteralPath $env:FAKE_RECOVERY_MARKER
+}
+Export-ModuleMember -Function copilot-proxy
+'@ | Set-Content -LiteralPath $fakeModule
+            'on' | Set-Content -LiteralPath $state
+            'ready' | Set-Content -LiteralPath $ready
+            $env:FAKE_RECOVERY_MARKER = $marker
+            Mock Invoke-RestMethod {
+                if ($Uri -eq 'http://shim/_shim/health') {
+                    if (Test-Path -LiteralPath $env:FAKE_RECOVERY_MARKER) { return [pscustomobject]@{ ok = $true } }
+                    throw 'shim down'
+                }
+                [pscustomobject]@{ data = @() }
+            }
+            try {
+                $child = Start-Process -FilePath (Get-Command pwsh).Source -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Milliseconds 100; exit 7') -PassThru
+                & $watcher -ProcessId $child.Id -Component shim -LogPath $log -IntentPath $intent -ReadyPath $ready `
+                    -Package pkg -Version 2.3.4 -Port 4142 -ModulePath $fakeModule `
+                    -ProxyHealthUri 'http://proxy/v1/models' -ShimHealthUri 'http://shim/_shim/health' `
+                    -ShimStatePath $state -StartedAt ([DateTime]::UtcNow.AddMinutes(-6).ToString('o')) `
+                    -RecoveryAttempt 3 -RecoveryDelaySeconds @(0, 0, 0)
+
+                $rows = @(Get-Content $log | ForEach-Object { $_ | ConvertFrom-Json })
+                ($rows.event -join ',') | Should -BeExactly 'unexpected_exit,restart_scheduled,restart_succeeded'
+                $rows[1].attempt | Should -Be 1
+                Test-Path $marker | Should -BeTrue
+            } finally {
+                Get-Module | Where-Object Path -EQ $fakeModule | Remove-Module -Force -ErrorAction SilentlyContinue
+                Import-Module $realModule -Force
+                Remove-Item Env:FAKE_RECOVERY_MARKER -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'suppresses recovery when the shim is disabled' {
+            $watcher = Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-process-watch.ps1'
+            $log = Join-Path $TestDrive 'disabled-lifecycle.jsonl'
+            $ready = Join-Path $TestDrive 'disabled.ready'
+            $state = Join-Path $TestDrive 'disabled.state'
+            'ready' | Set-Content -LiteralPath $ready
+            'off' | Set-Content -LiteralPath $state
+            $child = Start-Process -FilePath (Get-Command pwsh).Source -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Milliseconds 100; exit 7') -PassThru
+
+            & $watcher -ProcessId $child.Id -Component shim -LogPath $log -IntentPath (Join-Path $TestDrive 'disabled.intent') `
+                -ReadyPath $ready -Package pkg -Version 2.3.4 -Port 4142 -ShimStatePath $state
+
+            $rows = @(Get-Content $log | ForEach-Object { $_ | ConvertFrom-Json })
+            ($rows.event -join ',') | Should -BeExactly 'unexpected_exit,restart_suppressed'
+            $rows[1].detail | Should -BeExactly 'shim is disabled'
+        }
+
+        It 'suppresses recovery before ready or when the proxy is down' {
+            $watcher = Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-process-watch.ps1'
+            $state = Join-Path $TestDrive 'suppressed.state'
+            'on' | Set-Content -LiteralPath $state
+
+            $unreadyLog = Join-Path $TestDrive 'unready-lifecycle.jsonl'
+            $unready = Start-Process -FilePath (Get-Command pwsh).Source -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Milliseconds 100; exit 7') -PassThru
+            & $watcher -ProcessId $unready.Id -Component shim -LogPath $unreadyLog -IntentPath (Join-Path $TestDrive 'unready.intent') `
+                -ReadyPath (Join-Path $TestDrive 'missing.ready') -Package pkg -Version 2.3.4 -Port 4142 -ShimStatePath $state
+            $unreadyRows = @(Get-Content $unreadyLog | ForEach-Object { $_ | ConvertFrom-Json })
+            $unreadyRows[-1].detail | Should -BeExactly 'process never reached ready state'
+
+            $proxyDownLog = Join-Path $TestDrive 'proxy-down-lifecycle.jsonl'
+            $ready = Join-Path $TestDrive 'proxy-down.ready'
+            'ready' | Set-Content -LiteralPath $ready
+            Mock Invoke-RestMethod { throw 'endpoint down' }
+            $proxyDown = Start-Process -FilePath (Get-Command pwsh).Source -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Milliseconds 100; exit 7') -PassThru
+            & $watcher -ProcessId $proxyDown.Id -Component shim -LogPath $proxyDownLog -IntentPath (Join-Path $TestDrive 'proxy-down.intent') `
+                -ReadyPath $ready -Package pkg -Version 2.3.4 -Port 4142 -ModulePath $ModulePath `
+                -ProxyHealthUri 'http://proxy/v1/models' -ShimHealthUri 'http://shim/_shim/health' -ShimStatePath $state
+            $proxyDownRows = @(Get-Content $proxyDownLog | ForEach-Object { $_ | ConvertFrom-Json })
+            $proxyDownRows[-1].detail | Should -BeExactly 'proxy is not healthy'
+        }
+
+        It 'exhausts three quick recovery attempts without restarting the proxy' {
+            $watcher = Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-process-watch.ps1'
+            $log = Join-Path $TestDrive 'exhausted-lifecycle.jsonl'
+            $ready = Join-Path $TestDrive 'exhausted.ready'
+            $state = Join-Path $TestDrive 'exhausted.state'
+            $fakeModule = Join-Path $TestDrive 'fake-noop-recovery.psm1'
+            $realModule = $ModulePath
+            @'
+function copilot-proxy {
+    [CmdletBinding()]
+    param([Parameter(ValueFromRemainingArguments)] [string[]] $Argv)
+}
+Export-ModuleMember -Function copilot-proxy
+'@ | Set-Content -LiteralPath $fakeModule
+            'ready' | Set-Content -LiteralPath $ready
+            'on' | Set-Content -LiteralPath $state
+            Mock Invoke-RestMethod {
+                if ($Uri -eq 'http://shim/_shim/health') { throw 'shim down' }
+                [pscustomobject]@{ data = @() }
+            }
+            try {
+                $child = Start-Process -FilePath (Get-Command pwsh).Source -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Milliseconds 100; exit 7') -PassThru
+                & $watcher -ProcessId $child.Id -Component shim -LogPath $log -IntentPath (Join-Path $TestDrive 'exhausted.intent') `
+                    -ReadyPath $ready -Package pkg -Version 2.3.4 -Port 4142 -ModulePath $fakeModule `
+                    -ProxyHealthUri 'http://proxy/v1/models' -ShimHealthUri 'http://shim/_shim/health' `
+                    -ShimStatePath $state -StartedAt ([DateTime]::UtcNow.ToString('o')) `
+                    -RecoveryAttempt 0 -RecoveryDelaySeconds @(0, 0, 0)
+
+                $rows = @(Get-Content $log | ForEach-Object { $_ | ConvertFrom-Json })
+                @($rows | Where-Object event -EQ 'restart_scheduled').Count | Should -Be 3
+                @($rows | Where-Object event -EQ 'restart_failed').Count | Should -Be 3
+                $rows[-1].event | Should -BeExactly 'restart_exhausted'
+                ($rows | Where-Object event -EQ 'restart_scheduled').attempt | Should -Be @(1, 2, 3)
+            } finally {
+                Get-Module | Where-Object Path -EQ $fakeModule | Remove-Module -Force -ErrorAction SilentlyContinue
+                Import-Module $realModule -Force
+            }
+        }
+
         It 'preserves stats JSON on the success stream' {
             InModuleScope Copilot {
                 Mock Get-Command { [pscustomobject]@{ Source = 'bun' } } -ParameterFilter { $Name -eq 'bun' }
@@ -1536,12 +1662,80 @@ Describe 'Copilot module' {
                 Mock Get-Command { [pscustomobject]@{ Source = 'bun' } } -ParameterFilter { $Name -eq 'bun' }
                 Mock Test-Path { $true }
                 Mock Stop-Process {}
+                Mock Set-CopilotStopIntent {}
                 Mock Start-Process { [pscustomobject]@{ Id = 9001 } }
                 Mock Start-CopilotProcessWatcher {}
+                Mock Rotate-CopilotLog {}
                 Mock Set-Content {}
                 Start-CopilotShim | Should -BeTrue
+                Should -Invoke Set-CopilotStopIntent -Times 1 -Exactly -ParameterFilter { $Component -eq 'shim' -and $ProcessId -eq 4242 }
                 Should -Invoke Stop-Process -Times 1 -Exactly -ParameterFilter { $Id -eq 4242 }
                 Should -Invoke Start-Process -Times 1 -Exactly
+            }
+        }
+        It 'serializes concurrent shim starts with a per-port mutex' {
+            InModuleScope Copilot {
+                $port = '49991'
+                $ready = Join-Path $TestDrive 'mutex-holder.ready'
+                $mutexName = "Local\copilot-proxy-shim-$port"
+                $savedPort = $env:COPILOT_SHIM_PORT
+                $savedTimeout = $env:COPILOT_SHIM_LOCK_TIMEOUT_MS
+                $savedName = $env:TEST_COPILOT_MUTEX_NAME
+                $savedReady = $env:TEST_COPILOT_MUTEX_READY
+                $holder = $null
+                try {
+                    $env:COPILOT_SHIM_PORT = $port
+                    $env:COPILOT_SHIM_LOCK_TIMEOUT_MS = '50'
+                    $env:TEST_COPILOT_MUTEX_NAME = $mutexName
+                    $env:TEST_COPILOT_MUTEX_READY = $ready
+                    $command = @'
+$m = [System.Threading.Mutex]::new($false, $env:TEST_COPILOT_MUTEX_NAME)
+$null = $m.WaitOne()
+[System.IO.File]::WriteAllText($env:TEST_COPILOT_MUTEX_READY, 'ready')
+Start-Sleep -Seconds 5
+$m.ReleaseMutex()
+$m.Dispose()
+'@
+                    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+                    $holder = Start-Process -FilePath (Get-Command pwsh).Source -ArgumentList @('-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded) -PassThru
+                    for ($i = 0; $i -lt 40 -and -not [System.IO.File]::Exists($ready); $i++) { Start-Sleep -Milliseconds 50 }
+                    [System.IO.File]::Exists($ready) | Should -BeTrue
+                    Mock Invoke-CopilotShimStart { throw 'must not enter the serialized start' }
+                    Mock Write-Error {}
+
+                    Start-CopilotShim | Should -BeFalse
+
+                    Should -Invoke Invoke-CopilotShimStart -Times 0 -Exactly
+                    Should -Invoke Write-Error -Times 1 -Exactly -ParameterFilter { $Message -match 'shim start lock' }
+                } finally {
+                    if ($holder -and -not $holder.HasExited) { Stop-Process -Id $holder.Id -Force -ErrorAction SilentlyContinue }
+                    $env:COPILOT_SHIM_PORT = $savedPort
+                    $env:COPILOT_SHIM_LOCK_TIMEOUT_MS = $savedTimeout
+                    $env:TEST_COPILOT_MUTEX_NAME = $savedName
+                    $env:TEST_COPILOT_MUTEX_READY = $savedReady
+                }
+            }
+        }
+        It 'stops only shim processes associated with the selected port' {
+            InModuleScope Copilot {
+                $savedPort = $env:COPILOT_SHIM_PORT
+                try {
+                    $env:COPILOT_SHIM_PORT = '49992'
+                    Mock Get-CopilotShimPid { Join-Path $TestDrive 'missing-shim.pid' }
+                    Mock Test-Path { $false }
+                    Mock Get-CopilotPortOwner {
+                        [pscustomobject]@{ Owner = 'ours'; Pids = @(9101); Labels = @() }
+                    }
+                    Mock Set-CopilotStopIntent {}
+                    Mock Stop-Process {}
+                    Mock Get-CimInstance { throw 'must not scan every Bun shim process' }
+
+                    Stop-CopilotShim
+
+                    Should -Invoke Get-CopilotPortOwner -Times 1 -Exactly -ParameterFilter { $Port -eq 49992 }
+                    Should -Invoke Stop-Process -Times 1 -Exactly -ParameterFilter { $Id -eq 9101 }
+                    Should -Invoke Get-CimInstance -Times 0 -Exactly
+                } finally { $env:COPILOT_SHIM_PORT = $savedPort }
             }
         }
         It 'scopes COPILOT_SHIM_* to the child instead of leaking into the session' {
@@ -1551,6 +1745,7 @@ Describe 'Copilot module' {
                 Mock Get-Command { [pscustomobject]@{ Source = 'bun' } } -ParameterFilter { $Name -eq 'bun' }
                 Mock Test-Path { $true }
                 Mock Start-CopilotProcessWatcher {}
+                Mock Rotate-CopilotLog {}
                 Mock Set-Content {}
                 $script:spawned = $false
                 $script:seenPort = $null
@@ -1584,7 +1779,86 @@ Describe 'Copilot module' {
         }
     }
 
+    Context 'adaptive shim limiter control' {
+        It 'reads the live limiter status from the identity endpoint' {
+            InModuleScope Copilot {
+                Mock Test-CopilotShimAlive { $true }
+                Mock Get-CopilotShimBase { 'http://localhost:4999' }
+                Mock Invoke-RestMethod { [pscustomobject]@{ limit = 4; min = 4; max = 8; active = 1; queued = 0; adaptive = $true } }
+
+                $result = Invoke-CopilotLimiter -Argument @('status')
+
+                $result.limit | Should -Be 4
+                Should -Invoke Invoke-RestMethod -Times 1 -Exactly -ParameterFilter {
+                    $Uri -eq 'http://localhost:4999/_shim/config' -and $Method -eq 'Get'
+                }
+            }
+        }
+
+        It 'patches validated live limits through the loopback admin endpoint' {
+            InModuleScope Copilot {
+                Mock Test-CopilotShimAlive { $true }
+                Mock Get-CopilotShimBase { 'http://localhost:4999' }
+                Mock Invoke-RestMethod { [pscustomobject]@{ limit = 6; min = 3; max = 9; active = 0; queued = 0; adaptive = $true } }
+
+                $result = Invoke-CopilotLimiter -Argument @('set', '--min', '3', '--max', '9', '--limit', '6')
+
+                $result.limit | Should -Be 6
+                Should -Invoke Invoke-RestMethod -Times 1 -Exactly -ParameterFilter {
+                    $Uri -eq 'http://localhost:4999/_shim/config' -and
+                    $Method -eq 'Patch' -and
+                    $Headers['x-copilot-shim-admin'] -eq '1' -and
+                    ($Body | ConvertFrom-Json).min -eq 3 -and
+                    ($Body | ConvertFrom-Json).max -eq 9 -and
+                    ($Body | ConvertFrom-Json).limit -eq 6
+                }
+            }
+        }
+
+        It 'rejects invalid limits without making a request' {
+            InModuleScope Copilot {
+                Mock Test-CopilotShimAlive { $true }
+                Mock Invoke-RestMethod { throw 'must not call the shim' }
+                Mock Write-Error {}
+
+                Invoke-CopilotLimiter -Argument @('set', '--limit', '0')
+
+                Should -Invoke Invoke-RestMethod -Times 0 -Exactly
+                Should -Invoke Write-Error -Times 1 -Exactly -ParameterFilter { $Message -match 'integer from 1 to 32' }
+            }
+        }
+    }
+
     Context 'managed clients fail closed on an enabled shim' {
+        It 'recovers the shim without changing its persisted state' {
+            InModuleScope Copilot {
+                Mock Get-Command { [pscustomobject]@{ Source = 'bun' } } -ParameterFilter { $Name -eq 'bun' }
+                Mock Get-CopilotShimEnabled { $true }
+                Mock Test-CopilotAlive { $true }
+                Mock Start-CopilotShim { $true }
+                Mock Set-Content {}
+                $arguments = @('shim', 'recover', '--attempt', '2')
+
+                copilot-proxy @arguments
+
+                Should -Invoke Start-CopilotShim -Times 1 -Exactly -ParameterFilter { $RecoveryAttempt -eq 2 }
+                Should -Invoke Set-Content -Times 0 -Exactly
+            }
+        }
+        It 'rejects malformed internal shim recovery attempts' {
+            InModuleScope Copilot {
+                Mock Get-Command { [pscustomobject]@{ Source = 'bun' } } -ParameterFilter { $Name -eq 'bun' }
+                Mock Start-CopilotShim { throw 'must not start the shim' }
+                Mock Write-Error {}
+
+                copilot-proxy shim recover --attempt 0
+
+                Should -Invoke Start-CopilotShim -Times 0 -Exactly
+                Should -Invoke Write-Error -Times 1 -Exactly -ParameterFilter {
+                    $Message -match 'requires --attempt 1, 2, or 3'
+                }
+            }
+        }
         It 'Assert-CopilotShim is a no-op when the shim is switched off' {
             InModuleScope Copilot {
                 Mock Get-CopilotShimEnabled { $false }
@@ -1638,8 +1912,8 @@ Describe 'Copilot module' {
     Context 'Responses compatibility shim' {
         It 'matches the reviewed Unix shim artifact without a sibling checkout' {
             $shimContract = [ordered]@{
-                UnixSourceCommit = 'b205a2adbe09413d641c19a57f67fd27621dcff2'
-                Sha256 = '9B60237B2C1ABF1616ECA5EC6E91C4B8FAC209CC41472E23BF23498BB1940D67'
+                UnixSourceCommit = '2799866e2074da080a6afd115578ab3350847aa9'
+                Sha256 = 'E82333BAD5AAF7A7352600C21583838ACD8C32DE22992275CD4C692FB2AA3452'
             }
             $windowsShim = Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-throttle-shim.js'
             $shimContract.UnixSourceCommit | Should -Match '^[0-9a-f]{40}$'
@@ -1811,10 +2085,27 @@ upstream.stop(true);
                 $result.responseCodes.status500 | Should -BeExactly 'server_error'
                 $result.fastNonSse.status | Should -Be 502
                 $result.cancellation.deadResult | Should -BeExactly 'AbortError'
+                $result.cleanupFailures.metricFailureContained | Should -BeTrue
             } finally {
                 Get-ChildItem -LiteralPath ([System.IO.Path]::GetDirectoryName($metricsDb)) -Filter "$([System.IO.Path]::GetFileName($metricsDb))*" -ErrorAction SilentlyContinue |
                     Remove-Item -Force -ErrorAction SilentlyContinue
             }
+        }
+
+        It 'keeps the Bun shim process alive across stream aborts and clean completion' {
+            if (-not (Get-Command bun -ErrorAction SilentlyContinue)) { Set-ItResult -Skipped -Because 'bun is unavailable'; return }
+            $shim = (Resolve-Path (Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-throttle-shim.js')).Path
+            $fixture = (Resolve-Path (Join-Path $PSScriptRoot 'fixtures' 'copilot-shim-process-survival.mjs')).Path
+            $output = & bun $fixture $shim
+            $LASTEXITCODE | Should -Be 0
+            $jsonLine = @($output | Where-Object { "$_" -like '{"bun"*' })[-1]
+            $jsonLine | Should -Not -BeNullOrEmpty
+            $result = $jsonLine | ConvertFrom-Json
+            foreach ($scenario in $result.results) {
+                $scenario.healthy | Should -BeTrue -Because $scenario.name
+                ($scenario.completed -eq $false) | Should -BeFalse -Because $scenario.name
+            }
+            ($result.results | Where-Object name -EQ 'downstream-slow-abort').sawKeepalive | Should -BeTrue
         }
     }
 }

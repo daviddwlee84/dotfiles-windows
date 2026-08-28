@@ -18,6 +18,7 @@ fork，讓 **GitHub Copilot 訂閱**可作為 **Claude Code** 與其他 Anthropi
 | `copilot-proxy doctor [--live]` | 診斷套件、認證、proxy、catalog、roles、上游與 Codex Apps |
 | `copilot-proxy logs [N]` / `logs err` / `logs shim [err]` / `logs lifecycle` | 查看proxy/shim stdout、stderr或process lifecycle log |
 | `copilot-proxy shim [on\|off]` | 切換 metrics/節流 shim（port 4142；預設 on） |
+| `copilot-proxy limiter [status\|set\|reset]` | 檢查或暫時調整執行中 shim 的 adaptive concurrency limit |
 | `copilot-proxy stats` / `events` | 查詢本機 metrics DB，process 停止時也可使用 |
 | `copilot-proxy quota` | 顯示即時帳號 / 方案 / 額度 |
 | `copilot-proxy bench --model ID` | 執行有界的真實 Responses benchmark（消耗 quota） |
@@ -208,9 +209,16 @@ ANTHROPIC_SMALL_FAST_MODEL
   `copilot-throttle-shim.js`，其他 process 會具名拒絕。required spawn 失敗也會 reap；不要用
   generic `/v1/models` 回應推論 identity。詳見
   [pitfalls/copilot-proxy-shim-port-held-by-another-process.md](https://github.com/daviddwlee84/windows-dotfiles/blob/main/pitfalls/copilot-proxy-shim-port-held-by-another-process.md)。
-- Metrics/throttle shim 與 parent commit `b205a2a` byte-for-byte 相同。任何 upstream body 尚未
+- Metrics/throttle shim 與 parent commit `2799866` byte-for-byte 相同。任何 upstream body 尚未
   暴露前，network error 或 HTTP 403/429/500/502/503/504 會以**相同 buffered request 與
   model**重試；HTTP 402 與 bare 401 只通過一次，不做 request-time model substitution。
+- Admission 從 `COPILOT_SHIM_MIN=4` 起步，只在持續且乾淨的queue pressure下往
+  `COPILOT_SHIM_MAX=8` 增加；403/429 會立刻降回floor並cooldown五分鐘。
+  `copilot-proxy limiter status`、`limiter set --min 4 --max 8 --limit 6`、`limiter reset`
+  只改目前process；要持久化range，請在restart前設定 `COPILOT_SHIM_MIN/MAX`。
+- Bun 1.3.14 尚未包含stream-body/peer-abort上游修復 `80729349` 與 `3da09633`。Server會安裝
+  compatibility rejection guard、吸收同步與非同步 cancellation failure，並讓SQLite metrics
+  write保持best-effort，避免單一Codex stream斷線就終止整個4142 process。
 - `stream:true` 經 grace period 後會收到 keepalive comment；成功 body 必須是 SSE，late
   failure 依 endpoint 送 Anthropic `error` 或 Responses `response.failed`。關掉 ping 不會
   關掉 stall watchdog。Timing/token rows 位於 `$XDG_STATE_HOME/copilot-proxy/metrics.sqlite`
@@ -220,9 +228,15 @@ ANTHROPIC_SMALL_FAST_MODEL
 狀態放在 `~/.local/state/copilot-proxy/`；device login 會把 GitHub token 存在
 `~/.local/share/copilot-api/github_token`，預設不印出內容。Detached watcher 會把spawn、ready、
 startup failure、exit code、package/version/PID/port，以及deliberate或unexpected shutdown
-append到`lifecycle.jsonl`；用`copilot-proxy logs lifecycle`查看。Request-level attempts與
-stream failure仍由`stats`/`events`查詢。Proxy與shim的stdout/stderr各自保留三代；即使stdout
-存在，`logs err`與`logs shim err`仍可直接查看stderr。
+append到`lifecycle.jsonl`。曾經ready後意外退出的shim最多會在1s/5s/30s後重啟三次，而且僅限
+shim仍啟用、4141健康且4142仍down；穩定運行五分鐘會重置budget。Startup failure與deliberate
+stop不會重啟，watcher也不會重啟4141或fail open。Recovery另記錄`restart_scheduled`、
+`restart_succeeded`、`restart_failed`、`restart_suppressed`、`restart_exhausted`。
+
+用`copilot-proxy logs lifecycle`查看journal；request-level attempts與stream failure仍由
+`stats`/`events`查詢。Proxy與shim的stdout/stderr各自保留三代；即使stdout存在，`logs err`與
+`logs shim err`仍可直接查看stderr。套用新的shim檔不會reload已在記憶體中的Bun process；等
+active turn結束後仍需明確restart。
 
 ## Codex 走 gateway
 

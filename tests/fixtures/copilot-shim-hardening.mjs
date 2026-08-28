@@ -50,13 +50,25 @@ process.env.COPILOT_SHIM_PING_MS = "50";
 process.env.COPILOT_SHIM_STALL_MS = "5000";
 process.env.COPILOT_SHIM_METRICS_DB = process.argv[3];
 process.env.COPILOT_API_SQLITE_DB_PATH = `${process.argv[3]}.tokens`;
-const { closeResponse, startServer } = await import(pathToFileURL(process.argv[2]).href);
+const { closeResponse, createMetricTracker, settleCancellation, startServer } = await import(pathToFileURL(process.argv[2]).href);
 let cancelSettled = false;
 const cancelPromise = closeResponse({ body: { async cancel() { await sleep(150); cancelSettled = true; } } }, new Error("test cleanup"));
 await sleep(30);
 const cancelBarrier = { waited: !cancelSettled };
 await cancelPromise;
 cancelBarrier.settled = cancelSettled;
+await settleCancellation({ cancel() { return Promise.reject(new Error("fixture rejected cancel")); } });
+await settleCancellation({ cancel() { throw new Error("fixture throwing cancel"); } });
+let metricFailureContained = true;
+try {
+  const tracker = createMetricTracker(
+    { traceId: "fixture-metric-failure", endpoint: "/fixture", model: "fixture", scope: "normal", streaming: true },
+    { query() { throw new Error("fixture metric write failure"); } },
+    () => 0,
+  );
+  tracker.finalize(200);
+} catch { metricFailureContained = false; }
+const cleanupFailures = { cancellationContained: true, metricFailureContained };
 const shim = startServer();
 
 const responseErrorCode = (result) => {
@@ -130,6 +142,7 @@ try {
   const expectedRetryBody = JSON.stringify({ model: "retry500", stream: true, marker: "retry500" });
   const result = {
     cancelBarrier,
+    cleanupFailures,
     retry,
     exhausted,
     delayedResponses,
@@ -153,6 +166,7 @@ try {
 
   if (retry.status !== 200 || retry.pings < 1 || retry.events.join(",") !== "message_start,message_stop") throw new Error("retry path failed");
   if (!cancelBarrier.waited || !cancelBarrier.settled) throw new Error("response cleanup barrier was not awaited");
+  if (!cleanupFailures.cancellationContained || !cleanupFailures.metricFailureContained) throw new Error("cleanup failure escaped");
   if (!result.retryReplay.sameBody || !result.retryReplay.sameTrace || result.retryReplay.attempts !== 2) throw new Error("retry replay changed");
   if (exhausted.events.at(-1) !== "response.failed" || !exhausted.body.includes('"status":"failed"')) throw new Error("responses terminal failure failed");
   if (JSON.stringify(responseCodes) !== JSON.stringify({ status400: "invalid_prompt", status401: "invalid_prompt", status402: "insufficient_quota", status429: "rate_limit_exceeded", status500: "server_error" })) throw new Error("responses error classification failed");

@@ -42,7 +42,7 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 
 ## copilot-proxy
 - Module at `~/.config/powershell/modules/Copilot`. Commands: `copilot-proxy`
-  (`start`/`stop`/`restart`/`status`/`doctor`/`logs`/`shim`/`whoami`/`auth`/`reinstall`),
+  (`start`/`stop`/`restart`/`status`/`doctor`/`logs`/`shim`/`limiter`/`stats`/`events`/`whoami`/`auth`/`reinstall`),
   `copilot-run`, `claude-copilot`, `claude-copilot-once`, `codex-copilot`,
   `codex-copilot-once`, `copilot-here`, `copilot-model` (incl. `--auto`),
   `copilot-embed`, `semsearch`.
@@ -54,8 +54,12 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   named OpenAI order Sol > Terra > 5.5 > 5.4 > 5.3 Codex > Luna > mini.
 - The shim retries only the same buffered request/model, emits SSE keepalives for
   silent streams, and has a stall watchdog; it never performs request-time
-  cross-model failover. Timing knobs: `COPILOT_SHIM_PING_AFTER_MS`,
-  `COPILOT_SHIM_PING_MS`, `COPILOT_SHIM_STALL_MS`.
+  cross-model failover. Its adaptive limit starts at `COPILOT_SHIM_MIN=4`, grows
+  toward `MAX=8`, and can be tuned live with `copilot-proxy limiter`. Bun stream
+  rejections are contained; a ready shim that still crashes gets at most three
+  Windows-only recovery attempts (1s/5s/30s) while 4141 remains healthy. Timing
+  knobs: `COPILOT_SHIM_PING_AFTER_MS`, `COPILOT_SHIM_PING_MS`,
+  `COPILOT_SHIM_STALL_MS`.
 - `copilot-here` writes only the gitignored `./.claude/settings.local.json`. The
   pinned copilot-api is installed ONCE into `~/.local/share/copilot-api/pkg`
   (never `bunx` at launch); `COPILOT_HTTP_PROXY` (auto|always|never|URL) controls

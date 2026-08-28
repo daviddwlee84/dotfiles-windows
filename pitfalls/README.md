@@ -89,6 +89,7 @@ Pitfalls owned by this folder. Keep alphabetical.
 
 | Slug | Symptom keywords | Status |
 |---|---|---|
+| [`bun-serve-stream-abort-kills-copilot-shim`](bun-serve-stream-abort-kills-copilot-shim.md) | `stream disconnected before completion`, `localhost:4142/responses`, `shim: ON but DOWN`, lifecycle `unexpected_exit`, exit code `3`, 4141 remains healthy | contained locally; bounded recovery added |
 | [`clickfix-defender-flags-cmd-irm-iex`](clickfix-defender-flags-cmd-irm-iex.md) | `Trojan:Win32/ClickFix.R!ml`, cmd `powershell -c "irm\|iex"` blocked, VirusTotal clean but Defender blocks | workaround documented |
 | [`codex-modify-config-empty-key-line-1-col-0`](codex-modify-config-empty-key-line-1-col-0.md) | `modify_config.toml: invalid TOML`, `Empty key at line 1 col 0`, valid/empty-looking `.codex/config.toml`, UTF-8 BOM at byte 0, status line not applied | fixed |
 | [`copilot-api-connectionrefused-stale-bun-only-module`](copilot-api-connectionrefused-stale-bun-only-module.md) | `error: ConnectionRefused downloading package manifest @jeffreycao/copilot-api`, `Resolved, downloaded and extracted [6]`, copilot-proxy install fails both with and without proxy env, but plain `npm view` works, `chezmoi status` shows a modified `Copilot.psm1` | fixed |
