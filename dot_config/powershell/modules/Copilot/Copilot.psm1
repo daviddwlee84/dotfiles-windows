@@ -10,7 +10,7 @@
 # memory — PSUseApprovedVerbs is intentionally waived):
 #   copilot-proxy [start|stop|restart|status|doctor [--live]|logs [shim|N]|shim [on|off|status]|whoami|auth|reinstall]
 #   copilot-run <cmd...>            run a command with the proxy env injected
-#   claude-copilot [args...]        one-off Claude Code session on the proxy
+#   claude-copilot [--fast] [args...] one-off Claude Code session on the proxy
 #   claude-copilot-once [args...]   pinned one-shot session, auto-reverted
 #   codex-copilot [args...]         one-off Codex session on Responses proxy
 #   codex-copilot-once [args...]    identical zero-persistence alias
@@ -918,6 +918,34 @@ function script:Test-CopilotShimAlive {
         $health.ok -eq $true
     } catch { $false }
 }
+
+# The Bun shim derives standard -> fast siblings from the proxy's live catalog.
+# Keep the mapping in the shim so Codex service_tier requests and this PowerShell
+# wrapper use one entitlement-aware source of truth.
+function script:Get-CopilotFastRouting {
+    param([switch] $Refresh)
+    if (-not (Get-CopilotShimEnabled) -or -not (Test-CopilotShimAlive)) { return $null }
+    $suffix = if ($Refresh) { '?refresh=1' } else { '' }
+    try {
+        Invoke-RestMethod -Uri "$(Get-CopilotShimBase)/_shim/fast-routing$suffix" `
+            -TimeoutSec 3 -ErrorAction Stop
+    } catch { $null }
+}
+
+function script:Resolve-CopilotFastModel {
+    param([Parameter(Mandatory)] [string] $Model, $Routing)
+    if (-not $PSBoundParameters.ContainsKey('Routing')) { $Routing = Get-CopilotFastRouting }
+    if (-not $Routing -or -not $Routing.mappings) { return $null }
+    if ($Routing.mappings -is [System.Collections.IDictionary]) {
+        if ($Routing.mappings.Contains($Model)) { return [string]$Routing.mappings[$Model] }
+        if (@($Routing.mappings.Values) -contains $Model) { return $Model }
+        return $null
+    }
+    $property = $Routing.mappings.PSObject.Properties[$Model]
+    if ($property) { return [string]$property.Value }
+    if (@($Routing.mappings.PSObject.Properties.Value) -contains $Model) { return $Model }
+    $null
+}
 function script:Get-CopilotShimEnabled {
     switch ($env:COPILOT_PROXY_SHIM) {
         { $_ -in '1', 'on', 'true', 'yes' } { return $true }
@@ -1754,7 +1782,14 @@ function copilot-proxy {
                 Write-Host "copilot-proxy: RUNNING on $(Get-CopilotBase)"
                 Write-Host "  models: $($rawIds.Count) served; Claude: $claudeText"
                 if (Get-CopilotShimEnabled) {
-                    if (Test-CopilotShimAlive) { Write-Host "  shim:   ON, up on $(Get-CopilotShimBase)  -> clients use this" }
+                    if (Test-CopilotShimAlive) {
+                        Write-Host "  shim:   ON, up on $(Get-CopilotShimBase)  -> clients use this"
+                        $routing = Get-CopilotFastRouting
+                        if ($routing) {
+                            $mappingCount = @($routing.mappings.PSObject.Properties).Count
+                            Write-Host "  fast:   $($routing.state), $mappingCount route(s) from the live catalog"
+                        } else { Write-Host '  fast:   unavailable (restart the shim to refresh its routing endpoint)' }
+                    }
                     else { Write-Host "  shim:   ON but DOWN (managed clients fail closed; break glass: copilot-proxy shim off)" }
                 } else { Write-Host "  shim:   off  (enable: copilot-proxy shim on)" }
             } else {
@@ -1957,7 +1992,22 @@ function script:Invoke-CopilotDoctor {
         SKIP 'installer' "no wedged 'bun add' process"
     }
     if (Get-CopilotShimEnabled) {
-        if (Test-CopilotShimAlive) { OK 'throttle shim' "up on $(Get-CopilotShimBase)" } else { BAD 'throttle shim' 'enabled but DOWN'; HINT 'copilot-proxy shim on' }
+        if (Test-CopilotShimAlive) {
+            OK 'throttle shim' "up on $(Get-CopilotShimBase)"
+            $fastRouting = Get-CopilotFastRouting
+            if ($fastRouting) {
+                $mappingCount = @($fastRouting.mappings.PSObject.Properties).Count
+                if ($fastRouting.state -in 'ready', 'stale' -and $mappingCount -gt 0) {
+                    OK 'fast routing' "$($fastRouting.state), $mappingCount live-catalog route(s)"
+                    HINT 'Codex: use /fast; Claude Code: claude-copilot --fast'
+                } else {
+                    NOTE 'fast routing' "$($fastRouting.state), no eligible sibling; Fast requests fall back to standard"
+                }
+            } else {
+                BAD 'fast routing' 'routing endpoint unavailable; the running shim is stale or unhealthy'
+                HINT 'copilot-proxy restart'
+            }
+        } else { BAD 'throttle shim' 'enabled but DOWN'; HINT 'copilot-proxy shim on' }
     } else { SKIP 'throttle shim' 'off' }
 
     Write-Host "`nModels"
@@ -2461,19 +2511,74 @@ function script:New-SpecstoryClaudeCommand {
     $command
 }
 
+function script:Get-CopilotClaudeModelArgument {
+    param([string[]] $Argv)
+    $model = $null
+    for ($i = 0; $i -lt $Argv.Count; $i++) {
+        if ($Argv[$i] -ceq '--model' -and $i + 1 -lt $Argv.Count) {
+            $model = $Argv[$i + 1]
+            $i++
+        } elseif ($Argv[$i] -clike '--model=*') {
+            $model = $Argv[$i].Substring('--model='.Length)
+        }
+    }
+    $model
+}
+
+function script:Resolve-CopilotClaudeFastBaseModel {
+    param([string] $ExplicitModel)
+    $effective = ((Get-CopilotEffectiveModel) -split '\|', 2)[0]
+    if (-not $ExplicitModel -or $ExplicitModel -eq 'default') { return $effective }
+    $role = if ($ExplicitModel -eq 'opusplan') { 'opus' } else { $ExplicitModel }
+    if ($role -in 'fable', 'opus', 'sonnet', 'haiku') {
+        $modelProfile = Get-CopilotModelProfile -Model $effective
+        if ($modelProfile[$role]) { return [string]$modelProfile[$role] }
+    }
+    $ExplicitModel
+}
+
 # --------------------------------------------------------- claude-copilot -----
 function claude-copilot {
     [CmdletBinding()]
     param([Parameter(ValueFromRemainingArguments)] [string[]] $Argv)
     $ss = 'auto'
-    if ($Argv -and $Argv[0] -in '--no-specstory', '--specstory') {
-        if ($Argv[0] -eq '--no-specstory') { $ss = 'never' }
-        $Argv = @($Argv | Select-Object -Skip 1)
-    } elseif ($Argv -and $Argv[0] -in '-h', '--help') {
-        Write-Host "Usage: claude-copilot [--no-specstory] [claude args...]"
-        Write-Host "  One-off Claude Code session on the Copilot proxy. Sticky: copilot-here on"
-        Write-Host "  Runs claude with --dangerously-skip-permissions (hands-off proxy flow)."
-        return
+    $fast = $false
+    while ($Argv -and $Argv.Count -gt 0) {
+        if ($Argv[0] -eq '--fast') {
+            $fast = $true; $Argv = @($Argv | Select-Object -Skip 1); continue
+        }
+        if ($Argv[0] -eq '--no-specstory') {
+            $ss = 'never'; $Argv = @($Argv | Select-Object -Skip 1); continue
+        }
+        if ($Argv[0] -eq '--specstory') {
+            $ss = 'auto'; $Argv = @($Argv | Select-Object -Skip 1); continue
+        }
+        if ($Argv[0] -in '-h', '--help') {
+            Write-Host "Usage: claude-copilot [--fast] [--no-specstory] [claude args...]"
+            Write-Host "  One-off Claude Code session on the Copilot proxy. Sticky: copilot-here on"
+            Write-Host "  --fast selects this session's live-catalog fast sibling; unavailable falls back with a warning."
+            Write-Host "  Runs claude with --dangerously-skip-permissions (hands-off proxy flow)."
+            return
+        }
+        break
+    }
+
+    if ($fast) {
+        if (-not (Test-CopilotAlive)) { copilot-proxy start }
+        if ((Test-CopilotAlive) -and (Assert-CopilotShim)) {
+            $explicitModel = Get-CopilotClaudeModelArgument -Argv $Argv
+            $baseModel = Resolve-CopilotClaudeFastBaseModel -ExplicitModel $explicitModel
+            $fastModel = if ($baseModel) { Resolve-CopilotFastModel -Model $baseModel } else { $null }
+            if ($fastModel) {
+                # Appended last so it overrides an earlier explicit --model while
+                # using that value to choose the corresponding fast sibling.
+                $Argv = @($Argv) + @('--model', $fastModel)
+                Write-Host "claude-copilot: --fast -> $fastModel (session only)"
+            } else {
+                $label = if ($baseModel) { $baseModel } else { 'the selected model' }
+                Write-Warning "claude-copilot: --fast unavailable for $label; using the standard model."
+            }
+        } else { return }
     }
     if ($ss -eq 'auto' -and (Get-Command specstory -ErrorAction SilentlyContinue)) {
         $command = New-SpecstoryClaudeCommand -Argv $Argv
@@ -2491,7 +2596,7 @@ function claude-copilot-once {
     [CmdletBinding()]
     param([Parameter(ValueFromRemainingArguments)] [string[]] $Argv)
     if ($Argv -and $Argv[0] -in '-h', '--help') {
-        Write-Host "Usage: claude-copilot-once [--no-specstory] [claude args...]"
+        Write-Host "Usage: claude-copilot-once [--fast] [--no-specstory] [claude args...]"
         Write-Host "  Pin this project to the proxy, run one session, auto-unpin (even on Ctrl-C)."
         return
     }

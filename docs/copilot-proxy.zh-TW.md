@@ -27,8 +27,8 @@ fork，讓 **GitHub Copilot 訂閱**可作為 **Claude Code** 與其他 Anthropi
 | `copilot-proxy update VERSION` | stage、驗證並選取 exact 2.3.4/2.3.0/2.1.0，不重啟 |
 | `copilot-proxy rollback` | 離線切回上一個 verified package，不重啟 |
 | `copilot-run <cmd...>` | 注入 proxy 環境變數後執行指令 |
-| `claude-copilot` | 在 proxy 上開一次 Claude Code session |
-| `claude-copilot-once` | 暫時釘住專案、執行一次、結束後還原 |
+| `claude-copilot [--fast]` | 開一次 Claude Code session；`--fast` 只為本 session 選 live-catalog sibling |
+| `claude-copilot-once [--fast]` | 暫時釘住專案、執行一次、結束後還原 |
 | `codex-copilot` / `codex-copilot-once` | 零持久化的 Codex Responses proxy session |
 | `copilot-here [on\|off\|status]` | 在 `.claude/settings.local.json` 做 sticky pin |
 | `copilot-model [<id>\|-l\|-c\|--auto]` | 切換或檢查完整 role profile |
@@ -43,6 +43,7 @@ copilot-proxy start
 copilot-model --auto              # 從 live catalog 選模型
 copilot-model -c                   # 查看 Main/Fable/Opus/Sonnet/Haiku
 copilot-here on                    # 固定本專案；或用 claude-copilot-once
+claude-copilot --fast             # session-only fast sibling，無法使用時警告並 fallback
 codex-copilot                     # Codex；即時 OpenAI-first model selection
 ```
 
@@ -164,13 +165,29 @@ ANTHROPIC_SMALL_FAST_MODEL
 | subagents、dynamic workflows | 可以 | 提供 role variables，但不蓋掉 workflow-specific subagent routing。見 [workflows](https://code.claude.com/docs/en/workflows)。 |
 | `ultracode` | 2.3.4 可以 | 它是 xhigh effort + dynamic workflows，不是獨立模型。 |
 | thinking/reasoning | 轉譯後可用 | GPT 使用 Responses reasoning，不是 Anthropic-native thinking semantics。 |
-| Web Search、fast/auto mode、MCP tool search | 依 provider | 取決於 Copilot endpoint 與 gateway translation。 |
+| Fast inference | catalog 有提供時可用 | Codex `/fast` 轉成 Copilot 的獨立 `-fast` sibling；Claude Code 使用 `claude-copilot --fast`。沒有 sibling 時會警告並退回 standard。 |
+| Web Search、auto mode、MCP tool search | 依 provider | 取決於 Copilot endpoint 與 gateway translation。 |
 | Ultrareview、Remote Control、Chrome、cloud Code Review、routines、web/mobile/Slack session | 不可以 | 需要 Claude.ai auth/cloud identity，local gateway 無法提供。 |
 
 官方參考：[feature availability](https://code.claude.com/docs/en/feature-availability)、
 [model configuration](https://code.claude.com/docs/en/model-config)、
 [gateway protocol](https://code.claude.com/docs/en/llm-gateway-protocol)、
 [Ultrareview](https://code.claude.com/docs/en/ultrareview)。
+
+### Fast routing
+
+OpenAI Responses API 以 `service_tier="fast"`（歷史上也用 `priority`）表示 Fast Mode，
+但目前釘選的 Copilot fork 會移除這個欄位；GitHub Copilot 則把 fast inference advertise
+成另一個 model id。共用 shim 每五分鐘 refresh `/v1/models`，由 eligible model 推導
+`<standard>` → `<standard>-fast` pair，把 Codex `/fast` request 改寫到 sibling，再於轉送前
+移除不支援的 tier。參考 OpenAI
+[Fast Mode guide](https://developers.openai.com/api/docs/guides/fast-mode)。
+
+Claude Code 原生 `/fast` 無法經這個 custom Anthropic gateway 使用；
+`claude-copilot --fast` 會讀相同 routing map，並加上 session-only `--model` override。
+Discovery 失敗時保留 last-good map；沒有 eligible sibling 時會警告並退回 standard。
+Status 與 doctor 會顯示 routing state。關閉 shim 也會關閉這項轉譯，且不會自動送出會
+消耗 quota 的 inference probe。
 
 ## 網路、entitlement 與診斷
 
@@ -209,9 +226,10 @@ ANTHROPIC_SMALL_FAST_MODEL
   `copilot-throttle-shim.js`，其他 process 會具名拒絕。required spawn 失敗也會 reap；不要用
   generic `/v1/models` 回應推論 identity。詳見
   [pitfalls/copilot-proxy-shim-port-held-by-another-process.md](https://github.com/daviddwlee84/windows-dotfiles/blob/main/pitfalls/copilot-proxy-shim-port-held-by-another-process.md)。
-- Metrics/throttle shim 與 parent commit `2799866` byte-for-byte 相同。任何 upstream body 尚未
-  暴露前，network error 或 HTTP 403/429/500/502/503/504 會以**相同 buffered request 與
-  model**重試；HTTP 402 與 bare 401 只通過一次，不做 request-time model substitution。
+- Metrics/throttle shim 與 Unix implementation byte-for-byte 相同。它會從 live catalog 推導
+  Fast sibling route；任何 upstream body 尚未暴露前，network error 或 HTTP
+  403/429/500/502/503/504 會以**相同 buffered request 與 effective model**重試；HTTP 402
+  與 bare 401 只通過一次。
 - Admission 從 `COPILOT_SHIM_MIN=4` 起步，只在持續且乾淨的queue pressure下往
   `COPILOT_SHIM_MAX=8` 增加；403/429 會立刻降回floor並cooldown五分鐘。
   `copilot-proxy limiter status`、`limiter set --min 4 --max 8 --limit 6`、`limiter reset`

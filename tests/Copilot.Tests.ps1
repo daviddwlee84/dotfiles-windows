@@ -1115,6 +1115,38 @@ Describe 'Copilot module' {
                 $script:capturedLaunch | Should -Be @('claude', '--dangerously-skip-permissions', '--model', 'custom-model')
             }
         }
+        It 'appends a live fast sibling for this session only' {
+            InModuleScope Copilot {
+                Mock Test-CopilotAlive { $true }
+                Mock Assert-CopilotShim { $true }
+                Mock Resolve-CopilotFastModel { param($Model) "$Model-fast" }
+                Mock Get-Command { $null } -ParameterFilter { $Name -eq 'specstory' }
+                Mock copilot-run { $script:capturedLaunch = @($Argv) }
+
+                claude-copilot --no-specstory --fast --model gpt-explicit 'two words'
+
+                $script:capturedLaunch | Should -Be @(
+                    'claude', '--dangerously-skip-permissions', '--model', 'gpt-explicit',
+                    'two words', '--model', 'gpt-explicit-fast'
+                )
+                Should -Invoke Resolve-CopilotFastModel -Times 1 -Exactly -ParameterFilter { $Model -eq 'gpt-explicit' }
+            }
+        }
+        It 'keeps the standard model when no fast sibling is available' {
+            InModuleScope Copilot {
+                Mock Test-CopilotAlive { $true }
+                Mock Assert-CopilotShim { $true }
+                Mock Resolve-CopilotFastModel { $null }
+                Mock Get-Command { $null } -ParameterFilter { $Name -eq 'specstory' }
+                Mock copilot-run { $script:capturedLaunch = @($Argv) }
+
+                $warnings = @()
+                claude-copilot --fast --no-specstory --model gpt-explicit -WarningVariable +warnings
+
+                $script:capturedLaunch | Should -Be @('claude', '--dangerously-skip-permissions', '--model', 'gpt-explicit')
+                ($warnings -join "`n") | Should -Match 'using the standard model'
+            }
+        }
         It 'keeps claude-copilot-once as a single delegating policy layer' {
             InModuleScope Copilot {
                 Mock Test-CopilotAlive { $true }
@@ -1254,6 +1286,24 @@ Describe 'Copilot module' {
                 } finally {
                     $env:COPILOT_CLAUDE_MODEL = $null
                 }
+            }
+        }
+    }
+
+    Context 'Fast model routing' {
+        It 'resolves standard ids, Claude aliases, and already-fast ids' {
+            InModuleScope Copilot {
+                $routing = [pscustomobject]@{
+                    state = 'ready'
+                    mappings = [pscustomobject]@{
+                        'gpt-test' = 'gpt-test-fast'
+                        'gpt-test[1m]' = 'gpt-test-fast[1m]'
+                    }
+                }
+                Resolve-CopilotFastModel -Model 'gpt-test' -Routing $routing | Should -BeExactly 'gpt-test-fast'
+                Resolve-CopilotFastModel -Model 'gpt-test[1m]' -Routing $routing | Should -BeExactly 'gpt-test-fast[1m]'
+                Resolve-CopilotFastModel -Model 'gpt-test-fast' -Routing $routing | Should -BeExactly 'gpt-test-fast'
+                Resolve-CopilotFastModel -Model 'gpt-other' -Routing $routing | Should -BeNullOrEmpty
             }
         }
     }
@@ -1912,8 +1962,8 @@ $m.Dispose()
     Context 'Responses compatibility shim' {
         It 'matches the reviewed Unix shim artifact without a sibling checkout' {
             $shimContract = [ordered]@{
-                UnixSourceCommit = '2799866e2074da080a6afd115578ab3350847aa9'
-                Sha256 = 'E82333BAD5AAF7A7352600C21583838ACD8C32DE22992275CD4C692FB2AA3452'
+                UnixSourceCommit = '9e737934f6e90d80ccedc5eccc9e0e032b18c81c'
+                Sha256 = '20F493B198CCA50430CE5300983F00641F675A3541E04AB986EA8CD7DE10A58E'
             }
             $windowsShim = Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-throttle-shim.js'
             $shimContract.UnixSourceCommit | Should -Match '^[0-9a-f]{40}$'
@@ -1936,6 +1986,35 @@ console.log(JSON.stringify({ r, p }));
                 $result.r.changed | Should -Be 1
                 $result.p.input[0].tools[0].description | Should -Be 'Tool alpha.'
                 $result.p.tools[0].PSObject.Properties.Name | Should -Not -Contain 'description'
+            } finally { Remove-Item env:COPILOT_SHIM_TEST_PATH -ErrorAction SilentlyContinue }
+        }
+
+        It 'derives fast siblings and translates Codex fast tiers' {
+            if (-not (Get-Command bun -ErrorAction SilentlyContinue)) { Set-ItResult -Skipped -Because 'bun is unavailable'; return }
+            $env:COPILOT_SHIM_TEST_PATH = (Resolve-Path (Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-throttle-shim.js')).Path
+            try {
+                $json = & bun -e @'
+import { pathToFileURL } from "node:url";
+const { buildFastModelMappings: build, normalizeRequestBody: normalize } = await import(pathToFileURL(process.env.COPILOT_SHIM_TEST_PATH));
+const catalog = { data: [
+  { id: "gpt-test", claude_model_id: "gpt-test[1m]", capabilities: { type: "chat" } },
+  { id: "gpt-test-fast", claude_model_id: "gpt-test-fast[1m]", capabilities: { type: "chat" } },
+  { id: "gpt-hidden", capabilities: { type: "chat" } },
+  { id: "gpt-hidden-fast", model_picker_enabled: false, capabilities: { type: "chat" } }
+] };
+const mappings = build(catalog);
+const body = new TextEncoder().encode(JSON.stringify({ model: "gpt-test", service_tier: "fast" })).buffer;
+const result = normalize("/v1/responses", body, "", mappings);
+const forwarded = typeof result.body === "string" ? JSON.parse(result.body) : JSON.parse(new TextDecoder().decode(result.body));
+console.log(JSON.stringify({ mappings, forwarded, routing: result.routing }));
+'@
+                $result = $json | ConvertFrom-Json
+                $result.mappings.'gpt-test' | Should -BeExactly 'gpt-test-fast'
+                $result.mappings.'gpt-test[1m]' | Should -BeExactly 'gpt-test-fast[1m]'
+                $result.mappings.PSObject.Properties.Name | Should -Not -Contain 'gpt-hidden'
+                $result.forwarded.model | Should -BeExactly 'gpt-test-fast'
+                $result.forwarded.PSObject.Properties.Name | Should -Not -Contain 'service_tier'
+                $result.routing.routed | Should -BeTrue
             } finally { Remove-Item env:COPILOT_SHIM_TEST_PATH -ErrorAction SilentlyContinue }
         }
 
@@ -2086,6 +2165,9 @@ upstream.stop(true);
                 $result.fastNonSse.status | Should -Be 502
                 $result.cancellation.deadResult | Should -BeExactly 'AbortError'
                 $result.cleanupFailures.metricFailureContained | Should -BeTrue
+                $result.fastRoute.forwarded.model | Should -BeExactly 'gpt-fixture-fast'
+                $result.fastRoute.forwarded.PSObject.Properties.Name | Should -Not -Contain 'service_tier'
+                @($result.metrics | Where-Object { $_.model -eq 'gpt-fixture-fast' -and $_.status -eq 200 }).Count | Should -Be 1
             } finally {
                 Get-ChildItem -LiteralPath ([System.IO.Path]::GetDirectoryName($metricsDb)) -Filter "$([System.IO.Path]::GetFileName($metricsDb))*" -ErrorAction SilentlyContinue |
                     Remove-Item -Force -ErrorAction SilentlyContinue

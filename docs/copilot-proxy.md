@@ -27,8 +27,8 @@ the PowerShell profile. It requires Bun, Node/npm and a Copilot subscription.
 | `copilot-proxy update VERSION` | stage, verify and select exact 2.3.4/2.3.0/2.1.0 without restarting |
 | `copilot-proxy rollback` | swap to the previous verified package offline, without restarting |
 | `copilot-run <cmd...>` | run a command with the proxy env injected |
-| `claude-copilot` | one-off Claude Code session on the proxy |
-| `claude-copilot-once` | pin this project, run once, then restore it |
+| `claude-copilot [--fast]` | one-off Claude Code session; `--fast` selects a live-catalog sibling for this session |
+| `claude-copilot-once [--fast]` | pin this project, run once, then restore it |
 | `codex-copilot` / `codex-copilot-once` | zero-persistence Codex session on the Responses proxy |
 | `copilot-here [on\|off\|status]` | sticky project pin in `.claude/settings.local.json` |
 | `copilot-model [<id>\|-l\|-c\|--auto]` | switch or inspect the complete role profile |
@@ -43,6 +43,7 @@ copilot-proxy start
 copilot-model --auto              # select from the live catalog
 copilot-model -c                   # inspect Main/Fable/Opus/Sonnet/Haiku
 copilot-here on                    # sticky project; or use claude-copilot-once
+claude-copilot --fast             # session-only fast sibling, with warned fallback
 codex-copilot                     # Codex; live OpenAI-first model selection
 ```
 
@@ -178,13 +179,31 @@ The useful boundary is local orchestration versus Anthropic cloud services:
 | Subagents and dynamic workflows | Yes | Role variables are provided without overriding workflow-specific subagent routing. See [workflows](https://code.claude.com/docs/en/workflows). |
 | `ultracode` | Yes on 2.3.4 | It is xhigh effort plus dynamic workflows, not a separate model. |
 | Thinking/reasoning | Translated | GPT uses Responses reasoning rather than Anthropic-native thinking semantics. |
-| Web search, fast/auto mode, MCP tool search | Provider-dependent | Availability depends on the Copilot endpoint and gateway translation. |
+| Fast inference | Yes when catalogued | Codex `/fast` is translated to Copilot's separate `-fast` sibling; Claude Code uses `claude-copilot --fast`. No sibling means a warned standard fallback. |
+| Web search, auto mode, MCP tool search | Provider-dependent | Availability depends on the Copilot endpoint and gateway translation. |
 | Ultrareview, Remote Control, Chrome, cloud Code Review, routines, web/mobile/Slack sessions | No | These require Claude.ai authentication/cloud identity; a local API gateway cannot provide it. |
 
 See Claude Code's [feature availability](https://code.claude.com/docs/en/feature-availability),
 [model configuration](https://code.claude.com/docs/en/model-config),
 [gateway protocol](https://code.claude.com/docs/en/llm-gateway-protocol), and
 [Ultrareview](https://code.claude.com/docs/en/ultrareview) references.
+
+### Fast routing
+
+OpenAI's Responses API expresses Fast Mode with `service_tier="fast"` (and
+historically `priority`), but the pinned Copilot fork removes that field.
+GitHub Copilot instead advertises fast inference as a separate model id. The
+shared shim refreshes `/v1/models` every five minutes, derives eligible
+`<standard>` → `<standard>-fast` pairs, rewrites Codex `/fast` requests to the
+sibling and removes the unsupported tier before forwarding. See OpenAI's
+[Fast Mode guide](https://developers.openai.com/api/docs/guides/fast-mode).
+
+Claude Code's native `/fast` is unavailable through this custom Anthropic
+gateway. `claude-copilot --fast` uses the same routing map and appends a
+session-only `--model` override. Failed discovery retains the last-good map; no
+eligible sibling falls back to the standard model with a warning. Status and
+doctor report routing state. Turning the shim off disables the translation, and
+no automatic paid inference probe is performed.
 
 ## Network, entitlement and diagnostics
 
@@ -236,8 +255,9 @@ See Claude Code's [feature availability](https://code.claude.com/docs/en/feature
   foreign listener with `COPILOT_SHIM_PORT`; never infer identity from a generic
   `/v1/models` response. See
   [pitfalls/copilot-proxy-shim-port-held-by-another-process.md](https://github.com/daviddwlee84/windows-dotfiles/blob/main/pitfalls/copilot-proxy-shim-port-held-by-another-process.md).
-- The metrics/throttle shim is pinned byte-for-byte to parent commit `2799866`.
-  It retries the **same buffered request and model** on network errors or HTTP
+- The metrics/throttle shim is shared byte-for-byte with the Unix implementation.
+  It derives Fast sibling routes from the live catalog and retries the **same
+  buffered request and effective model** on network errors or HTTP
   403/429/500/502/503/504 before any upstream body is exposed. HTTP 402 and bare
   401 pass through once; no request-time model substitution occurs. Queue/backoff
   cancellation releases permits promptly.
