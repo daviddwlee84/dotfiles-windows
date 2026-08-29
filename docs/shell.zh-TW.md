@@ -165,6 +165,13 @@ cmd 的行編輯器是 **[Clink](https://chrisant996.github.io/clink/)** —— 
     Clink 只是讓不得不用的 cmd session 舒服一點。用 `clink info` 檢視（會列出 profile
     目錄與載入的腳本）。
 
+## Microsoft 管理機器上的 dev-cli
+
+Microsoft 內部 DevTool 可能已占用 `dev.exe` 指令。因此 profile 讓 `dev` 維持一般
+PATH 解析，另將 `dev-cli` 直接指向受管的 repository/task CLI：
+`~\.local\bin\dev.exe`。PowerShell completion 與 Herdr `prefix+d` 也統一使用
+`dev-cli`，不必依賴 PATH 順序即可讓兩個工具並存。
+
 ## Git 別名
 
 `profile.d/21_git.ps1` 把整個 [oh-my-zsh `git` plugin](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/git)

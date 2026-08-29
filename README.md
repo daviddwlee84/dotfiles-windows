@@ -36,7 +36,7 @@ then applies the dotfiles.
 - **Editors**: VSCode, Cursor, Notepad++ (shared settings/keybindings).
 - **Apps** (winget): Windows Terminal, Alacritty, Raycast, PowerToys, Steam.
 - **Optional Herdr**: native preview multiplexer with `prefix+d` launching the
-  `dev` task/worktree dashboard, low-frequency copy helpers under `prefix+y`,
+  `dev-cli` task/worktree dashboard, low-frequency copy helpers under `prefix+y`,
   managed config, and a binary-matched official global agent skill.
 - **`copilot-proxy`** tool series, rewritten as a native PowerShell module.
 

@@ -106,8 +106,9 @@ and detach/attach. It has no scoop/winget manifest — it installs via herdr.dev
 official installer, and this machine intentionally follows the preview channel.
 Its config is managed at `~/.config/herdr/config.toml` (pwsh as the default shell).
 It stays off by default while the Windows build is beta.
-Enabling the stack also source-builds `dev` v0.1.0 into `~\.local\bin`: Herdr
-`prefix+d` opens its task/worktree dashboard, while the low-frequency clipboard
+Enabling the stack also source-builds `dev` v0.1.0 into `~\.local\bin` and
+exposes it as `dev-cli`, avoiding Microsoft DevTool's same-named `dev.exe`:
+Herdr `prefix+d` opens its task/worktree dashboard, while the low-frequency clipboard
 helpers live in the `prefix+y` herdr-plus list (the interactive path picker keeps
 `prefix+p`). The required Scoop Go toolchain is therefore self-contained and is
 reused to build herdr-plus. Windows Terminal stays installed for its panes/tabs; Alacritty

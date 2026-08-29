@@ -5,6 +5,7 @@ BeforeAll {
     $PackageTemplate = Join-Path $RepoRoot '.chezmoiscripts' 'run_onchange_after_10_packages.ps1.tmpl'
     $HerdrConfig = Join-Path $RepoRoot '.chezmoitemplates' 'herdr' 'config.toml'
     $ToolsProfile = Join-Path $RepoRoot 'dot_config' 'powershell' 'profile.d' '10_tools.ps1'
+    $AliasesProfile = Join-Path $RepoRoot 'dot_config' 'powershell' 'profile.d' '20_aliases.ps1'
     $Justfile = Join-Path $RepoRoot 'justfile'
     $QuickActions = Join-Path $RepoRoot 'dot_config' 'herdr' 'plugins' 'config' 'cloudmanic.herdr-plus' 'quick-actions'
 }
@@ -14,6 +15,7 @@ Describe 'dev-cli Windows install and Herdr alignment' {
         $script:package = Get-Content -Raw -LiteralPath $PackageTemplate
         $script:config = Get-Content -Raw -LiteralPath $HerdrConfig
         $script:tools = Get-Content -Raw -LiteralPath $ToolsProfile
+        $script:aliases = Get-Content -Raw -LiteralPath $AliasesProfile
         $script:just = Get-Content -Raw -LiteralPath $Justfile
     }
 
@@ -26,17 +28,19 @@ Describe 'dev-cli Windows install and Herdr alignment' {
     }
 
     It 'keeps apply install-only and exposes an explicit upgrade recipe' {
-        $package | Should -Match 'if \(\(Have dev\) -or \(Test-Path -LiteralPath \$devBin\)\)'
+        $package | Should -Match 'if \(Test-Path -LiteralPath \$devBin\)'
+        $package | Should -Not -Match '\(Have dev\).+\$devBin'
         $just | Should -Match 'upgrade-dev:\s*\r?\n\s*\$env:GOBIN.+go install github\.com/daviddwlee84/dev-cli/cmd/dev@latest'
     }
 
-    It 'generates cached PowerShell completion when dev is present' {
-        $tools | Should -Match "Import-CachedInit -Name 'dev' -Exe 'dev'"
-        $tools | Should -Match 'dev completion powershell'
+    It 'exposes the owned binary as dev-cli and completes that name' {
+        $aliases | Should -Match 'Set-Alias -Name dev-cli -Value \$devCliExe -Scope Global'
+        $tools | Should -Match 'Import-CachedInit -Name ''dev-cli'' -Exe \$devCliExe'
+        $tools | Should -Match '-CommandName ''dev-cli'''
     }
 
-    It 'binds prefix+d to dev and removes the redundant direct copy keys' {
-        $config | Should -Match '(?s)key = "prefix\+d"\s*type = "pane"\s*command = "dev"'
+    It 'binds prefix+d to dev-cli and removes the redundant direct copy keys' {
+        $config | Should -Match '(?s)key = "prefix\+d"\s*type = "pane"\s*command = "dev-cli"'
         $config | Should -Not -Match 'key = "prefix\+(?-i:P|D|V|S|ctrl\+d)"'
         $config | Should -Match 'key = "prefix\+p"'
         $config | Should -Match 'cloudmanic\.herdr-plus\.quick-actions-windows'

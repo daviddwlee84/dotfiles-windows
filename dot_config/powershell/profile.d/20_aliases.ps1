@@ -22,6 +22,14 @@ if (Get-Command lazygit -ErrorAction SilentlyContinue) {
     Set-Alias -Name lg -Value lazygit -Scope Global
 }
 
+# Microsoft-managed machines may already reserve `dev` for the unrelated
+# DevTool. Keep that PATH-selected command intact and expose our repository/task
+# CLI under its package name instead.
+$devCliExe = Join-Path $HOME '.local\bin\dev.exe'
+if (Test-Path -LiteralPath $devCliExe) {
+    Set-Alias -Name dev-cli -Value $devCliExe -Scope Global
+}
+
 # --- unix muscle-memory ---
 # `which foo` — resolve a command like the unix tool. pwsh's native equivalent
 # is Get-Command (alias gcm); this prints just the path for executables and a

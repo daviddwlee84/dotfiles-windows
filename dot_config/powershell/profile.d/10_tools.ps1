@@ -72,9 +72,14 @@ Import-CachedInit -Name 'tv' -Exe 'tv' -Generate {
     $o
 }
 
-# dev-cli — Cobra PowerShell completion. The CLI is installed with the optional
-# Herdr stack because it backs prefix+d; this remains a harmless no-op elsewhere.
-Import-CachedInit -Name 'dev' -Exe 'dev' -Generate { dev completion powershell }
+# dev-cli — Cobra PowerShell completion. Use the owned binary path because a
+# Microsoft-managed machine may expose its unrelated DevTool as `dev`. The
+# generated completer is retargeted to the collision-free `dev-cli` alias from
+# 20_aliases.ps1.
+$devCliExe = Join-Path $HOME '.local\bin\dev.exe'
+Import-CachedInit -Name 'dev-cli' -Exe $devCliExe -Generate {
+    (& $devCliExe completion powershell) -replace "-CommandName 'dev'", "-CommandName 'dev-cli'"
+}
 
 # translate — cobra tab-completion for the terminal translator (opt-in
 # installTranslate; built by run_onchange_after_10_packages). The pwsh

@@ -117,8 +117,8 @@ navigate_workspace_up = ["k", "up"]
 [[keys.command]]
 key = "prefix+d"
 type = "pane"
-command = "dev"
-description = "dev repository/task dashboard (popup pane)"
+command = "dev-cli"
+description = "dev-cli repository/task dashboard (popup pane)"
 
 [[keys.command]]
 key = "prefix+G"

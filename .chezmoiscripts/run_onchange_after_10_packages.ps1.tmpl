@@ -193,7 +193,10 @@ function Install-Herdr {
 # `just upgrade-dev`.
 function Install-DevCli {
     $devBin = Join-Path $HOME '.local\bin\dev.exe'
-    if ((Have dev) -or (Test-Path -LiteralPath $devBin)) { Info 'dev-cli already installed'; return }
+    # Do not use `Have dev`: Microsoft-managed machines may already expose the
+    # unrelated DevTool as dev.exe. Only this owned install path proves that our
+    # dev-cli is present; the PowerShell profile exposes it as `dev-cli`.
+    if (Test-Path -LiteralPath $devBin) { Info 'dev-cli already installed'; return }
 
     $devVersion = 'v0.1.0'
     if (-not (Have go)) {

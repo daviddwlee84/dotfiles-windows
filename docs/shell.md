@@ -181,6 +181,14 @@ non-fatal; starship still works offline).
     unavoidable cmd session pleasant. Inspect it with `clink info` (lists the
     profile dir + loaded scripts).
 
+## dev-cli on Microsoft-managed machines
+
+Microsoft's internal DevTool may already own the `dev.exe` command. The profile
+therefore leaves `dev` to normal PATH resolution and maps `dev-cli` directly to
+the managed repository/task CLI at `~\.local\bin\dev.exe`. Its PowerShell
+completion and Herdr `prefix+d` binding use `dev-cli` too, so both tools can
+coexist without relying on PATH order.
+
 ## Git aliases
 
 `profile.d/21_git.ps1` ports the whole [oh-my-zsh `git` plugin](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/git)
