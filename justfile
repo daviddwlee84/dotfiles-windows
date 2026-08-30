@@ -32,9 +32,21 @@ upgrade-scoop:
 upgrade-winget:
     winget upgrade --all --accept-source-agreements --accept-package-agreements
 
-# upgrade npm coding agents (close OpenCode/Codex/Copilot first; Windows locks live executables)
+# upgrade npm coding agents (close Pi/OpenCode/Codex/Copilot first; Windows locks live executables)
 upgrade-npm-agents:
     pwsh -NoProfile -File ./scripts/run-package-source-command.ps1 -Action UpgradeNpmAgents
+
+# upgrade Oh My Pi through its official prebuilt-binary installer
+upgrade-omp:
+    pwsh -NoProfile -File ./scripts/upgrade-omp.ps1
+
+# fast-forward the chezmoi-managed pi-agents external checkout
+upgrade-pia:
+    chezmoi apply --refresh-externals
+
+# upgrade the complete Pi/pia/OMP + npm-agent stack (close running agents first)
+# Deliberately not part of `just upgrade`: live executables may be locked.
+upgrade-agents: upgrade-npm-agents upgrade-omp upgrade-pia
 
 # Upgrade the Go-installed dev CLI (installed with the optional Herdr stack).
 # Deliberately not in `just upgrade`: on a host without Herdr this would install it.

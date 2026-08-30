@@ -9,6 +9,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'package-source-runner.ps1')
+. (Join-Path $PSScriptRoot 'pi-package-core.ps1')
 $policy = Get-ChezmoiPackageSourcePolicy
 
 function Invoke-DocsCommand {
@@ -31,6 +32,19 @@ switch ($Action) {
     'UpgradeNpmAgents' {
         $npmCommand = (Get-Command npm -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
         $npm = Get-NpmGlobalExecutionContext -NpmCommandPath $npmCommand
+        $piNpmCommand = Get-PiOwnedNpmCommandPath
+        if (-not (Test-Path -LiteralPath $piNpmCommand -PathType Leaf)) {
+            throw "owned Scoop npm is unavailable: $piNpmCommand"
+        }
+        $piNpm = Get-PiOwnedNpmContext -NpmContext `
+            (Get-NpmGlobalExecutionContext -NpmCommandPath $piNpmCommand)
+        $piResult = Invoke-PiCodingAgentPackageCommand -NpmContext $piNpm -Action Update `
+            -ManagedMachine $policy.ManagedMachine -AllowPublicFallback $policy.AllowPublicFallback `
+            -TimeoutSeconds 1200
+        if (-not $piResult.Succeeded) {
+            if ($piResult.Failure) { [Console]::Error.WriteLine("Pi upgrade failed: $($piResult.Failure)") }
+            exit $piResult.ExitCode
+        }
         foreach ($package in @('opencode-ai', '@openai/codex', '@github/copilot')) {
             $result = Invoke-PackageSourceCommand -Manager npm -Executable $npm.NodeExecutable `
                 -Arguments @($npm.NpmCli, 'update', '-g', $package) `

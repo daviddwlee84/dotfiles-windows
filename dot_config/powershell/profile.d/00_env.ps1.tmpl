@@ -45,11 +45,52 @@ if (Get-Command nvim -ErrorAction SilentlyContinue) { $env:EDITOR = 'nvim' }
 
 # Prepend user bin dirs to PATH, idempotently. scoop already adds its shims to
 # the persisted user PATH, but a fresh session inside chezmoi apply may not have
-# it yet; ~/.local/bin carries uv tools + the uv-managed python. Normalize each
-# entry to backslashes (mixed slashes can fail Windows command resolution).
+# it yet; ~/.local/bin carries uv tools + the uv-managed python. The remaining
+# paths are presence-gated so a disabled/failed optional install never leaves a
+# dead PATH entry: pia's external checkout, OMP's official binary directory, and
+# Scoop Git's unshimmed bash.exe (used by OMP). Normalize entries to backslashes
+# because mixed slashes can fail Windows command resolution.
+{{ if .installCodingAgents -}}
+$ScoopRoot = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $HOME 'scoop' }
+$PiaRoot = Join-Path $HOME '.local\share\pi-agents'
+$PiWrapperRoot = Join-Path $HOME '.config\powershell\bin'
+$OmpRoot = Join-Path $env:LOCALAPPDATA 'omp'
+$ScoopGitBin = Join-Path $ScoopRoot 'apps\git\current\bin'
+$PiOwnedLauncher = Join-Path $PiWrapperRoot 'pia-pi.ps1'
+$OmpOwnedBinary = Join-Path $OmpRoot 'omp.exe'
+if (-not $env:PIA_PI_BIN) {
+    $env:PIA_PI_BIN = $PiOwnedLauncher
+}
+if (-not $env:PIA_OMP_BIN) {
+    $env:PIA_OMP_BIN = $OmpOwnedBinary
+}
+# Keep PowerShell on an argv-preserving script path instead of resolving the
+# trusted-interactive pi.cmd batch shim. A pre-existing user alias/function wins.
+if ((Test-Path -LiteralPath $PiOwnedLauncher -PathType Leaf) -and
+    -not (Get-Command pi -CommandType Alias, Function -ErrorAction SilentlyContinue)) {
+    function global:pi {
+        & (Join-Path $HOME '.config\powershell\bin\pia-pi.ps1') @args
+    }
+}
+{{ end -}}
 $UserPaths = @(
     (Join-Path $HOME '.local/bin'),
     (Join-Path $HOME 'scoop/shims'),
+{{ if .installCodingAgents -}}
+    $(if (Test-Path -LiteralPath (Join-Path $PiaRoot 'bin\pia.cmd') -PathType Leaf) {
+        Join-Path $PiaRoot 'bin'
+    }),
+    $(if ((Test-Path -LiteralPath (Join-Path $PiWrapperRoot 'pi.cmd') -PathType Leaf) -and
+        (Test-Path -LiteralPath $PiOwnedLauncher -PathType Leaf)) {
+        $PiWrapperRoot
+    }),
+    $(if (Test-Path -LiteralPath $OmpOwnedBinary -PathType Leaf) {
+        $OmpRoot
+    }),
+    $(if (Test-Path -LiteralPath (Join-Path $ScoopGitBin 'bash.exe') -PathType Leaf) {
+        $ScoopGitBin
+    }),
+{{ end -}}
     # herdr has no scoop shim; its bin junction lives here (opt-in installHerdr).
     (Join-Path $env:LOCALAPPDATA 'Programs\Herdr\bin')
 ) | Where-Object { $_ -and (Test-Path $_) } |

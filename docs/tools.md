@@ -149,6 +149,37 @@ Enabled by **Install coding agents**:
   with `npm view <package>@<version> version`, not `npm ping`; the matching
   symptom records are `copilot-api-connectionrefused-stale-bun-only-module`
   and `packagefeedproxy-npm-404-wrong-base-path` under `pitfalls/`.
+- **Pi** (`@earendil-works/pi-coding-agent`) — installed through the same
+  corporate-first npm policy into Scoop Node's owned persistent prefix, always
+  with `--ignore-scripts --no-bin-links`. A managed `pi.cmd` plus private
+  `pia-pi.ps1` launcher
+  resolve the package's declared `bin.pi` entrypoint directly, so unrelated npm
+  `pi` shims are preserved. Migration of the exact deprecated predecessor
+  `@mariozechner/pi-coding-agent` snapshots the previous package and shims and
+  rolls them back if canonical installation fails. The wrapper blocks only
+  self-inclusive Pi updates (`pi update`, `--self`, or `--all`); model- and
+  extension-only updates still work. Use `just upgrade-npm-agents` for Pi itself
+  so prefix, source policy, and rollback remain enforced.
+  PowerShell installs an argv-preserving `pi` function that calls the private
+  launcher directly. `pi.cmd` is a trusted interactive cmd.exe shim, like npm's
+  own batch shims; automation with arbitrary argv should call
+  `~/.config/powershell/bin/pia-pi.ps1` with a PowerShell argument array (or use
+  `pia`, whose launcher avoids shell parsing).
+- **Oh My Pi (`omp`)** — installed as the official prebuilt Windows binary by
+  invoking `https://omp.sh/install.ps1` with `-Binary`. The install is accepted
+  only when `%LOCALAPPDATA%\omp\omp.exe` exists and returns a non-empty successful
+  `--version`. Scoop Git's real `bin` directory is placed on PATH so the upstream
+  installer can record its `bash.exe` for OMP shell features.
+- **`pia`** — a chezmoi external fast-forwards
+  `daviddwlee84/pi-agents` into `~/.local/share/pi-agents`; its `bin` directory is
+  promoted in both PowerShell and native User PATH only when `bin/pia.cmd`
+  exists. `PIA_PI_BIN` and `PIA_OMP_BIN` default to the owned launchers without
+  replacing explicit user overrides. There is no scheduled refresh; run
+  `just upgrade-pia` explicitly. The checkout is an immutable
+  deployment mirror: `pia use` stores the selection in `~/.config/pi-agents`,
+  while runtimes, sessions, and handoffs stay under `~/.local/state/pi-agents`.
+  `gitleaks` is installed with this bundle because `pia handoff` uses it for the
+  final local secret scan.
 - **Codex native footer** — chezmoi non-destructively merges a provider-neutral
   status line (model/reasoning, fast mode, branch, context, tasks, directory)
   into `~/.codex/config.toml`. No fork or PATH shim; see
@@ -269,8 +300,15 @@ upgrades are explicit:
 ```powershell
 just upgrade-scoop     # scoop update *
 just upgrade-winget    # winget upgrade --all
-just upgrade-npm-agents # close OpenCode/Codex/Copilot first (Windows locks live executables)
+just upgrade-npm-agents # Pi/OpenCode/Codex/Copilot; close them first (Windows locks executables)
+just upgrade-omp       # rerun the official -Binary installer, then verify omp.exe
+just upgrade-pia       # refresh the chezmoi external checkout
+just upgrade-agents    # aggregate the three commands above
 just upgrade-dev       # go install .../dev@latest (installed with the Herdr stack)
 just upgrade-herdr     # verified official installer + matching global skill (run outside Herdr)
 just upgrade-translate # scoop update translate (opt-in tool; not in `just upgrade`)
 ```
+
+The agent upgrades are deliberately not dependencies of bare `just upgrade`:
+Windows may lock a running CLI or OMP binary, and `pia` should not move to a new
+combo revision in the middle of an active session.

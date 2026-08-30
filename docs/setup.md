@@ -75,7 +75,7 @@ PowerShell anyway, so a machine with *no* PowerShell couldn't use the repo.
 | Prompt | Default | Meaning |
 |---|---|---|
 | Role | `workstation` | `workstation` = full desktop; `minimal` = shell only |
-| Coding agents | on (workstation) | Claude Code, OpenCode, Codex, Copilot CLI, SpecStory |
+| `Install coding agents (Claude Code, OpenCode, Codex, Copilot CLI, Pi, pia, OMP, SpecStory)` | on (workstation) | native and npm agents plus the Git-managed `pia` combo checkout; credentials and mutable sessions stay outside chezmoi |
 | Agent completion feedback | `notify` (workstation) / `none` (minimal) | what a coding agent does when it finishes: `none` / `notify` (Windows toast) / `peon` (game voice line) / `both` — see [Agent completion sounds](agent-sounds.md) |
 | SpecStory build | off | build the experimental SpecStory CLI for Windows from the unmerged PR #191 (needs git + go) |
 | Windows GUI apps | on (workstation) | VSCode, Cursor, Notepad++, Terminal, Alacritty, PowerToys, Raycast, Docker Desktop, Discord |
@@ -113,6 +113,7 @@ chezmoi apply           # apply local source edits only (no pull)
 chezmoi update --init   # git pull + apply; --init re-asks any newly-added prompts (noop if none)
 just upgrade-scoop     # upgrade CLI tools
 just upgrade-winget    # upgrade GUI apps
+just upgrade-agents    # Pi/OMP/pia + npm coding agents; close running agents first
 ```
 
 Inside a loaded pwsh session, `cau` (= `chezmoi update --init` + reload

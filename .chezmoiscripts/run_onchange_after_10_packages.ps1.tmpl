@@ -44,6 +44,11 @@ $allowPublicPackageFallback = {{ if (get . "allowPublicPackageFallback") }}$true
 # company feeds. Other ecosystems retain their existing source behavior.
 {{ include "scripts/package-source-runner.ps1" }}
 
+# Shared lifecycle helpers used here and by explicit upgrade recipes. Including
+# them makes helper changes part of this run_onchange script's rendered hash.
+{{ include "scripts/pi-package-core.ps1" }}
+{{ include "scripts/omp-install-core.ps1" }}
+
 function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 function Have($n) { [bool](Get-Command $n -ErrorAction SilentlyContinue) }
 function Register-Failure($what) { $script:Failures.Add($what); Write-Warning "FAILED (skipped): $what" }
@@ -159,6 +164,27 @@ function Npm-InstallGlobal([string[]]$pkgs) {
             -PackageSpec $p -NpmPrefix $npm.Prefix -NpmCache $npm.Cache `
             -NpmConfigValues $npm.ConfigValues -ManagedMachine $managedMachine -AllowPublicFallback $allowPublicPackageFallback
         if (-not $result.Succeeded) { Register-Failure "npm:$p" }
+    }
+}
+
+function Install-PiCodingAgent {
+    $npmExecutable = Get-PiOwnedNpmCommandPath
+    if (-not (Test-Path -LiteralPath $npmExecutable -PathType Leaf)) {
+        Register-Failure "npm:$script:PiCodingAgentPackage (owned Scoop npm unavailable)"
+        return
+    }
+    try {
+        $npm = Get-PiOwnedNpmContext -NpmContext `
+            (Get-NpmGlobalExecutionContext -NpmCommandPath $npmExecutable)
+        $result = Invoke-PiCodingAgentPackageCommand -NpmContext $npm -Action Install `
+            -ManagedMachine $managedMachine -AllowPublicFallback $allowPublicPackageFallback
+        if (-not $result.Succeeded) {
+            $detail = if ($result.Failure) { " ($($result.Failure))" } else { '' }
+            Register-Failure "npm:$script:PiCodingAgentPackage$detail"
+        }
+    } catch {
+        Write-Warning "Pi install error: $_"
+        Register-Failure "npm:$script:PiCodingAgentPackage"
     }
 }
 
@@ -397,13 +423,18 @@ Scoop-Install @('ffmpeg', 'imagemagick')
 # AI coding agents. Claude Code ships a native Windows build via winget
 # (Anthropic.ClaudeCode — distinct from Anthropic.Claude, the desktop app in the
 # GUI block below), so it no longer rides on npm; upgrades come with
-# `just upgrade-winget`. The rest are npm-based CLIs; Antigravity IDE is winget.
+# `just upgrade-winget`. OpenCode/Codex/Copilot are ordinary npm CLIs. Pi has a
+# dedicated policy-aware install because lifecycle scripts must stay disabled and
+# the deprecated @mariozechner package needs an exact, one-time migration. OMP
+# uses its official prebuilt-binary installer. Antigravity IDE is winget.
 Winget-Install 'Anthropic.ClaudeCode'
 Npm-InstallGlobal @(
     'opencode-ai',
     '@openai/codex',
     '@github/copilot'
 )
+Install-PiCodingAgent
+if (-not (Install-OmpBinary)) { Register-Failure 'omp' }
 # NOTE: SpecStory ships no native-Windows CLI (macOS: brew; Linux/WSL: GitHub
 # release binaries only), so it is intentionally omitted -- `npm i -g
 # @specstory/cli` 404s. The Copilot module already no-ops when `specstory` is
@@ -411,8 +442,9 @@ Npm-InstallGlobal @(
 # the installSpecstoryBuild toggle (block below) or `just specstory-build`
 # (see backlog/specstory-windows-native-cli.md).
 
-# OpenCode Desktop (GUI companion to the opencode-ai CLI) via scoop extras.
-Scoop-Install @('extras/opencode-desktop')
+# OpenCode Desktop (GUI companion to the opencode-ai CLI) plus gitleaks, which
+# `pia handoff` uses as its final local secret scan.
+Scoop-Install @('extras/opencode-desktop', 'gitleaks')
 
 # apprise -> Windows toast notifications for the Claude Code notify hook
 # (~/.claude/hooks/notify.ps1, wired via claude/settings-overlay.json). Its

@@ -39,7 +39,7 @@ Windows Terminal over the bare console window.
 
 **`Ctrl+G`** (or the `Ctrl+X Ctrl+E` chord) opens the current prompt in `$EDITOR`.
 This repo already sets `$env:EDITOR = 'nvim'` in
-`dot_config/powershell/profile.d/00_env.ps1` (when nvim is on PATH), so `Ctrl+G`
+`dot_config/powershell/profile.d/00_env.ps1.tmpl` (when nvim is on PATH), so `Ctrl+G`
 drops you straight into nvim; save and quit to load the edited text back. Works in
 pwsh on Windows.
 

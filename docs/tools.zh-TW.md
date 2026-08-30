@@ -142,6 +142,33 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
   symptom record 是 `pitfalls/` 下的
   `copilot-api-connectionrefused-stale-bun-only-module` 與
   `packagefeedproxy-npm-404-wrong-base-path`。
+- **Pi**（`@earendil-works/pi-coding-agent`）—— 走同一套 corporate-first npm
+  政策，固定裝進 Scoop Node 自有的 persistent prefix，並一律加上
+  `--ignore-scripts --no-bin-links`。chezmoi 管理的 `pi.cmd` 與私有
+  `pia-pi.ps1` launcher 會直接解析
+  package 宣告的 `bin.pi` entrypoint，因此不會刪除其他 npm `pi` shim。遷移精確的
+  舊套件 `@mariozechner/pi-coding-agent` 前會快照既有 package 與 shims；canonical
+  安裝失敗時會復原。wrapper 只會阻擋包含 Pi 本體的 update（`pi update`、
+  `--self`、`--all`）；只更新 model／extension 仍可使用。Pi 本體請用
+  `just upgrade-npm-agents`，以維持固定 prefix、source policy 與 rollback。
+  PowerShell 會建立保留 argv 的 `pi` function，直接呼叫私有 launcher。
+  `pi.cmd` 與 npm 自己的 batch shim 一樣，只供可信的互動式 cmd.exe 使用；需要
+  傳遞任意 argv 的 automation，請用 PowerShell argument array 呼叫
+  `~/.config/powershell/bin/pia-pi.ps1`，或使用不啟用 shell parsing 的 `pia`。
+- **Oh My Pi（`omp`）** —— 以 `-Binary` 執行官方
+  `https://omp.sh/install.ps1`，只安裝預編譯 Windows binary。只有
+  `%LOCALAPPDATA%\omp\omp.exe` 確實存在，且 `--version` 成功回傳非空內容，才算
+  安裝成功。PATH 也會加入 Scoop Git 真正的 `bin` 目錄，讓上游 installer 能把
+  `bash.exe` 記錄給 OMP 的 shell 功能。
+- **`pia`** —— chezmoi external 會把 `daviddwlee84/pi-agents` fast-forward 到
+  `~/.local/share/pi-agents`；只有 `bin/pia.cmd` 存在時，才把它的 `bin` 提升到
+  PowerShell 與原生 User PATH 前段。`PIA_PI_BIN` / `PIA_OMP_BIN` 只在未有使用者
+  override 時才預設為自有 launcher。不做排程 refresh；請明確執行
+  `just upgrade-pia`。
+  這份 checkout 是唯讀部署 mirror：`pia use` 的選擇存於
+  `~/.config/pi-agents`，runtime、session 與 handoff 則留在
+  `~/.local/state/pi-agents`。此 bundle 也會安裝 `gitleaks`，供 `pia handoff`
+  做最後一道本機 secret scan。
 - **Codex 原生 footer** —— chezmoi 以非破壞性 overlay 把 provider-neutral
   status line（model/reasoning、fast mode、branch、context、tasks、directory）合併到
   `~/.codex/config.toml`；不裝 fork 或 PATH shim。見
@@ -248,8 +275,14 @@ index/registry，保留 parent shell 與 cache，並明確顯示 retry。切換�
 ```powershell
 just upgrade-scoop     # scoop update *
 just upgrade-winget    # winget upgrade --all
-just upgrade-npm-agents # 請先關閉 OpenCode/Codex/Copilot（Windows 會鎖住執行中的 executable）
+just upgrade-npm-agents # Pi/OpenCode/Codex/Copilot；請先關閉（Windows 會鎖 executable）
+just upgrade-omp       # 重跑官方 -Binary installer，再驗證 omp.exe
+just upgrade-pia       # refresh chezmoi external checkout
+just upgrade-agents    # 聚合上面三個命令
 just upgrade-dev       # go install .../dev@latest（隨 Herdr stack 安裝）
 just upgrade-herdr     # 驗證過的官方 installer + 對應版本全域 skill（需在 Herdr 外執行）
 just upgrade-translate # go install …/translate@latest（選用工具，不含在 `just upgrade` 裡）
 ```
+
+這組 agent 升級刻意不掛到裸的 `just upgrade`：Windows 可能鎖住正在執行的 CLI
+或 OMP binary，也不應在 active session 中途把 `pia` 的 combos 切到新 revision。

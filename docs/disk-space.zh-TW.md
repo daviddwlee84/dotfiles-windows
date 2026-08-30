@@ -16,7 +16,7 @@
 | 開關 | 主要吃空間的項目 | 估計（安裝後） | `workstation` 預設開 |
 |---|---|---|---|
 | **Baseline**（一定裝） | gcc/MinGW 工具鏈 ~1–1.3 GB、node+bun ~200 MB、uv+Python ~200 MB、neovim/yazi + 一堆小 CLI | **~2 GB** | 永遠 |
-| `installCodingAgents` | Claude Code（winget）+ 3 個 npm agent（opencode/codex/copilot）+ opencode-desktop + apprise | **~0.7 GB** | ✅ |
+| `installCodingAgents` | Claude Code + 4 個 npm agent（Pi/opencode/codex/copilot）+ OMP binary + pia external + gitleaks + opencode-desktop + apprise | **~0.9 GB** | ✅ |
 | `installWindowsApps` | **Docker Desktop ~2.5 GB**、Cursor/Antigravity 各 ~0.6 GB、VSCode/PowerToys 各 ~0.35 GB、4 個瀏覽器、Claude/ChatGPT desktop、Hack Nerd Fonts ~0.4 GB | **~7 GB** | ✅ |
 | `installWsl` | WSL2 平台 + kernel（不含 distro） | **~1.5 GB** | ✅ |
 | `installWslUbuntu` | Ubuntu rootfs + distro 內 dotfiles bootstrap | **~2.5 GB** | — |
@@ -43,7 +43,7 @@
 `workstation` 的算式：
 
 ```
-baseline 2.0 + agents 0.7 + WindowsApps 7.0 + WSL 1.5 + utility 1.0 + runtimes 2.2
+baseline 2.0 + agents 0.9 + WindowsApps 7.0 + WSL 1.5 + utility 1.0 + runtimes 2.2
 ≈ 14–15 GB
 ```
 

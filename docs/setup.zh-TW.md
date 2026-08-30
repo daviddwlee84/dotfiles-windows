@@ -69,7 +69,7 @@ powershell -ExecutionPolicy Bypass -File "%TEMP%\bootstrap.ps1"
 | 提問 | 預設 | 意義 |
 |---|---|---|
 | Role | `workstation` | `workstation` = 完整桌面；`minimal` = 只有 shell |
-| Coding agents | 開（workstation） | Claude Code、OpenCode、Codex、Copilot CLI、SpecStory |
+| `Install coding agents (Claude Code, OpenCode, Codex, Copilot CLI, Pi, pia, OMP, SpecStory)` | 開（workstation） | 原生與 npm agents，加上 Git 管理的 `pia` combo checkout；credentials 與可變 sessions 都不進 chezmoi |
 | Agent 完成回饋 | `notify`（workstation）/`none`（minimal） | coding agent 跑完時做什麼：`none`／`notify`（Windows 通知）／`peon`（遊戲語音）／`both` —— 見 [Agent 完成音效](agent-sounds.zh-TW.md) |
 | SpecStory build | 關 | 從尚未合併的 PR #191 建置實驗性的 Windows SpecStory CLI（需 git + go） |
 | Windows GUI apps | 開（workstation） | VSCode、Cursor、Notepad++、Terminal、Alacritty、PowerToys、Raycast、Docker Desktop、Discord |
@@ -107,6 +107,7 @@ chezmoi apply           # 只套用本機 source 的改動（不 pull）
 chezmoi update --init   # git pull 後套用；--init 會補問新增的 prompt（沒新增則 noop）
 just upgrade-scoop     # 升級 CLI 工具
 just upgrade-winget    # 升級 GUI 應用程式
+just upgrade-agents    # Pi/OMP/pia + npm coding agents；請先關閉執行中的 agents
 ```
 
 在已載入的 pwsh session 中,`cau`(= `chezmoi update --init` 後 reload

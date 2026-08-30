@@ -30,15 +30,19 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 ## Packages
 - `.chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl` is the **single source of
   truth** for installs, gated by the init toggles. scoop = CLI tools, winget = GUI
-  apps, npm = AI agents, PSGallery = PSFzf/AudioDeviceCmdlets. Fault-tolerant: one
-  failed package is collected + reported, never aborts the apply.
+  apps, npm = AI agents, PSGallery = PSFzf/AudioDeviceCmdlets. The coding-agent
+  bundle also installs Pi through the shared npm-source policy with
+  `--ignore-scripts --no-bin-links`, OMP through the official `-Binary` installer, gitleaks, and
+  the chezmoi external at `~/.local/share/pi-agents` that provides `pia`.
+  Fault-tolerant: one failed package is collected + reported, never aborts the apply.
 - Package sources are defined once in `.chezmoitemplates/package-sources.ps1` and
   reused by the installer and `profile.d/05_mirrors.ps1`: managed machines use
   company PyPI/npm pull-through registries; otherwise the China-mirror toggle
   selects GFW mirrors. Managed policy wins. An independent, default-off public
   fallback retries only eligible repo-owned npm/uv commands once.
-- Install ≠ upgrade: `chezmoi apply` only installs what's missing; upgrade via
-  `just upgrade-scoop` / `just upgrade-winget`.
+- Install ≠ upgrade: `chezmoi apply` only installs what's missing; upgrade the
+  Pi/pia/OMP stack with `just upgrade-agents`, or use the component recipes
+  `upgrade-npm-agents` / `upgrade-omp` / `upgrade-pia`.
 
 ## copilot-proxy
 - Module at `~/.config/powershell/modules/Copilot`. Commands: `copilot-proxy`
@@ -75,12 +79,14 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 
 ## What's enabled on THIS machine
 - role: **{{ .role }}**
-- Coding agents: {{ .installCodingAgents }} · Agent sounds: {{ .agentSounds }} · SpecStory build (PR #191): {{ .installSpecstoryBuild }} · GUI apps: {{ .installWindowsApps }} · WSL2 (Docker backend): {{ .installWsl }} · WSL Ubuntu: {{ .installWslUbuntu }} · Utility apps: {{ .installUtilityApps }} · Gaming: {{ .installGamingApps }}
+- Coding agents (Pi/pia/OMP included): {{ .installCodingAgents }} · Agent sounds: {{ .agentSounds }} · SpecStory build (PR #191): {{ .installSpecstoryBuild }} · GUI apps: {{ .installWindowsApps }} · WSL2 (Docker backend): {{ .installWsl }} · WSL Ubuntu: {{ .installWslUbuntu }} · Utility apps: {{ .installUtilityApps }} · Gaming: {{ .installGamingApps }}
 - Extra runtimes: {{ .installExtraRuntimes }} · Media: {{ .installMediaTools }} · LLM: {{ .installLlmTools }} · Tunnel: {{ .installTunnelTools }} · IaC: {{ .installIacTools }} · OpenSSH: {{ .installSshServer }} · herdr: {{ .installHerdr }} · Clink(cmd): {{ .installClink }} · try: {{ .installTry }} · translate: {{ .installTranslate }} · Rime/Weasel: {{ .installInputMethod }}
 - China mirrors: {{ .useChineseMirror }} · Managed machine: {{ .managedMachine }} · Public package fallback: {{ get . "allowPublicPackageFallback" | default false }} · Backup mode: {{ .backupMode }} · Vim mode: {{ .enableVimMode }}
 
 ## just recipes
-`just --list`: `apply`/`diff`/`update`, `upgrade-scoop`/`upgrade-winget`/`upgrade-dev`/`upgrade-translate`, `lint`/`test`,
+`just --list`: `apply`/`diff`/`update`, `upgrade-scoop`/`upgrade-winget`,
+`upgrade-npm-agents`/`upgrade-omp`/`upgrade-pia`/`upgrade-agents`,
+`upgrade-dev`/`upgrade-translate`, `lint`/`test`,
 `docs-serve`/`docs-build`, `enable-sshd` (opt-in OpenSSH server, elevated),
 `enable-wsl` (WSL2 for Docker Desktop; self-elevating UAC prompt, reboot after),
 `enable-wsl-ubuntu` (WSL2 Ubuntu distro + cross-platform dotfiles; needs enable-wsl first),
@@ -92,6 +98,19 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 ## Gotchas
 - Windows-only repo — no `{{ "{{" }} if eq .chezmoi.os {{ "}}" }}` branching needed.
 - Editor settings use a `run_onchange` pwsh merger (not `modify_`) on Windows.
+- **Pi / pia / OMP ownership**: Pi is the canonical
+  `@earendil-works/pi-coding-agent` npm package in Scoop Node's owned prefix,
+  installed with `--ignore-scripts --no-bin-links` and exposed through managed
+  `pi.cmd` / private `pia-pi.ps1` wrappers; only the exact deprecated
+  `@mariozechner/pi-coding-agent` is migrated with rollback. OMP must resolve from
+  `%LOCALAPPDATA%\omp\omp.exe` after the official `-Binary` installer and pass a
+  direct `--version` probe. `pia` comes from the immutable chezmoi external;
+  selection/runtime/session state stays outside that checkout. Native User PATH
+  entries are promoted only when their owned executable exists, while explicit
+  `PIA_PI_BIN` / `PIA_OMP_BIN` overrides are preserved.
+- PowerShell gets an argv-preserving `pi` function. `pi.cmd` is for trusted
+  interactive cmd.exe input; automation with arbitrary argv should invoke
+  `~/.config/powershell/bin/pia-pi.ps1` with an argument array or use `pia`.
 - tmux / zellij are Unix-only and intentionally absent; **WezTerm** (installed) is
   the stable native tmux-like multiplexer, or use Windows Terminal panes. **herdr**
   is an opt-in (`installHerdr`) native-Windows multiplexer in preview beta —

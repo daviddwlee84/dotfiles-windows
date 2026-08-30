@@ -32,7 +32,8 @@ then applies the dotfiles.
 - **Shell**: PowerShell 7 with a modular `$PROFILE` (`~/.config/powershell/profile.d/*.ps1`).
 - **Prompt**: [starship](https://starship.rs) (shared config with the macOS/Linux dotfiles).
 - **CLI tools** (scoop): git, neovim, lazygit, zoxide, fzf, bat, eza, ripgrep, fd, gh, delta, jq, yazi, btop, mise, uv, node, bun.
-- **AI agents**: Claude Code, OpenCode, Codex, GitHub Copilot CLI, SpecStory, Antigravity.
+- **AI agents**: Claude Code, OpenCode, Codex, GitHub Copilot CLI, Pi, Oh My Pi,
+  the Git-managed `pia` combo selector, SpecStory, and Antigravity.
 - **Editors**: VSCode, Cursor, Notepad++ (shared settings/keybindings).
 - **Apps** (winget): Windows Terminal, Alacritty, Raycast, PowerToys, Steam.
 - **Optional Herdr**: native preview multiplexer with `prefix+d` launching the
@@ -108,6 +109,7 @@ chezmoi diff            # preview pending changes without applying
 chezmoi apply           # apply local source edits only (no pull)
 just upgrade-scoop      # upgrade CLI tools
 just upgrade-winget     # upgrade GUI apps
+just upgrade-agents     # Pi/OMP/pia + npm agents (close running agents first)
 just upgrade-dev        # upgrade the dev task/worktree CLI (Herdr stack)
 just upgrade-herdr      # pane-preserving Herdr update + matching agent skill
 ```

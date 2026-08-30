@@ -15,7 +15,7 @@
     email = {{ promptStringOnce . "email" "Your git email" "daviddwlee84@gmail.com" | quote }}
 
     # --- feature toggles (role-defaulted) ---
-    installCodingAgents  = {{ promptBoolOnce . "installCodingAgents" "Install coding agents (Claude Code, OpenCode, Codex, Copilot CLI, SpecStory)" $full }}
+    installCodingAgents  = {{ promptBoolOnce . "installCodingAgents" "Install coding agents (Claude Code, OpenCode, Codex, Copilot CLI, Pi, pia, OMP, SpecStory)" $full }}
     # How a coding agent announces it finished. Gates HOOK WIRING ONLY — the
     # peon CLI installs alongside the agents so you can experiment any time.
     #   none   = silent

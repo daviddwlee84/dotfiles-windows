@@ -20,7 +20,7 @@ the toggles.
 | Toggle | Biggest items | Est. (installed) | Default on `workstation` |
 |---|---|---|---|
 | **Baseline** (always) | gcc/MinGW toolchain ~1–1.3 GB, node+bun ~200 MB, uv+Python ~200 MB, neovim/yazi + many small CLIs | **~2 GB** | always |
-| `installCodingAgents` | Claude Code (winget) + 3 npm agents (opencode/codex/copilot) + opencode-desktop + apprise | **~0.7 GB** | ✅ |
+| `installCodingAgents` | Claude Code + 4 npm agents (Pi/opencode/codex/copilot) + OMP binary + pia external + gitleaks + opencode-desktop + apprise | **~0.9 GB** | ✅ |
 | `installWindowsApps` | **Docker Desktop ~2.5 GB**, Cursor/Antigravity ~0.6 GB each, VSCode/PowerToys ~0.35 GB each, 4 browsers, Claude/ChatGPT desktop, Hack Nerd Fonts ~0.4 GB | **~7 GB** | ✅ |
 | `installWsl` | WSL2 platform + kernel (no distro) | **~1.5 GB** | ✅ |
 | `installWslUbuntu` | Ubuntu rootfs + in-distro dotfiles bootstrap | **~2.5 GB** | — |
@@ -47,7 +47,7 @@ the toggles.
 The `workstation` math:
 
 ```
-baseline 2.0 + agents 0.7 + WindowsApps 7.0 + WSL 1.5 + utility 1.0 + runtimes 2.2
+baseline 2.0 + agents 0.9 + WindowsApps 7.0 + WSL 1.5 + utility 1.0 + runtimes 2.2
 ≈ 14–15 GB
 ```
 

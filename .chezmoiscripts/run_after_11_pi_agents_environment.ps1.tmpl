@@ -1,0 +1,161 @@
+#Requires -Version 7
+# Reconcile the Git-managed pia checkout and the owned Pi/OMP binaries on every
+# apply so a repaired package/external install cannot leave native shells stale.
+# Keep them available to
+# native cmd.exe/Clink sessions as well as PowerShell. 00_env.ps1 repeats the
+# process-scoped setup so the current PowerShell session does not need a restart.
+$ErrorActionPreference = 'Continue'
+
+$scoopRoot = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $HOME 'scoop' }
+$piaBin = Join-Path $HOME '.local\share\pi-agents\bin'
+$piWrapperRoot = Join-Path $HOME '.config\powershell\bin'
+$piOwnedLauncher = Join-Path $piWrapperRoot 'pia-pi.ps1'
+$piCmdLauncher = Join-Path $piWrapperRoot 'pi.cmd'
+$ompRoot = Join-Path $env:LOCALAPPDATA 'omp'
+$ompOwnedBinary = Join-Path $ompRoot 'omp.exe'
+$scoopGitBin = Join-Path $scoopRoot 'apps\git\current\bin'
+$piaLauncher = Join-Path $piaBin 'pia.cmd'
+$scoopGitBash = Join-Path $scoopGitBin 'bash.exe'
+
+function Test-SameEnvironmentPath {
+    param([string] $Left, [string] $Right)
+    if (-not $Left -or -not $Right) { return $false }
+    try { $Left = [IO.Path]::GetFullPath($Left).TrimEnd([char[]] @('\', '/')) } catch { $null = $_ }
+    try { $Right = [IO.Path]::GetFullPath($Right).TrimEnd([char[]] @('\', '/')) } catch { $null = $_ }
+    [string]::Equals($Left, $Right, [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Send-EnvironmentChangeNotification {
+    if (-not $IsWindows) { return }
+    if (-not ('DotfilesEnvironment.NativeMethods' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace DotfilesEnvironment {
+    public static class NativeMethods {
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        public static extern IntPtr SendMessageTimeout(
+            IntPtr hWnd, uint message, UIntPtr wParam, string lParam,
+            uint flags, uint timeout, out UIntPtr result);
+    }
+}
+'@
+    }
+    $result = [UIntPtr]::Zero
+    # HWND_BROADCAST / WM_SETTINGCHANGE / SMTO_ABORTIFHUNG
+    [void] [DotfilesEnvironment.NativeMethods]::SendMessageTimeout(
+        [IntPtr] 0xffff, 0x001a, [UIntPtr]::Zero, 'Environment', 0x0002, 5000, [ref] $result
+    )
+}
+
+function Sync-DefaultUserEnvironmentVariable {
+    param(
+        [string] $Name,
+        [string] $MarkerName,
+        [string] $OwnedValue,
+        [bool] $Enabled
+    )
+
+    $current = [Environment]::GetEnvironmentVariable($Name, 'User')
+    $process = [Environment]::GetEnvironmentVariable($Name, 'Process')
+    $managed = [Environment]::GetEnvironmentVariable($MarkerName, 'User') -eq '1'
+    if (-not $Enabled) {
+        if ($managed -and (Test-SameEnvironmentPath $current $OwnedValue)) {
+            [Environment]::SetEnvironmentVariable($Name, $null, 'User')
+        }
+        if ($managed -and (Test-SameEnvironmentPath $process $OwnedValue)) {
+            [Environment]::SetEnvironmentVariable($Name, $null, 'Process')
+        }
+        if ($managed) {
+            [Environment]::SetEnvironmentVariable($MarkerName, $null, 'User')
+            [Environment]::SetEnvironmentVariable($MarkerName, $null, 'Process')
+        }
+        return
+    }
+    if ($managed -and $current -and -not (Test-SameEnvironmentPath $current $OwnedValue)) {
+        [Environment]::SetEnvironmentVariable($MarkerName, $null, 'User')
+        [Environment]::SetEnvironmentVariable($MarkerName, $null, 'Process')
+        Write-Host "==> preserving changed $Name override" -ForegroundColor DarkGray
+        return
+    }
+    if (-not $managed -and ($current -or $process)) {
+        Write-Host "==> preserving existing $Name override" -ForegroundColor DarkGray
+        return
+    }
+    [Environment]::SetEnvironmentVariable($Name, $OwnedValue, 'User')
+    [Environment]::SetEnvironmentVariable($Name, $OwnedValue, 'Process')
+    [Environment]::SetEnvironmentVariable($MarkerName, '1', 'User')
+    [Environment]::SetEnvironmentVariable($MarkerName, '1', 'Process')
+    Write-Host "==> set default User env $Name = $OwnedValue" -ForegroundColor Cyan
+}
+
+function Add-OwnedPathEntries {
+    $ownedPathEntries = @(
+        $(if (Test-Path -LiteralPath $piaLauncher -PathType Leaf) { $piaBin }),
+        $(if ((Test-Path -LiteralPath $piCmdLauncher -PathType Leaf) -and
+            (Test-Path -LiteralPath $piOwnedLauncher -PathType Leaf)) { $piWrapperRoot }),
+        $(if (Test-Path -LiteralPath $ompOwnedBinary -PathType Leaf) { $ompRoot }),
+        $(if (Test-Path -LiteralPath $scoopGitBash -PathType Leaf) { $scoopGitBin })
+    ) | Where-Object { $_ }
+    if (-not $ownedPathEntries) { return }
+
+    function Merge-OwnedPathEntries {
+        param([string] $Raw)
+        $entries = [Collections.Generic.List[string]]::new()
+        foreach ($entry in $ownedPathEntries) { $entries.Add($entry) }
+        foreach ($entry in @($Raw -split ';' | Where-Object { $_ })) {
+            if (-not ($ownedPathEntries | Where-Object { Test-SameEnvironmentPath $entry $_ })) {
+                $entries.Add($entry)
+            }
+        }
+        $entries -join ';'
+    }
+
+    # Preserve REG_EXPAND_SZ and literal %NAME% tokens in the user's PATH.
+    # Environment.GetEnvironmentVariable expands them and SetEnvironmentVariable
+    # can rewrite the value as REG_SZ, so read/write HKCU\Environment directly.
+    $key = $null
+    try {
+        $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+        if (-not $key) { throw 'HKCU\Environment is unavailable' }
+        $rawUserPath = [string] $key.GetValue(
+            'Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames
+        )
+        $userPathKind = if ($key.GetValueNames() -contains 'Path') {
+            $key.GetValueKind('Path')
+        } else {
+            [Microsoft.Win32.RegistryValueKind]::ExpandString
+        }
+        $updatedUserPath = Merge-OwnedPathEntries -Raw $rawUserPath
+        if ($updatedUserPath -ne $rawUserPath) {
+            $key.SetValue('Path', $updatedUserPath, $userPathKind)
+            Send-EnvironmentChangeNotification
+            Write-Host '==> updated User PATH for pia/OMP' -ForegroundColor Cyan
+        }
+    } catch {
+        Write-Warning "could not update raw User PATH: $_"
+    } finally {
+        if ($key) { $key.Dispose() }
+    }
+
+    $rawProcessPath = [Environment]::GetEnvironmentVariable('Path', 'Process')
+    $updatedProcessPath = Merge-OwnedPathEntries -Raw $rawProcessPath
+    if ($updatedProcessPath -ne $rawProcessPath) {
+        [Environment]::SetEnvironmentVariable('Path', $updatedProcessPath, 'Process')
+    }
+}
+
+{{ if .installCodingAgents -}}
+Sync-DefaultUserEnvironmentVariable -Name PIA_PI_BIN -MarkerName PIA_DOTFILES_PI_BIN_MANAGED `
+    -OwnedValue $piOwnedLauncher -Enabled $true
+Sync-DefaultUserEnvironmentVariable -Name PIA_OMP_BIN -MarkerName PIA_DOTFILES_OMP_BIN_MANAGED `
+    -OwnedValue $ompOwnedBinary -Enabled $true
+Add-OwnedPathEntries
+{{ else -}}
+Sync-DefaultUserEnvironmentVariable -Name PIA_PI_BIN -MarkerName PIA_DOTFILES_PI_BIN_MANAGED `
+    -OwnedValue $piOwnedLauncher -Enabled $false
+Sync-DefaultUserEnvironmentVariable -Name PIA_OMP_BIN -MarkerName PIA_DOTFILES_OMP_BIN_MANAGED `
+    -OwnedValue $ompOwnedBinary -Enabled $false
+# Install toggles are otherwise additive: disabling does not delete PATH
+# entries that may also have been user-owned.
+{{ end -}}

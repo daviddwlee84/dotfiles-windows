@@ -1,0 +1,10 @@
+{{ if .installCodingAgents -}}
+[".local/share/pi-agents"]
+    type = "git-repo"
+    url = "https://github.com/daviddwlee84/pi-agents.git"
+    # Deliberately no refreshPeriod: `just upgrade-pia` is the explicit upgrade.
+    [".local/share/pi-agents".clone]
+        args = ["--depth", "1"]
+    [".local/share/pi-agents".pull]
+        args = ["--ff-only"]
+{{ end -}}

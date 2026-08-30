@@ -63,7 +63,7 @@ jobs:
             # install in run_onchange_after_10_packages and the whole of
             # run_onchange_after_25_claude_settings. `chezmoi apply --exclude
             # scripts` means nothing is ever actually installed in CI.
-            '--promptBool','Install coding agents (Claude Code, OpenCode, Codex, Copilot CLI, SpecStory)=true',
+            '--promptBool','Install coding agents (Claude Code, OpenCode, Codex, Copilot CLI, Pi, pia, OMP, SpecStory)=true',
             # `both` (not the workstation default `notify`) so the render+parse
             # covers BOTH hook-building branches of run_onchange_after_25.
             '--promptChoice','Agent completion feedback (none|notify|peon|both)=both',
@@ -143,6 +143,22 @@ jobs:
           [System.IO.File]::WriteAllText($codexPath, $seed + "`r`n", [System.Text.UTF8Encoding]::new($false))
 
           chezmoi apply --source $PWD --destination $dest --exclude scripts --verbose
+
+          # installCodingAgents=true above must deploy the immutable pi-agents
+          # external with both native Windows launchers. Package scripts remain
+          # excluded; the pi-agents workflow separately exercises the launchers.
+          $piaBin = Join-Path $dest '.local\share\pi-agents\bin'
+          foreach ($launcher in 'pia.ps1', 'pia.cmd') {
+            if (-not (Test-Path -LiteralPath (Join-Path $piaBin $launcher) -PathType Leaf)) {
+              throw "pi-agents external is missing bin/$launcher"
+            }
+          }
+          $piWrapperBin = Join-Path $dest '.config\powershell\bin'
+          foreach ($launcher in 'pia-pi.ps1', 'pi.cmd') {
+            if (-not (Test-Path -LiteralPath (Join-Path $piWrapperBin $launcher) -PathType Leaf)) {
+              throw "managed Pi wrapper is missing $launcher"
+            }
+          }
 
           $codexConfig = Get-Content -Raw -LiteralPath $codexPath
           if ($codexConfig -notmatch 'model = "ci-preserved-model"') {

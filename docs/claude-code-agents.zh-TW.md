@@ -34,7 +34,7 @@ Enter 是**送出**。要在不送出的情況下換行:
 ### Ctrl+G —— 用 nvim 撰寫提示
 
 **`Ctrl+G`**(或 `Ctrl+X Ctrl+E` 和弦)會用 `$EDITOR` 打開目前的提示。這個 repo 已在
-`dot_config/powershell/profile.d/00_env.ps1` 設定 `$env:EDITOR = 'nvim'`(當 nvim 在
+`dot_config/powershell/profile.d/00_env.ps1.tmpl` 設定 `$env:EDITOR = 'nvim'`(當 nvim 在
 PATH 上時),所以 `Ctrl+G` 會直接進入 nvim;存檔離開即把編輯後的文字帶回。在 Windows
 的 pwsh 下可用。
 
