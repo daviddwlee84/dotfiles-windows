@@ -1,8 +1,9 @@
 # ~/.config/herdr/_common.ps1
 # Source: dot_config/herdr/_common.ps1 (managed by chezmoi)
 #
-# Shared helpers for the herdr keybind scripts (run-command / new-tab-at-space-root /
-# url-pick / path-pick / pane-copy / review-mark). Dot-sourced by each of them.
+# Shared helpers for the herdr keybind scripts (edit-config / run-command /
+# new-tab-at-space-root / url-pick / path-pick / pane-copy / review-mark).
+# Dot-sourced by each of them.
 #
 # These run inside a herdr `[[keys.command]]` pane or popup, spawned as
 # `pwsh -NoProfile -File <script> …` — so there is NO profile, NO repo aliases and

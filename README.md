@@ -37,8 +37,19 @@ then applies the dotfiles.
 - **Apps** (winget): Windows Terminal, Alacritty, Raycast, PowerToys, Steam.
 - **Optional Herdr**: native preview multiplexer with `prefix+d` launching the
   `dev-cli` task/worktree dashboard, low-frequency copy helpers under `prefix+y`,
-  managed config, and a binary-matched official global agent skill.
+  `prefix+alt+e` safely editing, validating, and reloading the live runtime
+  config, and a binary-matched official global agent skill.
 - **`copilot-proxy`** tool series, rewritten as a native PowerShell module.
+
+Herdr's `prefix+alt+e` edits the existing `HERDR_CONFIG_PATH` target (or
+`~/.config/herdr/config.toml`) directly and never invokes chezmoi. A failed edit
+is retained as a restrictive `config.toml.invalid-*` sibling while the prior
+valid file is restored; a reload failure instead keeps both the valid edit and
+its same-directory backup. A later `chezmoi apply` can reassert the canonical
+`[theme]`, `[ui]`, `[terminal]`, and `[keys]` tables. To persist a runtime change,
+manually and selectively edit `.chezmoitemplates/herdr/config.toml`; do not use
+`chezmoi add` or `chezmoi re-add` on this `modify_` target, because either can
+replace/bypass the merger and import runtime-owned state.
 
 ## Package manager
 

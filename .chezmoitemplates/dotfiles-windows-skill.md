@@ -99,6 +99,16 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   with its official global skill exported from the installed binary on each apply.
   The same toggle installs Go + `dev` v0.1.0 (`prefix+d`) and uses that Go for
   herdr-plus (`prefix+y` holds six copy helpers; `prefix+p` stays interactive).
+  `prefix+alt+e` edits the existing `HERDR_CONFIG_PATH` target (default
+  `~/.config/herdr/config.toml`) directly, validates that exact file, then reloads
+  the current server; it never invokes chezmoi. `$env:EDITOR` must name one blocking
+  executable or wrapper (put arguments such as `code --wait` in the wrapper); when
+  unset, it falls back to nvim and waited Notepad. Editor/validation failure preserves
+  a restrictive `config.toml.invalid-*` and restores the prior valid target; reload
+  failure keeps the valid edit and backup. A later apply can reassert canonical
+  `[theme]`/`[ui]`/`[terminal]`/`[keys]`. Persist changes by manually and selectively
+  editing `.chezmoitemplates/herdr/config.toml`; never `chezmoi add`/`re-add` this
+  `modify_` target, which can replace/bypass the merger and import runtime-owned state.
   Runtimes are native via scoop (node/bun/go/rust/ruby) + uv for Python — no mise on Windows.
 - **Rime input method** (opt-in `installInputMethod`): Weasel/小狼毫 via winget
   `Rime.Weasel`. Machine-scope NSIS, so applying raises UAC; and a bare silent

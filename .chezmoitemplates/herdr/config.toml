@@ -8,10 +8,11 @@
 #
 # THIS FILE IS THE MANAGED BODY of a chezmoi modify_ overlay
 # (dot_config/herdr/modify_config.toml.ps1.tmpl). The overlay enforces the tables
-# below on every `chezmoi apply` and preserves the keys herdr writes back at
-# runtime (onboarding / [session] / [remote] / [experimental] / [update] state).
-# Tracking this as a PLAIN managed file — which is what this repo did before —
-# clobbers that writeback and can re-trigger onboarding.
+# below on every `chezmoi apply`. It preserves genuine Herdr writeback
+# (onboarding, in-app settings/key resets, and update.channel) plus all
+# other live/user-owned top-level config. Current upstream does not write
+# [session], [remote], or [experimental], but the overlay deliberately retains
+# those tables. A PLAIN managed file would create an unsafe second writer.
 #
 # Schema: https://herdr.dev/docs/configuration/
 # Full default: `herdr --default-config`
@@ -25,8 +26,8 @@
 
 [update]
 # This machine intentionally follows the preview channel.
-# Re-asserted by the overlay as a single key so herdr's own [update] bookkeeping
-# (last-check timestamps etc.) survives an apply.
+# Re-asserted by the overlay as a single key while any other live/user-owned
+# [update] subkeys remain available for current or future Herdr releases.
 channel = "preview"
 
 [theme]
@@ -113,6 +114,15 @@ navigate_workspace_up = ["k", "up"]
 # $HERDR_ACTIVE_PANE_CWD in its environment.
 # type = "popup" (herdr >= 0.7.4) floats ABOVE the tiled layout instead, so
 # nothing reflows — used for the two bindings you stay inside for a while.
+
+# Edit HERDR_CONFIG_PATH (or the default runtime config) directly, validate that
+# exact file, then reload this session's server. Lowercase e remains distinct
+# from built-in prefix+e / prefix+E.
+[[keys.command]]
+key = "prefix+alt+e"
+type = "pane"
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/edit-config.ps1"'
+description = "edit runtime config, validate, and reload"
 
 [[keys.command]]
 key = "prefix+d"

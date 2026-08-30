@@ -5,25 +5,27 @@
 # CURRENT target file into stdin and takes the new contents from stdout.
 #
 # WHY AN OVERLAY (this replaced a plain managed dot_config/herdr/config.toml):
-# herdr rewrites this file at runtime — the onboarding flag, in-app settings
-# popups, [session] / [remote] / [experimental] / [update] state. A plain managed
-# file clobbers all of that on every `chezmoi apply`, which can re-trigger
-# onboarding. The parent (unix) repo hit this and moved create_ -> modify_ on
-# 2026-07-06; this repo's config was added five days later and still used the
-# plain form. Same fix, ported.
+# herdr genuinely rewrites this file for onboarding, in-app theme/UI/sound/toast/
+# pane-label/agent-sort changes, key resets, and update.channel. Current
+# upstream does NOT write [session], [remote], or [experimental]; those remain
+# live/user-owned config that the overlay deliberately preserves. A plain file
+# would create an unsafe second writer. The parent repo's 2026-07-06 create_ ->
+# modify_ change was preventive while fixing key/CWD behavior: source and live
+# files were measured identical, not observed clobbering an onboarding write.
+# This repo later ported that ownership model from its earlier plain file.
 #
 # MERGE MODEL — template-as-base, pull-through unmanaged keys:
 #   - Base = the managed template (.chezmoitemplates/herdr/config.toml), which
 #     carries the comments + the tmux-parity rationale.
 #   - Every TOP-LEVEL key in the live file that is NOT managed and NOT already in
-#     the template is copied across (preserves onboarding, [session], [remote],
-#     [experimental], and any future herdr writeback).
+#     the template is copied across (preserves onboarding, live/user-owned
+#     [session] / [remote] / [experimental], and future upstream fields).
 #   - Managed tables are enforced wholesale (template wins).
-#   - FORCED single keys are re-asserted INTO a pulled-through table, so the table
-#     keeps herdr's own bookkeeping. Windows needs exactly one: update.channel
-#     must stay "preview" (the installer rejects "stable" on Windows builds), but
-#     [update] also holds herdr's last-check state, which we do not want to wipe.
-#     This sub-key merge is the one deliberate divergence from the unix overlay.
+#   - FORCED single keys are re-asserted INTO a pulled-through table while other
+#     live/user-owned subkeys remain intact. Windows needs exactly one:
+#     update.channel must stay "preview" (the installer rejects "stable" on
+#     Windows builds). This sub-key merge is the one deliberate divergence from
+#     the unix overlay.
 #
 # WHY tomlkit (not a hand-rolled emitter): herdr's config has an array-of-tables
 # ([[keys.command]]) and comments worth keeping; stdlib tomllib is read-only.
@@ -89,7 +91,7 @@ try {
     }
 
     if (-not $py) {
-        [Console]::Error.WriteLine('modify_config.toml: no uv/python found; emitting managed template (runtime keys not preserved this run)')
+        [Console]::Error.WriteLine('modify_config.toml: no uv/python found; emitting managed template (live/user-owned keys not preserved this run)')
         Write-StdoutBytes $utf8.GetBytes($templateText)
         return
     }
@@ -124,7 +126,7 @@ try:
 except ModuleNotFoundError:
     print(
         "modify_config.toml: tomlkit unavailable; emitting managed template "
-        "(runtime keys not preserved this run)",
+        "(live/user-owned keys not preserved this run)",
         file=sys.stderr,
     )
     emit(template_text)
@@ -157,7 +159,7 @@ for key, value in live.items():
     if key in MANAGED:
         continue
     if key in doc:
-        # The template also declares this table. Keep herdr's runtime keys and
+        # The template also declares this table. Keep live/user-owned keys and
         # let the template win only on the keys it actually sets.
         if isinstance(value, dict) and isinstance(doc[key], dict):
             for sub_key, sub_value in value.items():
