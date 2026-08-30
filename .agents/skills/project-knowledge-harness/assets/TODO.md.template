@@ -11,11 +11,11 @@ for the maintenance workflow that agents should follow.
 > [`backlog/<slug>.md`](backlog/).
 
 <!-- Use the exact section order: P1, P2, P3, P?, Done.
-     The bundled scripts/todo-kanban.sh validator only inspects top-level
-     `- [ ]` and `- ✅` items inside these sections. Prose paragraphs,
-     blockquotes, indented sub-bullets, HTML comments, and `---` rules are
-     ignored — feel free to add inline guidance like this without breaking
-     machine readability. -->
+     The project-knowledge-harness skill's todo-kanban.sh validator only
+     inspects top-level `- [ ]` and `- ✅` items inside these sections. Prose
+     paragraphs, blockquotes, indented sub-bullets, HTML comments, and `---`
+     rules are ignored — feel free to add inline guidance like this without
+     breaking machine readability. -->
 
 ## P1
 
@@ -43,10 +43,12 @@ Needs a spike before committing to a real priority. Tag as `[?/Effort]`.
 
 ## Done
 
-Recently shipped. When implementing an active item, in the same commit run:
+Recently shipped. When implementing an active item, in the same commit run the
+`project-knowledge-harness` skill's `promote-todo.sh` (it operates on this
+`TODO.md`):
 
 ```
-scripts/promote-todo.sh --title "<substring>" --summary "<one-line shipped summary>"
+promote-todo.sh --title "<substring>" --summary "<one-line shipped summary>"
 ```
 
 This moves the entry here using the dated `Done` syntax and re-validates.

@@ -41,16 +41,35 @@ make_repo() {
   local d
   d=$(mktemp -d /tmp/test-scan-staged.XXXXXX)
   git -C "$d" init -q -b main
-  git -C "$d" -c user.email=test@example.com -c user.name=test \
+  git -C "$d" -c core.hooksPath=/dev/null \
+      -c user.email=test@example.com -c user.name=test \
       commit -q --allow-empty -m init
   printf '%s' "$d"
 }
 
-# Copy fixture + stage it under the given relative path.
+# Copy fixture + stage it under the given relative path. Strips the inline
+# `<!-- gitleaks:allow -->` marker so the rules still fire in the throwaway repo
+# (byte-identical to the fixture otherwise). Line-based sed → newline never
+# enters the pattern space, so [[:space:]]* only eats the horizontal separator.
+#
+# Also expands the `__SYNTHETIC_*__` placeholders, which keep provider-scanner
+# and detect-private-key bait out of the fixture files themselves. Must stay in
+# sync with FIXTURE_PLACEHOLDERS in conftest.py -- the PEM header is assembled
+# from split literals here for the same reason it is there.
 stage_fixture() {
   local repo="$1" fixture="$2" dest_rel="$3"
+  local pk="PRIVATE"" KEY"
+  # Built, never written: a literal `whsec_` + 32 chars in this file would be
+  # a gitleaks `stripe-webhook-secret` finding in every repo that installs the
+  # skill -- the same class of shipped-bait as the PEM headers above.
+  local whsec="whsec_$(printf 'a%.0s' $(seq 32))"
   mkdir -p "$(dirname "$repo/$dest_rel")"
-  cp "$FIXTURES/$fixture" "$repo/$dest_rel"
+  sed -e 's/[[:space:]]*<!-- *gitleaks:allow *-->//g' \
+      -e "s/__SYNTHETIC_PEM_BEGIN__/-----BEGIN RSA $pk-----/g" \
+      -e "s/__SYNTHETIC_PEM_END__/-----END RSA $pk-----/g" \
+      -e "s/__SYNTHETIC_PEM_HEADER_OPENSSH__/-----BEGIN OPENSSH $pk-----/g" \
+      -e "s/__SYNTHETIC_STRIPE_WEBHOOK_SECRET__/$whsec/g" \
+      "$FIXTURES/$fixture" > "$repo/$dest_rel"
   git -C "$repo" add -- "$dest_rel"
 }
 

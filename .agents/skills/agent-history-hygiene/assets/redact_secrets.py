@@ -1,8 +1,12 @@
-#!/usr/bin/env -S uv run --script
+#!/usr/bin/env python3
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.9"
 # dependencies = []
 # ///
+# NOTE: stdlib-only, so a plain `python3` shebang is the portable default
+# (works on macOS system 3.9, CI, and as a pre-commit `language: script` hook
+# with no uv dependency). The PEP 723 block above still lets you run it under
+# `uv run --script redact_secrets.py` if you prefer an isolated interpreter.
 """
 Check for secrets in agent artifact directories (specstory history + coding
 agent plan/rules dirs) using gitleaks and detect-private-key patterns.
@@ -17,13 +21,23 @@ Default covered prefixes (kept in sync with assets/artifact-dirs.txt):
     .specify/             (GitHub spec-kit artifacts)
     .codex/               (Codex CLI artifacts)
 
+Redacted secrets are replaced with `[REDACTED:<rule-id>]`, the same sentinel
+shape SpecStory >= 2.4.0 writes natively (its binary carries the format string
+`[REDACTED:%s]`). Sharing one shape keeps the two layers idempotent: whichever
+runs first, the other sees an inert placeholder and leaves the file alone. See
+references/specstory-native-redaction.md for measured coverage of what
+SpecStory already handles and what is left to us.
+
 Usage:
     ./redact_secrets.py                         # Check staged files (default paths)
     ./redact_secrets.py --fix                   # Auto-redact and re-stage files
     ./redact_secrets.py --working-dir           # Scan working directory instead of staged
     ./redact_secrets.py --paths .specstory/history
     ./redact_secrets.py --fix --paths .cursor/plans .claude/plans
+    ./redact_secrets.py --fix --legacy         # pre-2.4.0 placeholder style
 """
+from __future__ import annotations
+
 import argparse
 import json
 import re
@@ -137,13 +151,33 @@ def run_gitleaks_workdir(target_path: str) -> list[dict]:
 
 
 def redact_secret(secret: str, keep_chars: int = 3) -> str:
-    """Redact secret keeping first/last N chars: sk-abc...xyz"""
+    """Redact secret keeping first/last N chars: sk-abc...xyz
+
+    This is the *console report* form -- a fingerprint helps identify which
+    credential to rotate. What lands in the file is redaction_placeholder().
+    Under --legacy it is also what gets written to disk.
+    """
     if len(secret) <= keep_chars * 2 + 3:
         return "[REDACTED]"
     return f"{secret[:keep_chars]}...{secret[-keep_chars:]}"
 
 
-def redact_file(file_path: Path, findings: list[dict]) -> bool:
+# Sentinel shape shared with SpecStory's native redaction (`[REDACTED:%s]`).
+_RULE_SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def redaction_placeholder(rule_id: str) -> str:
+    """`[REDACTED:<rule-id>]` -- what actually replaces a secret in the file.
+
+    The rule id names the credential type, which is what a reader needs in
+    order to know what to rotate; keeping no bytes of the secret means the
+    placeholder can never be re-flagged by a scanner, so a re-run is a no-op.
+    """
+    slug = _RULE_SLUG_RE.sub("-", rule_id or "").strip("-").lower()
+    return f"[REDACTED:{slug or 'secret'}]"
+
+
+def redact_file(file_path: Path, findings: list[dict], legacy: bool = False) -> bool:
     """Redact secrets in a file. Returns True if modified."""
     content = read_text(file_path)
     original = content
@@ -155,7 +189,12 @@ def redact_file(file_path: Path, findings: list[dict]) -> bool:
     for finding in file_findings:
         secret = finding.get("Secret", "")
         if secret and secret in content:
-            content = content.replace(secret, redact_secret(secret))
+            replacement = (
+                redact_secret(secret)
+                if legacy
+                else redaction_placeholder(finding.get("RuleID", ""))
+            )
+            content = content.replace(secret, replacement)
 
     if content != original:
         write_text(file_path, content)
@@ -173,18 +212,44 @@ def filter_by_prefixes(findings: list[dict], prefixes: list[str]) -> list[dict]:
     ]
 
 
-# Matches actual PEM private key blocks
+# Matches actual PEM private key blocks (header … base64 body … footer).
 _PEM_BLOCK_RE = re.compile(
     r"-----BEGIN[^-]*PRIVATE KEY[^-]*-----.*?-----END[^-]*PRIVATE KEY[^-]*-----",
     re.DOTALL,
 )
 
-# Matches the literal string the detect-private-key hook greps for
-_PRIVATE_KEY_STR = "PRIVATE KEY"
+# The private-key *header* tokens the downstream detect-private-key hook greps
+# for (pre-commit/pre-commit-hooks BLACKLIST, matched as plain substrings via
+# `any(line in content for line in BLACKLIST)`). These headers — NOT the bare
+# phrase "PRIVATE KEY" — are what actually fail a commit, so the redactor scopes
+# to exactly them. Matching the bare phrase instead used to flag and mangle
+# prose that merely *discusses* private keys; against a live transcript writer
+# that re-appends the words on every diagnostic command, that never converged.
+# See the "Active SpecStory writer can defeat the redact loop" pitfall in
+# SKILL.md.
+#
+# NOTE: the version digits are written as `\d`, not as literal `1` / `2`, so
+# THIS source file never contains a contiguous BLACKLIST string — otherwise
+# detect-private-key would flag redact_secrets.py in every repo that installs
+# it, with no marker able to suppress it. (`\d` also future-proofs the match
+# against a `PuTTY-User-Key-File-3`.) Keep it that way; a split-literal trick
+# would not be enough, since CPython folds those back together in the .pyc.
+_PRIVATE_KEY_HEADER_RE = re.compile(
+    r"BEGIN [A-Z0-9 ]*PRIVATE KEY"      # RSA/DSA/EC/OPENSSH/PGP/ENCRYPTED/SSH2/plain
+    r"|PuTTY-User-Key-File-\d"
+    r"|BEGIN OpenVPN Static key V\d"
+)
 
 
 def find_private_key_files(files: list[Path]) -> dict[Path, list[str]]:
-    """Find files containing private key patterns. Returns {path: [match_descriptions]}."""
+    """Find files containing private-key material. Returns {path: [descriptions]}.
+
+    Only real key indicators count: a full PEM block, or a stray key *header*
+    token (a truncated key, or a header quoted in prose) that the downstream
+    detect-private-key hook would grep for. Bare "PRIVATE KEY" prose is
+    deliberately ignored — detect-private-key ignores it too, and flagging it
+    caused a non-converging redact loop.
+    """
     results: dict[Path, list[str]] = {}
     for path in files:
         if not path.is_file() or path.suffix != ".md":
@@ -193,36 +258,46 @@ def find_private_key_files(files: list[Path]) -> dict[Path, list[str]]:
             content = read_text(path)
         except OSError:
             continue
-        if _PRIVATE_KEY_STR not in content:
-            continue
         matches = []
         pem_blocks = _PEM_BLOCK_RE.findall(content)
         if pem_blocks:
             matches.append(f"{len(pem_blocks)} PEM private key block(s)")
-        # Count remaining mentions (outside PEM blocks)
+        # Count header tokens OUTSIDE full PEM blocks (which are handled above):
+        # truncated keys, or a header quoted in prose.
         without_pem = _PEM_BLOCK_RE.sub("", content)
-        mention_count = without_pem.count(_PRIVATE_KEY_STR)
-        if mention_count:
-            matches.append(f'{mention_count} "{_PRIVATE_KEY_STR}" mention(s)')
+        header_count = len(_PRIVATE_KEY_HEADER_RE.findall(without_pem))
+        if header_count:
+            matches.append(f"{header_count} private-key header(s)")
         if matches:
             results[path] = matches
     return results
 
 
-def redact_private_keys(file_path: Path) -> bool:
-    """Redact private key patterns in a file. Returns True if modified.
+def redact_private_keys(file_path: Path, legacy: bool = False) -> bool:
+    """Redact private-key material in a file. Returns True if modified.
 
-    The PEM-block placeholder must NOT contain the substring "PRIVATE
-    KEY", otherwise the follow-up literal replacement below would
-    corrupt it into "[REDACTED PRIV***KEY BLOCK]".
+    Scrubs full PEM blocks and any stray key *header* tokens — exactly what the
+    detect-private-key hook greps for. The bare phrase "PRIVATE KEY" in prose is
+    left untouched on purpose: redacting it mangled legitimate text and never
+    converged against a live transcript writer. Both placeholders contain
+    neither a header token nor the bare phrase, so a re-run is a no-op --
+    `[REDACTED:private-key]` is lowercase, while the header regex matches only
+    uppercase `BEGIN ... PRIVATE KEY`. `[REDACTED:private-key]` is also the
+    exact label SpecStory emits for this class.
     """
     content = read_text(file_path)
     original = content
-    # Replace full PEM blocks first, using a sentinel that won't be
-    # clobbered by the literal-string replacement on the next line.
-    content = _PEM_BLOCK_RE.sub("[REDACTED PEM PRIVKEY BLOCK]", content)
-    # Replace remaining literal "PRIVATE KEY" mentions
-    content = content.replace(_PRIVATE_KEY_STR, "PRIV***KEY")
+    pem_placeholder = (
+        "[REDACTED PEM PRIVKEY BLOCK]" if legacy else "[REDACTED:private-key]"
+    )
+    header_placeholder = (
+        "[REDACTED PRIVKEY HEADER]" if legacy else "[REDACTED:private-key-header]"
+    )
+    # Full PEM blocks first (header + body + footer).
+    content = _PEM_BLOCK_RE.sub(pem_placeholder, content)
+    # Any remaining stray header tokens (truncated keys / headers quoted in
+    # prose) -- these alone would still trip detect-private-key.
+    content = _PRIVATE_KEY_HEADER_RE.sub(header_placeholder, content)
     if content != original:
         write_text(file_path, content)
         return True
@@ -243,6 +318,16 @@ def main():
         "--working-dir",
         action="store_true",
         help="Scan working directory instead of staged files (default: scan staged)",
+    )
+    parser.add_argument(
+        "--legacy",
+        action="store_true",
+        help=(
+            "Write the pre-2.4.0 placeholders (`sk-abc...xyz` truncation, "
+            "`[REDACTED PEM PRIVKEY BLOCK]`) instead of the `[REDACTED:<rule-id>]` "
+            "sentinel shared with SpecStory's native redaction. Detection is "
+            "unchanged; only the bytes written differ."
+        ),
     )
     parser.add_argument(
         "--paths",
@@ -344,12 +429,14 @@ def main():
         # Redact gitleaks findings
         for file_path in by_file:
             path = Path(file_path)
-            if path.suffix == ".md" and redact_file(path, findings):
+            if path.suffix == ".md" and redact_file(
+                path, findings, legacy=args.legacy
+            ):
                 modified_files.add(path)
 
         # Redact private key patterns
         for path in pk_files:
-            if redact_private_keys(path):
+            if redact_private_keys(path, legacy=args.legacy):
                 modified_files.add(path)
 
         for f in modified_files:

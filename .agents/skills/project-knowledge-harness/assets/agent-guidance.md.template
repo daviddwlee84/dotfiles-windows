@@ -1,6 +1,6 @@
 <!-- Snippet for the project's agent contract file (AGENTS.md / CLAUDE.md /
-     similar). The bundled scripts/init.sh appends this between sentinel
-     markers; safe to re-run. -->
+     similar). The project-knowledge-harness skill's init.sh appends this
+     between sentinel markers; safe to re-run. -->
 
 ### Long-term backlog → `TODO.md` + `backlog/`
 
@@ -10,16 +10,23 @@ session (signals: "maybe later", "nice to have", "if I'm interested",
 the priority + effort tag schema. Do **not** create new `ROADMAP.md` /
 `IDEAS.md` / `BACKLOG.md` files — `TODO.md` is the single index.
 
-The bundled `scripts/todo-kanban.sh` validates the format. Run it
-(`scripts/todo-kanban.sh --validate-only TODO.md`) after editing so syntax
-drift is caught immediately.
+> **These helpers (`add-todo.sh`, `sweep-inbox.sh`, `promote-todo.sh`,
+> `todo-kanban.sh`) are provided by the `project-knowledge-harness` skill and
+> are _not_ copied into this repo.** Invoke them through that skill — it knows
+> where its `scripts/` live, and they operate on this repo's `TODO.md` /
+> `backlog/`. If the skill isn't available, maintain `TODO.md` by hand using the
+> schema below; the format is simple and the validator is optional.
+
+The skill's `todo-kanban.sh` validates the format — run
+`todo-kanban.sh --validate-only TODO.md` after editing so syntax drift is
+caught immediately.
 
 #### Three ways to add a TODO entry (preferred order)
 
-1. **Structured CLI — `scripts/add-todo.sh`** (default):
+1. **Structured CLI — `add-todo.sh`** (default):
 
    ```
-   scripts/add-todo.sh --priority P3 --effort M \
+   add-todo.sh --priority P3 --effort M \
      --title "Title" --description "Description"
    ```
 
@@ -34,12 +41,12 @@ drift is caught immediately.
    ```
 
    When the user asks "sweep the inbox", run
-   `scripts/sweep-inbox.sh`. It prompts for the missing fields per loose
+   `sweep-inbox.sh`. It prompts for the missing fields per loose
    line and calls `add-todo.sh`. Use `--batch` for non-interactive runs
    that only formalize lines with parseable `key=value` pairs.
 
 3. **Direct edit of `TODO.md`** — fine if the format is fresh; run
-   `scripts/todo-kanban.sh --validate-only` afterwards.
+   `todo-kanban.sh --validate-only` afterwards.
 
 Add a `backlog/<slug>.md` companion doc when the item meets any of:
 
@@ -55,7 +62,7 @@ template and "when to add a doc" rules.
 
 When implementing a `TODO.md` item, in the same commit:
 
-1. Run `scripts/promote-todo.sh --title "<substring>" --summary "<what shipped>"`
+1. Run `promote-todo.sh --title "<substring>" --summary "<what shipped>"`
    to move the entry into `## Done` with the dated syntax and re-validate.
 2. Mark the corresponding `backlog/<slug>.md` (if any) `Status: shipped`
    and keep it as a historical record (don't delete — future-you may

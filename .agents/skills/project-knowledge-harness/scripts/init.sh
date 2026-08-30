@@ -213,8 +213,8 @@ if [ ! -e "$target_abs/backlog/inbox.md" ]; then
 # Inbox
 
 Quick-capture area. Drop loose lines here when priority/effort/wording
-isn't clear yet; run `scripts/sweep-inbox.sh` later to formalize them
-into `TODO.md`.
+isn't clear yet; run the `project-knowledge-harness` skill's `sweep-inbox.sh`
+later to formalize them into `TODO.md`.
 
 Lines starting with `#` and blank lines are ignored. Free-form lines
 prompt the sweeper for missing fields; lines shaped like
@@ -246,19 +246,23 @@ if [ "$do_validate" -eq 1 ] && [ -x "$scripts_dir/todo-kanban.sh" ]; then
   ( cd "$target_abs" && "$scripts_dir/todo-kanban.sh" --validate-only TODO.md )
 fi
 
-cat <<'EOF'
+cat <<EOF
 
-Next steps:
-  1. Open TODO.md and replace the example items with real ones, or use
-     scripts/add-todo.sh to insert structured entries:
-       scripts/add-todo.sh --priority P3 --effort M \
+Next steps (the project-knowledge-harness skill's scripts are NOT copied here —
+invoke them from the skill folder; they act on the current directory's TODO.md):
+  1. Open TODO.md and replace the example items with real ones, or insert
+     structured entries with:
+       $scripts_dir/add-todo.sh --priority P3 --effort M \\
          --title "Title" --description "Description"
   2. Drop loose ideas into backlog/inbox.md; formalize later via:
-       scripts/sweep-inbox.sh             # interactive
-       scripts/sweep-inbox.sh --batch     # only key=value lines
+       $scripts_dir/sweep-inbox.sh             # interactive
+       $scripts_dir/sweep-inbox.sh --batch     # only key=value lines
   3. Add ignore rules above to your packaging/deployment ignore file.
   4. Run the kanban renderer when you want a quick board view:
-       scripts/todo-kanban.sh
+       $scripts_dir/todo-kanban.sh
   5. Promote shipped items via:
-       scripts/promote-todo.sh --title "<substring>" --summary "<what shipped>"
+       $scripts_dir/promote-todo.sh --title "<substring>" --summary "<what shipped>"
+
+Run these from $target_abs (or pass --file / a TODO_FILE path) so they find
+this project's TODO.md rather than one in the current shell directory.
 EOF

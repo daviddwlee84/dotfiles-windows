@@ -12,11 +12,14 @@ If gitleaks is not installed, the whole file skips.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+
+from conftest import FIXTURE_PLACEHOLDERS
 
 pytestmark = pytest.mark.skipif(
     shutil.which("gitleaks") is None,
@@ -24,15 +27,24 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+# Fixtures carry an inline `<!-- gitleaks:allow -->` marker so a repo-root or
+# downstream gitleaks scan skips them by default. Strip it before staging and
+# expand provider-scanner-sensitive placeholders so the secret bytes have the
+# exact shape the rules expect and the assertions below still fire. No-op for
+# lines without the marker
+# (clean.md / example_shapes.md), which must keep their must-not-fire behavior.
+_GITLEAKS_MARKER_RE = re.compile(r"[ \t]*<!--[ ]?gitleaks:allow[ ]?-->")
+
+
 def _stage_fixture_at(repo: Path, fixture_path: Path, dest_rel: str) -> None:
-    """Copy `fixture_path` to `repo/dest_rel` and git-add it."""
+    """Copy `fixture_path` to `repo/dest_rel`, stripping the inline
+    `gitleaks:allow` marker, and git-add it."""
     dest = repo / dest_rel
     dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy(fixture_path, dest)
-    content = dest.read_text(encoding="utf-8").replace(
-        "__SYNTHETIC_STRIPE_WEBHOOK_SECRET__", "whsec_" + "a" * 32
-    )
-    dest.write_text(content, encoding="utf-8")
+    text = fixture_path.read_text(encoding="utf-8")
+    for placeholder, value in FIXTURE_PLACEHOLDERS.items():
+        text = text.replace(placeholder, value)
+    dest.write_text(_GITLEAKS_MARKER_RE.sub("", text), encoding="utf-8")
     subprocess.run(["git", "add", "--", dest_rel], cwd=repo, check=True)
 
 
@@ -214,6 +226,74 @@ class TestWebhookFixture:
         assert not missing, (
             f"Webhook leak in .claude/plans/ was incorrectly allowlisted: "
             f"{sorted(missing)}. Check condition=AND on path-scoped allowlist."
+        )
+
+
+class TestLocalCredentials:
+    """age identities and plain password assignments.
+
+    These differ from the SaaS-token rules: an age identity is the one
+    secret that cannot be cheaply rotated, because it decrypts every
+    committed `encrypted_*.age` blob in the repo's history.
+    """
+
+    EXPECTED_RULE_IDS = {
+        "age-secret-key",
+        "generic-password-assignment",
+    }
+
+    def test_rules_fire_outside_artifact_dirs(
+        self, tmp_git_repo, fixtures_dir: Path
+    ):
+        _stage_fixture_at(
+            tmp_git_repo, fixtures_dir / "local_credentials.md", "src/leaks.md"
+        )
+        findings = _run_gitleaks_staged(tmp_git_repo)
+        rule_ids = {f["RuleID"] for f in findings}
+        missing = self.EXPECTED_RULE_IDS - rule_ids
+        assert not missing, (
+            f"Expected local-credential rules did not fire: {sorted(missing)}. "
+            f"Got: {sorted(rule_ids)}"
+        )
+
+    def test_rules_NOT_allowlisted_in_artifact_dirs(
+        self, tmp_git_repo, fixtures_dir: Path
+    ):
+        """Real-shape credentials must still fire inside .specstory/history/ —
+        the path-scoped allowlist only covers explicit example/REDACTED
+        markers, and agent transcripts are exactly where these two leak.
+        """
+        _stage_fixture_at(
+            tmp_git_repo,
+            fixtures_dir / "local_credentials.md",
+            ".specstory/history/2026-01-01_00-00-00Z-session.md",
+        )
+        findings = _run_gitleaks_staged(tmp_git_repo)
+        rule_ids = {f["RuleID"] for f in findings}
+        missing = self.EXPECTED_RULE_IDS - rule_ids
+        assert not missing, (
+            f"Local-credential leak in .specstory/history/ was incorrectly "
+            f"allowlisted: {sorted(missing)}. Check condition=AND."
+        )
+
+
+class TestPrivateKeyFixture:
+    """The PEM fixture must fire once its `__SYNTHETIC_PEM_*__` placeholders
+    are expanded -- that expansion is what keeps the fixture ON DISK free of a
+    detect-private-key BLACKLIST substring, so this is the test that would
+    catch the placeholders silently failing to expand."""
+
+    def test_private_key_rule_fires(self, tmp_git_repo, fixtures_dir: Path):
+        _stage_fixture_at(
+            tmp_git_repo, fixtures_dir / "private_key.md", "src/leaks.md"
+        )
+        findings = _run_gitleaks_staged(tmp_git_repo)
+        assert findings, (
+            "private_key.md produced no findings -- the __SYNTHETIC_PEM_*__ "
+            "placeholders probably did not expand"
+        )
+        assert any("private-key" in f["RuleID"] for f in findings), (
+            f"Expected a private-key rule; got {sorted({f['RuleID'] for f in findings})}"
         )
 
 

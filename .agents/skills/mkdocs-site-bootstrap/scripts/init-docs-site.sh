@@ -56,6 +56,16 @@ EOF
 log()  { printf '%s\n' "$*" >&2; }
 die()  { printf 'error: %s\n' "$*" >&2; exit "${2:-1}"; }
 
+# ensure_gitignore <pattern> <comment> — idempotently append to $TARGET/.gitignore
+ensure_gitignore() {
+  if [ "$DRY_RUN" = "1" ]; then
+    log "[dry-run] would ensure $1 is in $TARGET/.gitignore"
+  elif ! grep -qxF "$1" "$TARGET/.gitignore" 2>/dev/null; then
+    printf '\n# %s\n%s\n' "$2" "$1" >> "$TARGET/.gitignore"
+    log "Added $1 to .gitignore ($2)."
+  fi
+}
+
 SITE_NAME=""
 SITE_DESC=""
 SITE_URL=""
@@ -199,15 +209,12 @@ if [ "$NO_WORKFLOW" = "0" ]; then
   expand_marker "$TARGET/.github/workflows/docs.yml" "__SOCIAL_CI__" "$ASSETS/social/ci-steps.yml"
 fi
 
-# --- 3b. .gitignore: social plugin writes a large card+font cache ---
+# --- 3b. .gitignore: build output (always) + social plugin cache (--social) ---
+# `mkdocs build` writes the rendered site to ./site/ (default site_dir) every
+# run — a generated artifact that must never be committed.
+ensure_gitignore '/site/' 'mkdocs build output (regenerated every build)'
 if [ "$SOCIAL" = "1" ]; then
-  if [ "$DRY_RUN" = "1" ]; then
-    log "[dry-run] would ensure /.cache/ is in $TARGET/.gitignore"
-  elif ! grep -qxF '/.cache/' "$TARGET/.gitignore" 2>/dev/null; then
-    printf '\n# mkdocs social plugin card+font cache (regenerated every build)\n/.cache/\n' \
-      >> "$TARGET/.gitignore"
-    log "Added /.cache/ to .gitignore (social plugin card cache)."
-  fi
+  ensure_gitignore '/.cache/' 'mkdocs social plugin card+font cache (regenerated every build)'
 fi
 
 # --- 4. docs/ skeleton ---

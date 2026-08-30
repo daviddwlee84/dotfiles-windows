@@ -97,7 +97,9 @@ Record the decision under `mkdocs_site_bootstrap.existing_docs_decision`.
 Run `init-docs-site.sh`. It writes (or refuses to overwrite) `mkdocs.yml`,
 `pyproject.toml` (with `[project.optional-dependencies] docs = […]`), the
 `docs/` skeleton, `.github/workflows/docs.yml`, and stub assets for
-copy-to-llm.
+copy-to-llm. It also appends `/site/` (the `mkdocs build` output dir) to
+`.gitignore` so the generated site is never committed — plus `/.cache/` when
+`--social` is on.
 
 ```bash
 bash skills/local/mkdocs-site-bootstrap/scripts/init-docs-site.sh \
@@ -235,6 +237,8 @@ user may want one without the other.
 - **`scripts/init-docs-site.sh`** — Scaffold the site files.
   - Flags: `--site-name`, `--repo-slug`, `--site-url`, `--existing skip|wrap`,
     `--no-workflow`, `--no-skeleton`, `--social`, `--dry-run`, `--force`.
+  - Always appends `/site/` (the `mkdocs build` output dir) to `.gitignore`,
+    idempotently.
   - `--social` opts into OG/Twitter cards: expands the `__SOCIAL_*__` markers in
     the templates with the blocks in `assets/social/`, and adds `/.cache/` to
     `.gitignore`. Off by default (keeps the scaffold Cairo/Pango-free).
