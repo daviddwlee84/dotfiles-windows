@@ -72,6 +72,13 @@ PowerShell anyway, so a machine with *no* PowerShell couldn't use the repo.
 
 `chezmoi init` asks a few questions once (answers are stored and never re-asked):
 
+!!! note "Private pia checkout"
+    `pi-agents` is private. Before enabling coding agents, make sure Git can
+    clone it over HTTPS (for example, `gh auth login` followed by
+    `gh auth setup-git`). On a completely fresh machine, you can apply once
+    with coding agents off, authenticate after `gh` is installed, enable the
+    toggle in chezmoi data, and apply again.
+
 | Prompt | Default | Meaning |
 |---|---|---|
 | Role | `workstation` | `workstation` = full desktop; `minimal` = shell only |

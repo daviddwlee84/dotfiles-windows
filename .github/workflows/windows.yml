@@ -142,17 +142,11 @@ jobs:
           '@
           [System.IO.File]::WriteAllText($codexPath, $seed + "`r`n", [System.Text.UTF8Encoding]::new($false))
 
-          chezmoi apply --source $PWD --destination $dest --exclude scripts --verbose
+          # pi-agents is a private cross-repo external. This repository has no
+          # read token for it, so CI validates the rendered external contract in
+          # Pester and lets pi-agents' own Windows workflow exercise launchers.
+          chezmoi apply --source $PWD --destination $dest --exclude scripts,externals --verbose
 
-          # installCodingAgents=true above must deploy the immutable pi-agents
-          # external with both native Windows launchers. Package scripts remain
-          # excluded; the pi-agents workflow separately exercises the launchers.
-          $piaBin = Join-Path $dest '.local\share\pi-agents\bin'
-          foreach ($launcher in 'pia.ps1', 'pia.cmd') {
-            if (-not (Test-Path -LiteralPath (Join-Path $piaBin $launcher) -PathType Leaf)) {
-              throw "pi-agents external is missing bin/$launcher"
-            }
-          }
           $piWrapperBin = Join-Path $dest '.config\powershell\bin'
           foreach ($launcher in 'pia-pi.ps1', 'pi.cmd') {
             if (-not (Test-Path -LiteralPath (Join-Path $piWrapperBin $launcher) -PathType Leaf)) {

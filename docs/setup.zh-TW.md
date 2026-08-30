@@ -66,6 +66,12 @@ powershell -ExecutionPolicy Bypass -File "%TEMP%\bootstrap.ps1"
 
 `chezmoi init` 只會問一次（答案會被記住，不再重複問）：
 
+!!! note "Private pia checkout"
+    `pi-agents` 是 private repo。啟用 coding agents 前，先確保 Git 能透過 HTTPS
+    clone（例如執行 `gh auth login`，再執行 `gh auth setup-git`）。完全新機器可先
+    關閉 coding agents 套用一次，等 `gh` 安裝後完成驗證，再開啟 chezmoi toggle
+    並重新 apply。
+
 | 提問 | 預設 | 意義 |
 |---|---|---|
 | Role | `workstation` | `workstation` = 完整桌面；`minimal` = 只有 shell |
