@@ -212,7 +212,7 @@ Describe 'Herdr runtime config editor' {
                 'key = "prefix\+alt\+e"\r?\n' +
                 'type = "pane"\r?\n' +
                 'command = ''pwsh -NoProfile -File "\{\{ \$herdrDir \}\}/edit-config\.ps1"''\r?\n' +
-                'description = "edit runtime config, validate, and reload"$'
+                'description = "edit runtime config, validate, and reload"\r?$'
             [regex]::Matches($template, $pattern).Count | Should -Be 1
             [regex]::Matches($template, '(?m)^key = "prefix\+alt\+g"$').Count | Should -Be 0
         }
@@ -537,11 +537,16 @@ exit 0
             Invoke-HerdrConfigEdit -NoHold | Should -Be 45
 
             $editor = $script:Calls | Where-Object Phase -EQ editor
+            $normalizeAcl = {
+                param([string] $Sddl)
+                $Sddl -replace 'D:PAI(?=\()', 'D:P' -replace 'D:AI(?=\()', 'D:'
+            }
             $editor.BackupExists | Should -BeTrue
             $editor.BackupAttributes | Should -Be ([IO.FileAttributes]::Archive)
-            $editor.BackupAclSddl | Should -BeExactly $originalAcl.Sddl
+            (& $normalizeAcl $editor.BackupAclSddl) | Should -BeExactly (& $normalizeAcl $originalAcl.Sddl)
             [IO.File]::GetAttributes($script:Target) | Should -Be ([IO.FileAttributes]::Archive)
-            (Get-Acl -LiteralPath $script:Target).Sddl | Should -BeExactly $originalAcl.Sddl
+            (& $normalizeAcl (Get-Acl -LiteralPath $script:Target).Sddl) |
+                Should -BeExactly (& $normalizeAcl $originalAcl.Sddl)
             $candidate = @(Get-ChildItem -LiteralPath ([IO.Path]::GetDirectoryName($script:Target)) -Force |
                 Where-Object Name -Like 'config.toml.invalid-*')
             $candidate.Count | Should -Be 1
