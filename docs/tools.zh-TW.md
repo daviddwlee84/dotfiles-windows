@@ -167,7 +167,11 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
   `just upgrade-pia`。
   這份 checkout 是唯讀部署 mirror：`pia use` 的選擇存於
   `~/.config/pi-agents`，runtime、session 與 handoff 則留在
-  `~/.local/state/pi-agents`。此 bundle 也會安裝 `gitleaks`，供 `pia handoff`
+  `~/.local/state/pi-agents`。PowerShell 會把 `pia completion powershell`
+  快取到 `~/.cache/pwsh-init/pia.ps1`，並同時以 launcher timestamp 與 checkout
+  的 Git revision 判定是否失效。執行 `just upgrade-pia` 後，開新 shell 或執行
+  `reload`；`pia use <Tab>` 就會列出更新後 checkout 裡的 combo ID，而不必每次
+  補全都承擔一次 Node 啟動成本。此 bundle 也會安裝 `gitleaks`，供 `pia handoff`
   做最後一道本機 secret scan。
 - **Codex 原生 footer** —— chezmoi 以非破壞性 overlay 把 provider-neutral
   status line（model/reasoning、fast mode、branch、context、tasks、directory）合併到

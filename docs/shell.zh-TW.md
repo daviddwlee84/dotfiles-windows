@@ -14,7 +14,7 @@
 |---|---|
 | `00_env.ps1` | XDG base 目錄、`$env:EDITOR`、PATH |
 | `05_mirrors.ps1` | 受管機器使用公司核准 registry；其他機器可選中國鏡像 |
-| `10_tools.ps1` | `init` 掛鉤:starship、zoxide、mise、atuin、fzf、direnv、tv |
+| `10_tools.ps1` | 快取的 `init` 掛鉤與補全：starship、zoxide、atuin、fzf、direnv、tv、dev-cli、translate、pia |
 | `20_aliases.ps1` | alias 與 helper（`reload`、`cas`/`cau`、現代 CLI 替身） |
 | `21_git.ps1` | oh-my-zsh `git` plugin alias 移植到 pwsh（`gst`、`gco`、`gl`=pull、`gcam`、`glol`…） |
 | `28_tldr.ps1` | `tldrf` —— tldr 加上 `zh_TW → zh → en` 語言 fallback |

@@ -5,6 +5,7 @@ BeforeAll {
     $PackageTemplate = Join-Path $RepoRoot '.chezmoiscripts' 'run_onchange_after_10_packages.ps1.tmpl'
     $ExternalTemplate = Join-Path $RepoRoot '.chezmoiexternal.toml.tmpl'
     $EnvironmentProfile = Join-Path $RepoRoot 'dot_config' 'powershell' 'profile.d' '00_env.ps1.tmpl'
+    $ToolsProfile = Join-Path $RepoRoot 'dot_config' 'powershell' 'profile.d' '10_tools.ps1'
     $EnvironmentScript = Join-Path $RepoRoot '.chezmoiscripts' 'run_after_11_pi_agents_environment.ps1.tmpl'
     $ManagedPiLauncher = Join-Path $RepoRoot 'dot_config' 'powershell' 'bin' 'pia-pi.ps1'
     $ManagedPiCmdLauncher = Join-Path $RepoRoot 'dot_config' 'powershell' 'bin' 'pi.cmd'
@@ -483,6 +484,7 @@ Describe 'chezmoi and shell integration for Pi, pia, and OMP' {
     BeforeAll {
         $script:PackageSource = Get-Content -Raw -LiteralPath $PackageTemplate
         $script:JustSource = Get-Content -Raw -LiteralPath $Justfile
+        $script:ToolsSource = Get-Content -Raw -LiteralPath $ToolsProfile
     }
 
     It 'gates the immutable pi-agents external on installCodingAgents' {
@@ -512,10 +514,21 @@ Describe 'chezmoi and shell integration for Pi, pia, and OMP' {
             $doc | Should -Match '@earendil-works/pi-coding-agent'
             $doc | Should -Match 'omp\.sh/install\.ps1'
             $doc | Should -Match '~/.local/share/pi-agents'
+            $doc | Should -Match 'pia completion powershell'
+            $doc | Should -Match ([regex]::Escape('pia use <Tab>'))
         }
         $skill = Get-Content -Raw (Join-Path $RepoRoot '.chezmoitemplates/dotfiles-windows-skill.md')
         $skill | Should -Match 'Pi/pia/OMP included'
         $skill | Should -Match 'upgrade-npm-agents.*upgrade-omp.*upgrade-pia'
+    }
+
+    It 'loads pia PowerShell completion from a checkout-revision-keyed cache' {
+        $script:ToolsSource | Should -Match '\[string\]\$RevisionStamp\s*=\s*'''''
+        $script:ToolsSource | Should -Match '\$stamp\s*=\s*if \(\$RevisionStamp\)'
+        $script:ToolsSource | Should -Match '(?s)\.git''.*Join-Path \$gitDir ''HEAD'''
+        $registration = "Import-CachedInit -Name 'pia' -Exe `$piaExe -RevisionStamp `$piaRevisionStamp"
+        $script:ToolsSource | Should -Match ([regex]::Escape($registration))
+        $script:ToolsSource | Should -Match '& \$piaExe completion powershell'
     }
 
     It 'presence-gates PATH entries for pia, OMP, and Scoop Git Bash' {

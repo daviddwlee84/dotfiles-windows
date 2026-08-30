@@ -178,6 +178,11 @@ Enabled by **Install coding agents**:
   `just upgrade-pia` explicitly. The checkout is an immutable
   deployment mirror: `pia use` stores the selection in `~/.config/pi-agents`,
   while runtimes, sessions, and handoffs stay under `~/.local/state/pi-agents`.
+  PowerShell caches `pia completion powershell` under
+  `~/.cache/pwsh-init/pia.ps1`, keyed by both the launcher timestamp and the
+  checkout's Git revision. After `just upgrade-pia`, open a new shell or run
+  `reload`; `pia use <Tab>` then offers the combo IDs from the refreshed
+  checkout without paying a Node startup on every completion.
   `gitleaks` is installed with this bundle because `pia handoff` uses it for the
   final local secret scan.
 - **Codex native footer** — chezmoi non-destructively merges a provider-neutral
