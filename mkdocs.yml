@@ -40,6 +40,7 @@ plugins:
             Tools: 工具索引
             Disk space: 磁碟空間
             Shell: Shell 環境
+            Yazi: Yazi 檔案管理員
             Rationale: 設計取捨
             copilot-proxy: copilot-proxy
             Codex status line: Codex 狀態列
@@ -66,6 +67,7 @@ nav:
   - Tools: tools.md
   - Disk space: disk-space.md
   - Shell: shell.md
+  - Yazi: yazi.md
   - Rationale: rationale.md
   - copilot-proxy: copilot-proxy.md
   - Codex status line: codex-status-line.md

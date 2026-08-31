@@ -1,0 +1,96 @@
+#Requires -Version 7
+# Install Yazi plugins declared in ~/.config/yazi/package.toml. This is a
+# run_after script with its own freshness check because plugin directories live
+# outside chezmoi's managed state and can disappear independently of the lock.
+
+$ErrorActionPreference = 'Continue'
+if (Test-Path variable:PSNativeCommandUseErrorActionPreference) { $PSNativeCommandUseErrorActionPreference = $false }
+
+function Get-YaziPluginNames {
+    param([Parameter(Mandatory)] [string] $PackageFile)
+
+    $text = Get-Content -Raw -LiteralPath $PackageFile -ErrorAction Stop
+    foreach ($match in [regex]::Matches($text, '(?m)^\s*use\s*=\s*"([^"]+)"')) {
+        $name = $match.Groups[1].Value
+        if ($name.Contains(':')) { $name = $name.Substring($name.LastIndexOf(':') + 1) }
+        elseif ($name.Contains('/')) { $name = $name.Substring($name.LastIndexOf('/') + 1) }
+        if ($name) { "$name.yazi" }
+    }
+}
+
+function Test-YaziPluginsMissing {
+    param(
+        [Parameter(Mandatory)] [string] $ConfigDir,
+        [Parameter(Mandatory)] [string] $PackageFile
+    )
+
+    foreach ($name in @(Get-YaziPluginNames -PackageFile $PackageFile)) {
+        if (-not (Test-Path -LiteralPath (Join-Path $ConfigDir "plugins\$name\main.lua"))) {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Invoke-YaziPluginInstall {
+    param(
+        [string] $HomePath = $HOME,
+        [string] $CacheRoot
+    )
+
+    $configDir = Join-Path $HomePath '.config\yazi'
+    $packageFile = Join-Path $configDir 'package.toml'
+
+    if (-not (Get-Command yazi -ErrorAction SilentlyContinue)) { return }
+    if (-not (Get-Command ya -ErrorAction SilentlyContinue)) {
+        Write-Warning "ya (Yazi's CLI companion) is missing; Git status signs cannot be installed. Install the matched yazi/ya release and re-run chezmoi apply."
+        return
+    }
+    if (-not (Test-Path -LiteralPath $packageFile)) {
+        Write-Warning 'Yazi package.toml is missing; skipping plugin installation.'
+        return
+    }
+
+    # A non-profile run-script does not inherit variables written to the User
+    # environment by run_onchange_after_03_xdg_env.ps1 in the same apply.
+    $env:YAZI_CONFIG_HOME = $configDir
+    $lockHash = '{{ include "dot_config/yazi/package.toml" | sha256sum }}'
+    if (-not $CacheRoot) {
+        $CacheRoot = if ($env:XDG_CACHE_HOME) { $env:XDG_CACHE_HOME } else { Join-Path $HomePath '.cache' }
+    }
+    $stampDir = Join-Path $CacheRoot 'chezmoi'
+    $stamp = Join-Path $stampDir 'yazi-plugins-lock'
+
+    try {
+        $stampMatches = (Test-Path -LiteralPath $stamp) -and
+            ((Get-Content -Raw -LiteralPath $stamp -ErrorAction Stop).Trim() -eq $lockHash)
+        if ($stampMatches -and -not (Test-YaziPluginsMissing -ConfigDir $configDir -PackageFile $packageFile)) {
+            return
+        }
+
+        Write-Output '==> Installing Yazi plugins from package.toml via ya pkg install'
+        $installOutput = @(& ya pkg install 2>&1)
+        $installExit = $LASTEXITCODE
+        if ($installExit -ne 0) {
+            $detail = ($installOutput | ForEach-Object { [string]$_ }) -join '; '
+            Write-Warning "ya pkg install failed (exit $installExit): $detail"
+            return
+        }
+        if (Test-YaziPluginsMissing -ConfigDir $configDir -PackageFile $packageFile) {
+            Write-Warning 'ya pkg install reported success but one or more plugins are still missing; the next apply will retry.'
+            return
+        }
+
+        New-Item -ItemType Directory -Force -Path $stampDir | Out-Null
+        [IO.File]::WriteAllText($stamp, "$lockHash`n", [Text.UTF8Encoding]::new($false))
+        Write-Output '==> Yazi plugins installed'
+    } catch {
+        Write-Warning "Yazi plugin installation failed non-fatally: $_"
+    }
+}
+
+if ($MyInvocation.InvocationName -ne '.') {
+    Invoke-YaziPluginInstall
+    # Run-scripts must never abort the rest of chezmoi apply.
+    exit 0
+}

@@ -136,6 +136,15 @@ type = "pane"
 command = "lazygit"
 description = "lazygit (popup pane)"
 
+# Match the Unix prefix+Y launcher while respecting the Windows preview's lack
+# of `type = "popup"`: this opens a temporary command pane in the focused pane's
+# cwd and closes it when Yazi exits. Do not add width/height; panes ignore them.
+[[keys.command]]
+key = "prefix+Y"
+type = "pane"
+command = "yazi"
+description = "yazi file manager (temporary pane)"
+
 # btop as a floating command pane (a real PTY that closes when you quit it).
 # Quick Actions can't host this: herdr-plus runs an action with no PTY/stdin, so
 # an interactive TUI exits immediately.

@@ -45,7 +45,15 @@ copilot-model -c                   # 查看 Main/Fable/Opus/Sonnet/Haiku
 copilot-here on                    # 固定本專案；或用 claude-copilot-once
 claude-copilot --fast             # session-only fast sibling，無法使用時警告並 fallback
 codex-copilot                     # Codex；即時 OpenAI-first model selection
+
+# 單次 planning preset；Codex TUI 開啟後仍需輸入 `/plan`。
+codex-copilot -c 'plan_mode_reasoning_effort="ultra"' -c 'service_tier="fast"'
+claude-copilot-once --fast --permission-mode plan --settings '{"ultracode":true}'
 ```
+
+Claude 指令不要再加 `--effort`：啟動時的 effort pin 會阻止 session-only
+`ultracode` 生效。Codex 0.151.0 沒有啟動時指定 collaboration mode 的公開 flag，
+所以套用 override 後仍需輸入 `/plan`。
 
 `chezmoi apply` 不會偷偷遷移既有 global/project pin。升級後請手動執行一次
 `copilot-model --auto`。若 `copilot-here` 已開，它會刷新 local role set；否則只更新

@@ -17,7 +17,7 @@ tools; **winget** handles GUI apps.
 | glow | Markdown reader / pager — renders `.md` in the terminal |
 | delta | git diff pager |
 | jq | JSON processor |
-| yazi, btop | file manager / system monitor |
+| yazi, btop | file manager / system monitor; Yazi includes guarded `git.yazi` status signs ([guide](yazi.md)) |
 | pueue | background command queue (`pueue` client + `pueued` daemon). An elevated apply installs and starts its built-in Windows service; without elevation, apply starts detached daemon mode and the first future pwsh silently recovers it. |
 | television (`tv`) | fuzzy picker / channel launcher |
 | tldr (tlrc) | community man-page cheatsheets; `tldrf` adds `zh_TW → zh → en` fallback |
@@ -312,6 +312,7 @@ just upgrade-pia       # refresh the chezmoi external checkout
 just upgrade-agents    # aggregate the three commands above
 just upgrade-dev       # go install .../dev@latest (installed with the Herdr stack)
 just upgrade-herdr     # verified official installer + matching global skill (run outside Herdr)
+just upgrade-yazi-plugins # scoop update yazi, then ya pkg upgrade
 just upgrade-translate # scoop update translate (opt-in tool; not in `just upgrade`)
 just upgrade-summarize # npm update -g @steipete/summarize (opt-in tool; not in `just upgrade`)
 ```

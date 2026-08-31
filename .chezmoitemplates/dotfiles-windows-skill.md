@@ -117,7 +117,8 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   installed via herdr.dev's `irm|iex` script, config at `~/.config/herdr/config.toml`,
   with its official global skill exported from the installed binary on each apply.
   The same toggle installs Go + `dev` v0.1.0 (`prefix+d`) and uses that Go for
-  herdr-plus (`prefix+y` holds six copy helpers; `prefix+p` stays interactive).
+  herdr-plus (`prefix+y` holds six copy helpers; `prefix+p` stays interactive),
+  while `prefix+Y` opens Yazi in a temporary pane at the focused pane cwd.
   `prefix+alt+e` edits the existing `HERDR_CONFIG_PATH` target (default
   `~/.config/herdr/config.toml`) directly, validates that exact file, then reloads
   the current server; it never invokes chezmoi. `$env:EDITOR` must name one blocking
@@ -128,6 +129,9 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   `[theme]`/`[ui]`/`[terminal]`/`[keys]`. Persist changes by manually and selectively
   editing `.chezmoitemplates/herdr/config.toml`; never `chezmoi add`/`re-add` this
   `modify_` target, which can replace/bypass the merger and import runtime-owned state.
+  Yazi itself uses the managed `git.yazi` plugin for file/directory status signs;
+  `git-guard.yazi` keeps older pre-26.8.15 installs responsive until `just
+  upgrade-yazi-plugins` upgrades the matched yazi/ya pair.
   Runtimes are native via scoop (node/bun/go/rust/ruby) + uv for Python — no mise on Windows.
 - **Rime input method** (opt-in `installInputMethod`): Weasel/小狼毫 via winget
   `Rime.Weasel`. Machine-scope NSIS, so applying raises UAC; and a bare silent

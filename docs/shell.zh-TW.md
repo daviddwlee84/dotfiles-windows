@@ -20,7 +20,7 @@
 | `28_tldr.ps1` | `tldrf` —— tldr 加上 `zh_TW → zh → en` 語言 fallback |
 | `30_apps.ps1` | app 控制（`applaunch`/`appquit`/…）、音量、剪貼簿 |
 | `32_try.ps1` | `tri` —— try (tobi/try) 暫時性日期命名 workspace（選用；沒 ruby 時 inert） |
-| `35_yazi.ps1` | `y` —— 開 yazi,離開時 cd 到你停下的目錄 |
+| `35_yazi.ps1` | `y` —— 開啟帶 Git 狀態標記的 Yazi，離開後 cd 到最後目錄 |
 | `40_copilot.ps1` | 匯入 `copilot-proxy` PowerShell 模組 |
 | `90_psreadline.ps1` | PSReadLine（vi 模式、歷史） |
 | `96_ssh_setup.ps1` | `ssh-setup-remote`（`Set-RemoteSshKey`）—— 互動式、支援 ProxyJump 的 SSH 金鑰設定精靈 |

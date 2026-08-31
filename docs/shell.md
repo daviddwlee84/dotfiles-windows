@@ -21,7 +21,7 @@ logic lives in the fragments; the loader stays boring.
 | `28_tldr.ps1` | `tldrf` — tldr with a `zh_TW → zh → en` language fallback |
 | `30_apps.ps1` | app control (`applaunch`/`appquit`/…), audio, clipboard |
 | `32_try.ps1` | `tri` — try (tobi/try) ephemeral dated workspaces (opt-in; inert without ruby) |
-| `35_yazi.ps1` | `y` — launch yazi, cd to where you quit |
+| `35_yazi.ps1` | `y` — launch Yazi with Git status signs, cd to where you quit |
 | `40_copilot.ps1` | import the `copilot-proxy` PowerShell module |
 | `90_psreadline.ps1` | PSReadLine (vi mode, history) |
 | `96_ssh_setup.ps1` | `ssh-setup-remote` (`Set-RemoteSshKey`) — interactive, ProxyJump-aware SSH key setup wizard |

@@ -28,6 +28,12 @@ upgrade-scoop:
     scoop update
     scoop update *
 
+# Upgrade Yazi plugins declared in ~/.config/yazi/package.toml. The latest
+# git.yazi needs a matched yazi/ya >= 26.8.15; upgrade the Scoop package first.
+upgrade-yazi-plugins:
+    scoop update yazi; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    $env:YAZI_CONFIG_HOME = Join-Path $HOME '.config\yazi'; ya pkg upgrade
+
 # upgrade GUI apps (winget)
 upgrade-winget:
     winget upgrade --all --accept-source-agreements --accept-package-agreements

@@ -167,10 +167,15 @@ Everything below was exercised from macOS with chezmoi + pwsh 7.4 + uv:
     current-user-only while the old target is restored, and reload reaches the
     current server through the inherited socket. Also force reload failure once and
     confirm the valid edited target plus backup remain. No phase may invoke chezmoi.
+15. **`prefix+Y` Yazi launcher.** Windows deliberately uses `type = "pane"`
+    because the preview build still rejects the Unix `popup` primitive. Confirm
+    the temporary pane inherits the focused source pane's cwd, finds the Scoop
+    `yazi.exe` plus `YAZI_CONFIG_HOME`, renders git.yazi signs after upgrading to
+    Yazi/Ya 26.8.15+, and closes cleanly on `q` without changing the source pane.
 
 ## Next steps
 
-Run through 1–14 on the first Windows host with herdr installed, then either fold
+Run through 1–15 on the first Windows host with herdr installed, then either fold
 the corrections back into `.chezmoitemplates/herdr/config.toml` or record the
 Windows-specific limitation here. If `[[keys.command]]` turns out to be
 unsupported, the config's non-keymap half (`[theme]`, `[ui]`, `[terminal]`, the

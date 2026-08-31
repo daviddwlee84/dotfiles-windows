@@ -45,7 +45,15 @@ copilot-model -c                   # inspect Main/Fable/Opus/Sonnet/Haiku
 copilot-here on                    # sticky project; or use claude-copilot-once
 claude-copilot --fast             # session-only fast sibling, with warned fallback
 codex-copilot                     # Codex; live OpenAI-first model selection
+
+# One-shot planning presets. Codex still needs `/plan` after the TUI opens.
+codex-copilot -c 'plan_mode_reasoning_effort="ultra"' -c 'service_tier="fast"'
+claude-copilot-once --fast --permission-mode plan --settings '{"ultracode":true}'
 ```
+
+Do not add `--effort` to the Claude command: a launch-effort pin prevents the
+session-only `ultracode` switch from taking effect. Codex 0.151.0 has no public
+startup collaboration-mode flag, so its overrides are followed by `/plan`.
 
 Existing global and project pins are deliberately not migrated by `chezmoi
 apply`. Run `copilot-model --auto` once after this upgrade. When `copilot-here`

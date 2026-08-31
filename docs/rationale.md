@@ -108,7 +108,8 @@ Its config is managed at `~/.config/herdr/config.toml` (pwsh as the default shel
 It stays off by default while the Windows build is beta.
 Enabling the stack also source-builds `dev` v0.1.0 into `~\.local\bin` and
 exposes it as `dev-cli`, avoiding Microsoft DevTool's same-named `dev.exe`:
-Herdr `prefix+d` opens its task/worktree dashboard, while the low-frequency clipboard
+Herdr `prefix+d` opens its task/worktree dashboard, `prefix+Y` opens Yazi in a
+temporary pane at the focused cwd (the Windows preview still lacks popups), while the low-frequency clipboard
 helpers live in the `prefix+y` herdr-plus list (the interactive path picker keeps
 `prefix+p`). The required Scoop Go toolchain is therefore self-contained and is
 reused to build herdr-plus. Windows Terminal stays installed for its panes/tabs; Alacritty

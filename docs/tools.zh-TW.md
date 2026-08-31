@@ -17,7 +17,7 @@ GUI 應用程式。
 | glow | Markdown 閱讀器 / 分頁器 —— 在終端機渲染 `.md` |
 | delta | git diff 分頁器 |
 | jq | JSON 處理器 |
-| yazi、btop | 檔案管理員 / 系統監控 |
+| yazi、btop | 檔案管理員 / 系統監控；Yazi 包含受保護的 `git.yazi` 狀態標記（[說明](yazi.zh-TW.md)） |
 | pueue | 背景命令佇列（`pueue` client + `pueued` daemon）。以系統管理員 apply 時會安裝並啟動內建 Windows service；未提權時則啟動 detached daemon，之後第一個 pwsh 也會靜默補起。 |
 | television（`tv`） | 模糊選擇器 / channel 啟動器 |
 | tldr（tlrc） | 社群 man page 速查表；`tldrf` 加上 `zh_TW → zh → en` fallback |
@@ -286,6 +286,7 @@ just upgrade-pia       # refresh chezmoi external checkout
 just upgrade-agents    # 聚合上面三個命令
 just upgrade-dev       # go install .../dev@latest（隨 Herdr stack 安裝）
 just upgrade-herdr     # 驗證過的官方 installer + 對應版本全域 skill（需在 Herdr 外執行）
+just upgrade-yazi-plugins # scoop update yazi，再執行 ya pkg upgrade
 just upgrade-translate # go install …/translate@latest（選用工具，不含在 `just upgrade` 裡）
 just upgrade-summarize # npm update -g @steipete/summarize（選用工具，不含在 `just upgrade` 裡）
 ```
