@@ -62,6 +62,15 @@ site/**
 AppData/Roaming/television/cable/herdr-*.toml
 {{ end }}
 
+# summarize config + prompt presets are only deployed when the opt-in
+# installSummarize toggle is on. ~/.summarize/config.json is NOT under .config on
+# purpose: summarize hardcodes that path (no XDG lookup, no SUMMARIZE_CONFIG
+# override). The prompt presets summarize never writes to DO live under .config.
+{{ if not .installSummarize }}
+.summarize/**
+.config/summarize/**
+{{ end }}
+
 # Clink profile (starship.lua for cmd.exe) is only deployed when the opt-in
 # installClink toggle is on. The zoxide/fzf Clink bridges are fetched at apply
 # time by the packages script, not managed here.

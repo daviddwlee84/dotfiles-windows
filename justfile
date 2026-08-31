@@ -36,6 +36,10 @@ upgrade-winget:
 upgrade-npm-agents:
     pwsh -NoProfile -File ./scripts/run-package-source-command.ps1 -Action UpgradeNpmAgents
 
+# upgrade the summarize CLI (plain npm global, not part of the agent stack)
+upgrade-summarize:
+    pwsh -NoProfile -File ./scripts/run-package-source-command.ps1 -Action UpgradeSummarize
+
 # upgrade Oh My Pi through its official prebuilt-binary installer
 upgrade-omp:
     pwsh -NoProfile -File ./scripts/upgrade-omp.ps1

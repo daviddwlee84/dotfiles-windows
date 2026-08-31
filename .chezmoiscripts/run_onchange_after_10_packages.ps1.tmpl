@@ -13,6 +13,7 @@
 #   installExtraRuntimes = {{ .installExtraRuntimes }}
 #   installMediaTools    = {{ .installMediaTools }}
 #   installLlmTools      = {{ .installLlmTools }}
+#   installSummarize     = {{ .installSummarize }}
 #   installTunnelTools   = {{ .installTunnelTools }}
 #   installIacTools      = {{ .installIacTools }}
 #   installHerdr         = {{ .installHerdr }}
@@ -631,6 +632,15 @@ if (Have uv) {
         -ManagedMachine $managedMachine -AllowPublicFallback $allowPublicPackageFallback
     if (-not $result.Succeeded) { Register-Failure 'uv:litellm' }
 }
+{{ end -}}
+
+{{ if .installSummarize -}}
+# summarize — multi-modal AI summarizer (YouTube / podcast / web / PDF / media).
+# No scoop or winget manifest exists, so it is an npm global. Needs Node 24+, met by
+# the baseline `nodejs-lts`. ffmpeg + yt-dlp back the audio pipeline, tesseract backs
+# --slides-ocr; all three are in the `main` bucket added by Ensure-Scoop.
+Scoop-Install @('ffmpeg', 'yt-dlp', 'tesseract')
+Npm-InstallGlobal @('@steipete/summarize')
 {{ end -}}
 
 {{ if .installTunnelTools -}}

@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('UpgradeNpmAgents', 'DocsBuild', 'DocsServe')]
+    [ValidateSet('UpgradeNpmAgents', 'UpgradeSummarize', 'DocsBuild', 'DocsServe')]
     [string] $Action
 )
 
@@ -53,6 +53,19 @@ switch ($Action) {
                 -TimeoutSeconds 1200
             if (-not $result.Succeeded) { exit $result.ExitCode }
         }
+    }
+    'UpgradeSummarize' {
+        # summarize is a plain npm global, NOT part of the Pi-owned agent prefix, so it
+        # deliberately does not ride along with UpgradeNpmAgents.
+        $npmCommand = (Get-Command npm -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+        $npm = Get-NpmGlobalExecutionContext -NpmCommandPath $npmCommand
+        $package = '@steipete/summarize'
+        $result = Invoke-PackageSourceCommand -Manager npm -Executable $npm.NodeExecutable `
+            -Arguments @($npm.NpmCli, 'update', '-g', $package) `
+            -Operation $package -PackageSpec $package -NpmPrefix $npm.Prefix -NpmCache $npm.Cache `
+            -NpmConfigValues $npm.ConfigValues -ManagedMachine $policy.ManagedMachine -AllowPublicFallback $policy.AllowPublicFallback `
+            -TimeoutSeconds 1200
+        if (-not $result.Succeeded) { exit $result.ExitCode }
     }
     'DocsBuild' {
         $result = Invoke-DocsCommand -Command build

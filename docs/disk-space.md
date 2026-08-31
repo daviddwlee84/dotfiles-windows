@@ -28,6 +28,7 @@ the toggles.
 | `installExtraRuntimes` | **rust/rustup ~1.5 GB**, go ~0.5 GB, ruby ~0.2 GB | **~2.2 GB** | ✅ |
 | `installMediaTools` | ffmpeg + imagemagick | **~0.3 GB** | — |
 | `installLlmTools` | **Ollama ~1.5 GB** (no models) + LiteLLM | **~1.8 GB** | — |
+| `installSummarize` | summarize npm global + ffmpeg/yt-dlp/tesseract (≈0 for ffmpeg if Media tools already on) | **~0.4 GB / ~0.1 GB** | — |
 | `installTunnelTools` | ngrok + cloudflared | **~0.1 GB** | — |
 | `installIacTools` | **Azure CLI ~1 GB** + Terraform + OpenTofu | **~1.5 GB** | — |
 | `installGamingApps` | Steam client (no games) | **~0.4 GB** | — |

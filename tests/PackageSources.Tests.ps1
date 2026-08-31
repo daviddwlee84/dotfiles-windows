@@ -55,6 +55,7 @@ BeforeAll {
             installCodingAgents = $true; installSpecstoryBuild = $false
             installWindowsApps = $false; installUtilityApps = $false; installGamingApps = $false
             installExtraRuntimes = $false; installMediaTools = $false; installLlmTools = $true
+            installSummarize = $true
             installTunnelTools = $false; installIacTools = $false; installHerdr = $InstallHerdr
             installClink = $false; installTry = $true; installTranslate = $true
             installInputMethod = $false; useChineseMirror = $UseChineseMirror

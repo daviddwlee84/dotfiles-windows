@@ -243,6 +243,7 @@ Off by default; enable the matching init prompt:
 | Toggle | Installs |
 |---|---|
 | Local LLM tools | Ollama (`Ollama.Ollama`) + LiteLLM (`uv tool install 'litellm[proxy]'`) |
+| summarize | [`summarize`](https://github.com/steipete/summarize) — YouTube / podcast / web / PDF → LLM summary, defaulting to 繁體中文 output. No scoop/winget manifest, so it is an npm global (`@steipete/summarize`, Node 24+ from the baseline `nodejs-lts`) plus scoop `ffmpeg`/`yt-dlp`/`tesseract`. `--cli claude|codex|gemini|pi` reuses an already-authenticated coding CLI instead of an API key. `~/.summarize/config.json` is a `modify_` overlay because summarize rewrites that file itself; wrappers `ytsum`/`sumq`/`suml`/`sumj` live in `profile.d/32_summarize.ps1`. Upgrade with `just upgrade-summarize`. See [summarize](summarize.md). |
 | Tunnel tools | ngrok, cloudflared (scoop) |
 | IaC tools | Terraform, OpenTofu (scoop) + Azure CLI & the `azure-devops` extension (`az devops`/`az repos`, winget) |
 | OpenSSH server | Microsoft OpenSSH Server (sshd): Windows capability + auto-start service + inbound TCP 22 firewall rule, with pwsh as the default shell. Needs admin — set up on an elevated `chezmoi apply`, or run `just enable-sshd` from an elevated pwsh. |
@@ -312,6 +313,7 @@ just upgrade-agents    # aggregate the three commands above
 just upgrade-dev       # go install .../dev@latest (installed with the Herdr stack)
 just upgrade-herdr     # verified official installer + matching global skill (run outside Herdr)
 just upgrade-translate # scoop update translate (opt-in tool; not in `just upgrade`)
+just upgrade-summarize # npm update -g @steipete/summarize (opt-in tool; not in `just upgrade`)
 ```
 
 The agent upgrades are deliberately not dependencies of bare `just upgrade`:

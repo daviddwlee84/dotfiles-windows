@@ -43,6 +43,7 @@ plugins:
             Rationale: 設計取捨
             copilot-proxy: copilot-proxy
             Codex status line: Codex 狀態列
+            summarize: summarize
             translate: translate
             Input method: 輸入法
             Multi-agent workflow: 多 Agent 工作流
@@ -68,6 +69,7 @@ nav:
   - Rationale: rationale.md
   - copilot-proxy: copilot-proxy.md
   - Codex status line: codex-status-line.md
+  - summarize: summarize.md
   - translate: translate.md
   - Input method: input-method.md
   - Multi-agent workflow: claude-code-agents.md

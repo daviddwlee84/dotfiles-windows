@@ -81,6 +81,9 @@ jobs:
             '--promptBool','Install extra runtimes (rust, go, ruby) beyond node/bun/uv=false',
             '--promptBool','Install media CLIs (ffmpeg, imagemagick)=false',
             '--promptBool','Install local LLM tools (Ollama, LiteLLM)=false',
+            # true so the render+parse step exercises the summarize package block;
+            # `chezmoi apply --exclude scripts` means npm/scoop never actually run.
+            '--promptBool','Install summarize (YouTube/web/PDF summarizer CLI)=true',
             '--promptBool','Install tunnel tools (ngrok, cloudflared)=false',
             '--promptBool','Install Infrastructure-as-Code tools (Azure CLI, Terraform, OpenTofu)=false',
             '--promptBool','Install and enable the OpenSSH server / sshd (needs admin, opens inbound port 22)=false',

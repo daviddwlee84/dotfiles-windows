@@ -223,6 +223,7 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
 | 開關 | 安裝內容 |
 |---|---|
 | Local LLM tools | Ollama（`Ollama.Ollama`）+ LiteLLM（`uv tool install 'litellm[proxy]'`） |
+| summarize | [`summarize`](https://github.com/steipete/summarize) —— YouTube／podcast／網頁／PDF → LLM 摘要，預設輸出繁體中文。沒有 scoop/winget manifest，所以用 npm 全域套件（`@steipete/summarize`，Node 24+ 由 baseline 的 `nodejs-lts` 提供），外加 scoop 的 `ffmpeg`／`yt-dlp`／`tesseract`。`--cli claude|codex|gemini|pi` 可沿用已登入的 coding CLI 而非 API key。`~/.summarize/config.json` 採 `modify_` overlay，因為 summarize 自己也會改寫該檔；包裝函式 `ytsum`／`sumq`／`suml`／`sumj` 放在 `profile.d/32_summarize.ps1`。以 `just upgrade-summarize` 升級。見 [summarize](summarize.zh-TW.md)。 |
 | Tunnel tools | ngrok、cloudflared（scoop） |
 | IaC tools | Terraform、OpenTofu（scoop）+ Azure CLI 與 `azure-devops` 擴充（`az devops`/`az repos`,winget） |
 | OpenSSH server | Microsoft OpenSSH Server（sshd）：Windows capability + 自動啟動服務 + inbound TCP 22 防火牆規則，並以 pwsh 為預設 shell。需系統管理員 —— 用提升權限的 `chezmoi apply`，或在提升權限的 pwsh 執行 `just enable-sshd`。 |
@@ -286,6 +287,7 @@ just upgrade-agents    # 聚合上面三個命令
 just upgrade-dev       # go install .../dev@latest（隨 Herdr stack 安裝）
 just upgrade-herdr     # 驗證過的官方 installer + 對應版本全域 skill（需在 Herdr 外執行）
 just upgrade-translate # go install …/translate@latest（選用工具，不含在 `just upgrade` 裡）
+just upgrade-summarize # npm update -g @steipete/summarize（選用工具，不含在 `just upgrade` 裡）
 ```
 
 這組 agent 升級刻意不掛到裸的 `just upgrade`：Windows 可能鎖住正在執行的 CLI

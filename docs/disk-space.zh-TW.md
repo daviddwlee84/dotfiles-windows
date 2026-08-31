@@ -24,6 +24,7 @@
 | `installExtraRuntimes` | **rust/rustup ~1.5 GB**、go ~0.5 GB、ruby ~0.2 GB | **~2.2 GB** | ✅ |
 | `installMediaTools` | ffmpeg + imagemagick | **~0.3 GB** | — |
 | `installLlmTools` | **Ollama ~1.5 GB**（不含模型）+ LiteLLM | **~1.8 GB** | — |
+| `installSummarize` | summarize npm 全域套件 + ffmpeg/yt-dlp/tesseract（若 Media tools 已開，ffmpeg ≈0） | **~0.4 GB / ~0.1 GB** | — |
 | `installTunnelTools` | ngrok + cloudflared | **~0.1 GB** | — |
 | `installIacTools` | **Azure CLI ~1 GB** + Terraform + OpenTofu | **~1.5 GB** | — |
 | `installGamingApps` | Steam 客戶端（不含遊戲） | **~0.4 GB** | — |
