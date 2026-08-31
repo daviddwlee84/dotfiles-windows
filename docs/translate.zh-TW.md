@@ -141,6 +141,48 @@ translate dict reindex         # 用既有的下載重建 SQLite 索引（不用
 
     只有開關打開時才會部署（見 `.chezmoiignore`）。
 
+## 翻譯 herdr pane {#herdr-pane}
+
+裝了 [herdr](https://herdr.dev)（`installHerdr`）之後，`prefix + t` 會把焦點 pane 的
+內容送進 `translate -2 --bilingual-mode doc`，並把結果顯示在一個暫時的 command pane
+裡：原文逐行保留，每個區塊的譯文以 `  ↳ …` 交錯在下方。`prefix + y`（herdr-plus Quick
+Actions）另外提供三個變體——範圍選單、目標語言輸入，以及複製到剪貼簿。
+
+Helper：`~\.config\herdr\pane-translate.ps1`，是母 repo `pane-translate.sh` 的
+PowerShell 移植版。兩者行為保持一致；共用的擷取規則寫在 superproject 的
+[`docs/herdr-pane-capture.md`](https://github.com/daviddwlee84/dotfiles-all/blob/main/docs/herdr-pane-capture.md)，
+面向使用者的完整說明則在母 repo 的
+[herdr 文件](https://daviddwlee84.github.io/dotfiles/zh-TW/tools/herdr/#translate-pane)。
+
+**範圍是畫面上這一頁，而這是誠實的答案、不是偷懶。** 跑在 alternate screen 上的 agent
+pane（Claude Code）**沒有** scrollback：它回報 `scroll.max_offset_from_bottom: 0`，而
+`herdr pane read --source recent --lines 1000` 剛好只回傳 `viewport_rows` 行——與
+`--source visible` 完全相同。離開 alternate screen 的行永遠不會進入 herdr 的 host
+scrollback，所以再大的 `--lines` 也救不回來。而因為 `--source visible` 呈現的是你在 app
+**內部**捲到的位置，「當前頁」是精確的。`prefix+y` 上的 `recent:200/500/1000` 只在
+shell、log、codex 這類 pane 才有意義；1000 是 herdr 每次讀取的硬上限，而且沒有分頁可以
+再往回翻。無論選哪個模式，`HERDR_TRANSLATE_MAX_CHARS`（預設 12000）都會在區塊邊界裁切，
+並把裁切結果寫在標頭上。
+
+句子被切斷的問題由兩層處理：`recent:N` 擷取會做上緣邊界對齊，更重要的是 `--instructions`
+會告訴模型這是終端機節錄、可能從句中開始或結束，且不得自行補完。
+
+不花任何 LLM 呼叫就能檢查上述行為：
+
+```powershell
+pwsh -NoProfile -File "$HOME\.config\herdr\pane-translate.ps1" recent:500 --dry-run
+```
+
+**Windows 特有差異。** `prefix + t` 是 `type = "pane"`，不是 unix 端的 `popup`——Windows
+preview 不接受 `popup`。它也不傳 `"$HERDR_ACTIVE_PANE_ID"` 參數，因為 herdr 在這個平台
+不會展開命令字串裡的 `$VAR`；helper 改讀 herdr 注入的環境變數。`prefix+y` 的變體需要
+herdr-plus plugin，而它在 Windows 上要從原始碼建置（因此需要 Go），至今尚未在真實 Windows
+主機上驗證過——`prefix + t` 才是不依賴它也能用的路徑。參見
+[`backlog/herdr-windows-port-verification.md`](https://github.com/daviddwlee84/dotfiles-windows/blob/main/backlog/herdr-windows-port-verification.md)。
+
+環境變數：`HERDR_TRANSLATE_MAX_CHARS`（12000）、`HERDR_TRANSLATE_TO`（預設目標語言；未設定
+時由 translate 自己的 `[general]` 設定決定）、`HERDR_RUN_HOLD`。
+
 ## 其他前端
 
 兩者在 Windows 上都可用，不需要額外設定：

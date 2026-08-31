@@ -135,11 +135,32 @@ Everything below was exercised from macOS with chezmoi + pwsh 7.4 + uv:
    on disk.
 9. **herdr-plus on Windows.** `prefix+O` / `prefix+y` and the quick-actions are
    untested; the plugin may not have a Windows build. The bindings no-op when
-   the plugin is absent, so this is safe to leave.
-10. **`prefix+d` dev dashboard.** `dev` v0.1.0 cross-compiles cleanly to PE32+
+   the plugin is absent, so this is safe to leave. Note `Install-HerdrPlus`
+   (`.chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl`) needs **go** — it
+   returns early with `herdr-plus: skipped — needs go to build on Windows` — so
+   "the plugin is absent" is a live case, not a hypothetical. Every feature that
+   ships a Quick Action must therefore also have a direct-key path; the pane
+   translator (`prefix+t`, item 12) is the first one built that way on purpose.
+12. **`prefix+t` pane translator.** `pane-translate.ps1` (2026-08-31). Confirm on
+    a real box: (a) the `type = "pane"` command pane owns a usable PTY so the
+    `--inline` viewer's `Read-Host` hold works; (b) `$env:HERDR_ACTIVE_PANE_ID`
+    is injected into a command pane, so `Resolve-HerdrPane` picks the SOURCE pane
+    and not the temporary command pane — **`url-pick.ps1` and `path-pick.ps1`
+    already depend on this and it has never been checked**; if it resolves to the
+    command pane, all three helpers need an explicit source-pane lookup, not just
+    this one; (c) the Quick Action split path — `pane split` returning
+    `.result.pane.pane_id`, the `process-info` readiness poll, and `pane run`
+    accepting a quoted `pwsh -NoProfile -File …` string; (d) the new pane is
+    unfocused (no `focus-pane.py` port here — reach it with `prefix+l`), so decide
+    whether porting the focuser is worth it; (e) that `translate` resolves without
+    an interactive profile (scoop shim on PATH), and that a stale
+    `~\.local\bin\translate.exe` does not shadow it. The text pipeline itself
+    is already covered off-Windows by `tests/Translate.Tests.ps1`, which asserts
+    byte-parity of `Format-HerdrCapture` against the unix filter's fixtures.
+13. **`prefix+d` dev dashboard.** `dev` v0.1.0 cross-compiles cleanly to PE32+
     console binaries for windows/amd64 and windows/arm64, but the actual ConPTY
     dashboard and Herdr runtime handoff still need a real Windows smoke test.
-11. **`prefix+alt+e` direct runtime editor.** Confirm ConPTY delivers the Alt
+14. **`prefix+alt+e` direct runtime editor.** Confirm ConPTY delivers the Alt
     chord distinctly from built-in `prefix+e` / `prefix+E`; `$env:EDITOR` and nvim
     block until exit, and the Notepad fallback waits. Smoke with an isolated target:
     verify backup attributes/ACL match before editing, a rejected candidate is
@@ -149,7 +170,7 @@ Everything below was exercised from macOS with chezmoi + pwsh 7.4 + uv:
 
 ## Next steps
 
-Run through 1–11 on the first Windows host with herdr installed, then either fold
+Run through 1–14 on the first Windows host with herdr installed, then either fold
 the corrections back into `.chezmoitemplates/herdr/config.toml` or record the
 Windows-specific limitation here. If `[[keys.command]]` turns out to be
 unsupported, the config's non-keymap half (`[theme]`, `[ui]`, `[terminal]`, the

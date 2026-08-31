@@ -1,0 +1,9 @@
+{{- $herdrDir := printf "%s/.config/herdr" (.chezmoi.homeDir | replace "\\" "/") -}}
+# herdr-plus Quick Action — translate the focused pane straight to the clipboard.
+# Managed by chezmoi. Same capture pipeline as "Translate pane", but no viewer
+# pane: the bilingual text goes to Set-Clipboard and a notification reports the
+# size. Use it when the destination is a chat/editor rather than your eyes.
+# See docs/translate.md § "Translate a herdr pane".
+name = "Translate pane: copy"
+description = "Bilingual translation of the current page, onto the clipboard"
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-translate.ps1" visible "$HERDR_PLUS_PANE_ID" --copy'

@@ -230,9 +230,17 @@ function Resolve-HerdrSpaceRoot {
 # scanned for herdr error markers: a pane showing the word "protocol_mismatch"
 # (e.g. someone debugging herdr) previously tripped a bogus "server is STALE".
 function Get-HerdrPaneText {
-    param([string] $PaneId, [string] $Source = 'visible')
+    # -Lines asks herdr for more rows than the 80-row default. 1000 is herdr's own
+    # hard per-read ceiling (anything above still returns exactly 1000) and there
+    # is no offset/pagination flag to reach further back. Omit it to keep the
+    # default, which is what the URL/path pickers want for a visible-screen read.
+    param([string] $PaneId, [string] $Source = 'visible', [int] $Lines = 0)
     try {
-        $raw = @(& herdr pane read $PaneId --source $Source --format text 2>&1)
+        if ($Lines -gt 0) {
+            $raw = @(& herdr pane read $PaneId --source $Source --format text --lines $Lines 2>&1)
+        } else {
+            $raw = @(& herdr pane read $PaneId --source $Source --format text 2>&1)
+        }
         $ok = ($LASTEXITCODE -eq 0)
         $s = Split-HerdrStream $raw
         if (-not $ok) { $null = Resolve-HerdrFailure $s.Err $s.Out; return $null }

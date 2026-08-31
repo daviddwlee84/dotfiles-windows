@@ -146,6 +146,56 @@ to run the update.
 
     Only deployed when the toggle is on (see `.chezmoiignore`).
 
+## Translate a herdr pane {#herdr-pane}
+
+With [herdr](https://herdr.dev) installed (`installHerdr`), `prefix + t` pipes the
+focused pane's content through `translate -2 --bilingual-mode doc` and shows the
+result in a temporary command pane: the original lines stay verbatim, each block's
+translation interleaved beneath as `  ↳ …`. `prefix + y` (herdr-plus Quick Actions)
+adds three variants — a scope picker, a target-language prompt, and a copy-to-clipboard
+form.
+
+Helper: `~\.config\herdr\pane-translate.ps1`, the PowerShell port of the parent
+repo's `pane-translate.sh`. The two are kept behaviourally identical; the shared
+capture rules are written up in the superproject's
+[`docs/herdr-pane-capture.md`](https://github.com/daviddwlee84/dotfiles-all/blob/main/docs/herdr-pane-capture.md)
+and the user-facing walkthrough is in the parent repo's
+[herdr doc](https://daviddwlee84.github.io/dotfiles/tools/herdr/#translate-pane).
+
+**Scope is the on-screen page, and that is the honest answer rather than a
+shortcut.** An agent pane running on the alternate screen (Claude Code) has *no*
+scrollback: it reports `scroll.max_offset_from_bottom: 0`, and `herdr pane read
+--source recent --lines 1000` returns exactly `viewport_rows` — identical to
+`--source visible`. Rows that leave the alternate screen never enter herdr's host
+scrollback, so no `--lines` value recovers them. Since `--source visible` renders
+whatever you scrolled to *inside* the app, "the current page" is exact. The
+`recent:200/500/1000` variants on `prefix+y` only pay off on shell, log and codex
+panes; 1000 is herdr's hard per-read ceiling and there is no pagination past it.
+Whatever the mode, `HERDR_TRANSLATE_MAX_CHARS` (default 12000) trims the capture at
+a block boundary and the header reports the trim.
+
+Mid-sentence edges are handled by a top-edge boundary snap on `recent:N` captures
+and, more importantly, by an `--instructions` line telling the model the text is a
+terminal excerpt that may begin or end mid-sentence and must not be completed.
+
+Inspect any of this without spending an LLM call:
+
+```powershell
+pwsh -NoProfile -File "$HOME\.config\herdr\pane-translate.ps1" recent:500 --dry-run
+```
+
+**Windows specifics.** `prefix + t` is `type = "pane"`, not the unix side's
+`popup` — the Windows preview rejects `popup`. It also passes no
+`"$HERDR_ACTIVE_PANE_ID"` argument, because herdr does not expand `$VAR` in a
+command string here; the helper reads the env var herdr injects instead. The
+`prefix+y` variants need the herdr-plus plugin, which builds from source (and so
+needs Go) and is still unverified on a real Windows host — `prefix + t` is the path
+that works without it. See
+[`backlog/herdr-windows-port-verification.md`](https://github.com/daviddwlee84/dotfiles-windows/blob/main/backlog/herdr-windows-port-verification.md).
+
+Env: `HERDR_TRANSLATE_MAX_CHARS` (12000), `HERDR_TRANSLATE_TO` (default target
+language; otherwise translate's own `[general]` config decides), `HERDR_RUN_HOLD`.
+
 ## Other front-ends
 
 Both work on Windows and are available without extra setup:

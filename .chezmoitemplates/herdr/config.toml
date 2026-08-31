@@ -246,6 +246,35 @@ type = "pane"
 command = 'pwsh -NoProfile -File "{{ $herdrDir }}/path-pick.ps1"'
 description = "copy a file path from the pane (fzf, two-tier)"
 
+# --- Translate the pane you are reading (prefix+t) ---
+# Pipes the focused pane's content through the `translate` CLI in bilingual mode
+# (-2 --bilingual-mode doc): the original lines stay verbatim and each block's
+# translation is interleaved beneath as `  ↳ …`.
+#
+# Scope is the on-screen page. That is not a shortcut — an agent pane on the
+# ALTERNATE SCREEN has no scrollback at all (a Claude Code pane reports
+# scroll.max_offset_from_bottom = 0, and `pane read --source recent --lines 1000`
+# returns exactly viewport_rows), so one page is all that exists there, and
+# --source visible tracks whatever you scrolled to INSIDE the app. The scrollback
+# variants live on the prefix+y Quick Actions, where a select list can offer them
+# without spending a direct key.
+#
+# type = "pane", not the unix side's "popup": the Windows preview rejects popup
+# (backlog/herdr-windows-port-verification.md #2). A command pane already owns a
+# PTY, so the helper takes its --inline path and pages in place. It also means
+# THIS key keeps working when herdr-plus is absent — which matters here, because
+# the plugin builds from source (needs go) and has never been exercised on a real
+# Windows host.
+#
+# No "$HERDR_ACTIVE_PANE_ID" argument: herdr does not expand $VAR in a command
+# string on this platform (#3), so the helper reads the env var herdr DID inject.
+# lowercase t: prefix+T is already the herdr-sesh session picker.
+[[keys.command]]
+key = "prefix+t"
+type = "pane"
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-translate.ps1" visible --inline'
+description = "translate this pane (bilingual)"
+
 # --- herdr-plus plugin (sesh + tmuxp + popup-menu analog) ---
 # Requires: herdr plugin install -y cloudmanic/herdr-plus  (needs go on Windows —
 # the plugin's Windows build command is `go build -o bin/herdr-plus.exe .`).

@@ -74,6 +74,14 @@ AppData/Local/clink/**
 # list and return nothing — same reasoning as the herdr-* channels above.
 {{ if not .installTranslate }}
 AppData/Roaming/television/cable/translate.toml
+# The herdr pane translator and its Quick Actions are dead without the binary.
+# The prefix+t keybind stays in config.toml either way — it reports the missing
+# binary rather than failing silently, which is the better hint on a box where
+# installTranslate was simply left off.
+.config/herdr/pane-translate.ps1
+.config/herdr/plugins/config/cloudmanic.herdr-plus/quick-actions/translate-pane.toml
+.config/herdr/plugins/config/cloudmanic.herdr-plus/quick-actions/translate-pane-to.toml
+.config/herdr/plugins/config/cloudmanic.herdr-plus/quick-actions/translate-pane-copy.toml
 {{ end }}
 
 # Rime user config is only deployed with the opt-in installInputMethod toggle.
