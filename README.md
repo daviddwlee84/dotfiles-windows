@@ -31,7 +31,7 @@ then applies the dotfiles.
 
 - **Shell**: PowerShell 7 with a modular `$PROFILE` (`~/.config/powershell/profile.d/*.ps1`).
 - **Prompt**: [starship](https://starship.rs) (shared config with the macOS/Linux dotfiles).
-- **CLI tools** (scoop): git, neovim, lazygit, zoxide, fzf, bat, eza, ripgrep, fd, gh, delta, jq, yazi (with guarded Git status signs), btop, mise, uv, node, bun.
+- **CLI tools** (scoop): git, neovim, lazygit (delta + read-only `I` branch containment/PR insights), zoxide, fzf, bat, eza, ripgrep, fd, gh, delta, jq, yazi (with guarded Git status signs), btop, mise, uv, node, bun.
 - **AI agents**: Claude Code, OpenCode, Codex, GitHub Copilot CLI, Pi, Oh My Pi,
   the Git-managed `pia` combo selector, SpecStory, and Antigravity.
 - **Editors**: VSCode, Cursor, Notepad++ (shared settings/keybindings).

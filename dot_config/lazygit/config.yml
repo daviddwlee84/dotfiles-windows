@@ -7,7 +7,44 @@
 # Location: lazygit reads %APPDATA%\lazygit\config.yml by default, but honours
 # $XDG_CONFIG_HOME — which our pwsh profile sets to ~/.config — so this lands at
 # ~/.config/lazygit/config.yml, matching the macOS/Linux layout.
+gui:
+  nerdFontsVersion: "3"
+  showDivergenceFromBaseBranch: arrowAndNumber
+  branchColorPatterns:
+    '^feat/': '#89b4fa'
+    '^fix(/|_)': '#f38ba8'
+    '^docs/': '#89dceb'
+    '^(chore|refactor|test)/': '#f9e2af'
+    '^worktree[-/]': '#cba6f7'
+    '^(codex|dependabot|renovate)/': '#94e2d5'
+
 git:
+  mainBranches:
+    - main
+    - master
+  localBranchSortOrder: recency
   diffRenderers:
     - colorArg: always
       command: delta --dark --paging=never --syntax-theme base16-256 -s
+
+customCommands:
+  - key: I
+    context: localBranches
+    description: Branch insights (local/remote main containment)
+    prompts:
+      - type: menu
+        title: Branch insights
+        key: Mode
+        options:
+          - name: Git containment (offline)
+            description: Compare every local branch with local and remote main
+            value: git
+            key: g
+          - name: Add GitHub PR status
+            description: Also query recent PR state once via gh
+            value: pr
+            key: p
+    command: 'pwsh -NoProfile -File "%USERPROFILE%\.config\lazygit\branch-insights.ps1" -Mode {{.Form.Mode | quote}} -SelectedBranch {{.SelectedLocalBranch.Name | quote}}'
+    loadingText: Analyzing branches...
+    output: popup
+    outputTitle: Branch insights

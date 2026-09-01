@@ -10,7 +10,7 @@ tools; **winget** handles GUI apps.
 |---|---|
 | git, gh, glab | version control + GitHub / GitLab CLIs |
 | neovim | editor (LazyVim, pre-configured) |
-| lazygit | git TUI (delta pager configured) |
+| lazygit | git TUI with delta rendering and [`I` branch containment/PR insights](lazygit.md) |
 | zoxide | smarter `cd` |
 | fzf, fd, ripgrep | fuzzy find / file search / grep |
 | bat, eza | `cat` / `ls` replacements |

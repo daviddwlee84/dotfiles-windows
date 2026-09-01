@@ -10,7 +10,7 @@ GUI 應用程式。
 |---|---|
 | git、gh、glab | 版本控制 + GitHub / GitLab CLI |
 | neovim | 編輯器（已配置 LazyVim） |
-| lazygit | git TUI（已配置 delta 分頁器） |
+| lazygit | git TUI（delta 呈現 + [`I` branch containment／PR 洞察](lazygit.zh-TW.md)） |
 | zoxide | 更聰明的 `cd` |
 | fzf、fd、ripgrep | 模糊搜尋 / 找檔案 / grep |
 | bat、eza | `cat` / `ls` 替代品 |
