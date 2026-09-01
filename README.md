@@ -40,7 +40,8 @@ then applies the dotfiles.
   `dev-cli` task/worktree dashboard, `prefix+Y` Yazi temporary pane, low-frequency copy helpers under `prefix+y`,
   `prefix+alt+e` safely editing, validating, and reloading the live runtime
   config, and a binary-matched official global agent skill.
-- **`copilot-proxy`** tool series, rewritten as a native PowerShell module.
+- **`copilot-proxy`** tool series, rewritten as a native PowerShell module, with
+  Claude auto-compaction sized from each selected model's live prompt ceiling.
 
 Herdr's `prefix+alt+e` edits the existing `HERDR_CONFIG_PATH` target (or
 `~/.config/herdr/config.toml`) directly and never invokes chezmoi. A failed edit

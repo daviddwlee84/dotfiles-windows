@@ -138,6 +138,11 @@ tier 都不存在時，才會考慮未知的 future GPT id。這個角色意圖�
 `max_context_window_tokens >= 1,000,000` 決定。Raw API client 必須用 plain id。離線時仍
 提供手動 discovery 清單，但 `--auto` 會拒絕寫入可能過期的 pin。
 
+Auto-compact 與完整 context 提示分開設定。Launcher 會用 live `max_prompt_tokens`
+（缺少時才用 context 減 maximum output）注入 `CLAUDE_CODE_AUTO_COMPACT_WINDOW`，並保留
+Claude Code 約 95% 的預設觸發比例。這可避免 client 以 1M 計算，卻超過 provider 實際
+922k prompt ceiling。`copilot-model -c` 與 `copilot-here status` 都會顯示生效值。
+
 ### Selection、retry 與 failover 是不同概念
 
 - **Catalog auto-selection** 會在 launch/inference 前排序 eligible models：
@@ -158,10 +163,14 @@ ANTHROPIC_DEFAULT_OPUS_MODEL
 ANTHROPIC_DEFAULT_SONNET_MODEL
 ANTHROPIC_DEFAULT_HAIKU_MODEL
 ANTHROPIC_SMALL_FAST_MODEL
+CLAUDE_CODE_AUTO_COMPACT_WINDOW
 ```
 
 刻意不設定 `CLAUDE_CODE_SUBAGENT_MODEL`，讓 workflow/frontmatter routing 保持最高優先。
 切換 profile 後需重開 Claude Code。
+Helper 也刻意不設定 `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`；只有想更早 compact 時才自行設定。
+Live metadata 不可用時，相同模型的離線 pin 會保留 last-known ceiling 並警告；離線換模型則
+移除舊 ceiling，避免套到錯的模型。
 
 ## Claude Code 功能相容性
 
@@ -236,8 +245,10 @@ Status 與 doctor 會顯示 routing state。關閉 shim 也會關閉這項轉譯
   [pitfalls/copilot-proxy-shim-port-held-by-another-process.md](https://github.com/daviddwlee84/windows-dotfiles/blob/main/pitfalls/copilot-proxy-shim-port-held-by-another-process.md)。
 - Metrics/throttle shim 與 Unix implementation byte-for-byte 相同。它會從 live catalog 推導
   Fast sibling route；任何 upstream body 尚未暴露前，network error 或 HTTP
-  403/429/500/502/503/504 會以**相同 buffered request 與 effective model**重試；HTTP 402
-  與 bare 401 只通過一次。
+  403/429/500/502/503/504 會以**相同 buffered request 與 effective model**重試。上游讀取
+  buffered body 時回 `408 user_request_timeout` 最多只重播一次；HTTP 402、bare 401 與
+  policy 422 只通過一次。
+- `422 cyber_policy` 是 provider 的內容政策判定；shim 不 retry、不改寫，也不嘗試繞過。
 - Admission 從 `COPILOT_SHIM_MIN=4` 起步，只在持續且乾淨的queue pressure下往
   `COPILOT_SHIM_MAX=8` 增加；403/429 會立刻降回floor並cooldown五分鐘。
   `copilot-proxy limiter status`、`limiter set --min 4 --max 8 --limit 6`、`limiter reset`

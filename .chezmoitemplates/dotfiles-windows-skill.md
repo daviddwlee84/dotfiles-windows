@@ -56,9 +56,12 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   Automatic selection excludes policy-disabled, picker-hidden and embedding-only
   entries. Claude `--auto` is Claude-first; Codex is OpenAI-first; both share the
   named OpenAI order Sol > Terra > 5.5 > 5.4 > 5.3 Codex > Luna > mini.
+- Claude launchers derive `CLAUDE_CODE_AUTO_COMPACT_WINDOW` from the selected
+  model's live `max_prompt_tokens`; `[1m]` remains the separate full-context hint.
 - The shim retries only the same buffered request/model, emits SSE keepalives for
   silent streams, and has a stall watchdog; it never performs request-time
-  cross-model failover. Its adaptive limit starts at `COPILOT_SHIM_MIN=4`, grows
+  cross-model failover. A request-body `408` gets one bounded replay; policy 422
+  passes through without retry. Its adaptive limit starts at `COPILOT_SHIM_MIN=4`, grows
   toward `MAX=8`, and can be tuned live with `copilot-proxy limiter`. Bun stream
   rejections are contained; a ready shim that still crashes gets at most three
   Windows-only recovery attempts (1s/5s/30s) while 4141 remains healthy. Timing

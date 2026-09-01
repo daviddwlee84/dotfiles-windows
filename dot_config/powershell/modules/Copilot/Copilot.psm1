@@ -1081,6 +1081,36 @@ function script:Remove-CopilotContextHint {
     $Model -replace '\[1m\]$', ''
 }
 
+# Claude Code uses [1m] only for its full-context/HUD classification. Its
+# process-wide auto-compact capacity must instead follow the provider's real
+# prompt ceiling, otherwise the default ~95% trigger can occur after Copilot's
+# input limit. Returns $null when metadata is unavailable; throws when the known
+# ceiling is below Claude Code's configurable 100k minimum.
+function script:Get-CopilotClaudeCompactWindow {
+    param([Parameter(Mandatory)] [string] $Model, $Catalog)
+    if (-not $PSBoundParameters.ContainsKey('Catalog')) { $Catalog = Get-CopilotModelCatalog }
+    if (-not $Catalog) { return $null }
+    $raw = Remove-CopilotContextHint $Model
+    $entry = $Catalog.data | Where-Object { $_.id -eq $raw } | Select-Object -First 1
+    if (-not $entry) { return $null }
+
+    $prompt = 0L
+    $context = 0L
+    $output = 0L
+    $hasPrompt = [long]::TryParse([string]$entry.capabilities.limits.max_prompt_tokens, [ref]$prompt)
+    $hasContext = [long]::TryParse([string]$entry.capabilities.limits.max_context_window_tokens, [ref]$context)
+    $hasOutput = [long]::TryParse([string]$entry.capabilities.limits.max_output_tokens, [ref]$output)
+    $window = if ($hasPrompt -and $prompt -gt 0) { $prompt }
+              elseif ($hasContext -and $hasOutput -and $context -gt $output) { $context - $output }
+              else { 0L }
+    if ($window -le 0) { return $null }
+    if ($window -lt 100000) {
+        throw "$raw has a prompt ceiling below Claude Code's 100000-token minimum"
+    }
+    if ($window -gt 1000000) { return 1000000L }
+    $window
+}
+
 # Pick exactly one live inference target. The configured main wins when its raw id
 # is advertised; only the automatic catalog fallback is eligibility-filtered.
 function script:Resolve-CopilotDoctorTarget {
@@ -1325,11 +1355,9 @@ function script:Get-CopilotEffectiveModel {
 # written-to-disk pin should say); copilot-run wants the live base instead.
 function script:Get-CopilotEnvBlock {
     param([switch] $Pinned, [string] $Model = (Get-CopilotDefaultModel), $Catalog)
-    $modelProfile = if ($PSBoundParameters.ContainsKey('Catalog')) {
-        Get-CopilotModelProfile -Model $Model -Catalog $Catalog
-    } else {
-        Get-CopilotModelProfile -Model $Model
-    }
+    if (-not $PSBoundParameters.ContainsKey('Catalog')) { $Catalog = Get-CopilotModelCatalog }
+    $modelProfile = Get-CopilotModelProfile -Model $Model -Catalog $Catalog
+    $compactWindow = Get-CopilotClaudeCompactWindow -Model $Model -Catalog $Catalog
     $block = [ordered]@{
         ANTHROPIC_BASE_URL             = if ($Pinned) { Get-CopilotPinnedBase } else { Get-CopilotClientBase }
         ANTHROPIC_AUTH_TOKEN           = 'dummy'
@@ -1340,6 +1368,11 @@ function script:Get-CopilotEnvBlock {
         ANTHROPIC_DEFAULT_HAIKU_MODEL  = $modelProfile.haiku
         ANTHROPIC_SMALL_FAST_MODEL     = $modelProfile.haiku
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
+    }
+    if ($null -ne $compactWindow) {
+        $block.CLAUDE_CODE_AUTO_COMPACT_WINDOW = [string]$compactWindow
+    } else {
+        Write-Warning "copilot-proxy: compact ceiling unavailable for $(Remove-CopilotContextHint $Model); Claude Code will use its built-in assumption"
     }
     if ($env:COPILOT_PROXY_QUIET -eq '1') {
         $block.CLAUDE_CODE_ATTRIBUTION_HEADER = '0'
@@ -2221,8 +2254,15 @@ function copilot-run {
     # which discarded the failure and then ran against the bare proxy.
     if (-not (Assert-CopilotShim)) { return }
 
-    # Single source of truth — see Get-CopilotEnvBlock.
-    $inject = Get-CopilotEnvBlock
+    # Single source of truth — see Get-CopilotEnvBlock. A direct
+    # `copilot-run claude --model ...` gets the explicit model's own ceiling;
+    # claude-copilot supplies the same choice through COPILOT_CLAUDE_MODEL.
+    $selectedModel = Get-CopilotDefaultModel
+    if ([System.IO.Path]::GetFileNameWithoutExtension($Argv[0]) -eq 'claude') {
+        $explicitModel = Get-CopilotClaudeModelArgument -Argv @($Argv | Select-Object -Skip 1)
+        if ($explicitModel) { $selectedModel = Resolve-CopilotClaudeFastBaseModel -ExplicitModel $explicitModel }
+    }
+    $inject = Get-CopilotEnvBlock -Model $selectedModel
     # Scope env to the child process: set, run, restore (equivalent to `env VAR=..`).
     $saved = @{}
     foreach ($k in $inject.Keys) { $saved[$k] = [Environment]::GetEnvironmentVariable($k); Set-Item "env:$k" $inject[$k] }
@@ -2527,14 +2567,39 @@ function script:Get-CopilotClaudeModelArgument {
 
 function script:Resolve-CopilotClaudeFastBaseModel {
     param([string] $ExplicitModel)
-    $effective = ((Get-CopilotEffectiveModel) -split '\|', 2)[0]
-    if (-not $ExplicitModel -or $ExplicitModel -eq 'default') { return $effective }
+    if (-not $ExplicitModel -or $ExplicitModel -eq 'default') {
+        return ((Get-CopilotEffectiveModel) -split '\|', 2)[0]
+    }
     $role = if ($ExplicitModel -eq 'opusplan') { 'opus' } else { $ExplicitModel }
     if ($role -in 'fable', 'opus', 'sonnet', 'haiku') {
+        $effective = ((Get-CopilotEffectiveModel) -split '\|', 2)[0]
         $modelProfile = Get-CopilotModelProfile -Model $effective
         if ($modelProfile[$role]) { return [string]$modelProfile[$role] }
     }
     $ExplicitModel
+}
+
+function script:Resolve-CopilotClaudeLaunchModel {
+    param([string[]] $Argv)
+    $explicitModel = Get-CopilotClaudeModelArgument -Argv $Argv
+    Resolve-CopilotClaudeFastBaseModel -ExplicitModel $explicitModel
+}
+
+function script:Assert-CopilotPinnedCompactSafe {
+    param([Parameter(Mandatory)] [string] $Model)
+    $settings = '.claude/settings.local.json'
+    if (-not (Test-Path $settings)) { return $true }
+    try { $obj = Get-Content -Raw $settings | ConvertFrom-Json } catch { return $true }
+    if (-not $obj.env.ANTHROPIC_BASE_URL) { return $true }
+    $pinned = 0L
+    if (-not [long]::TryParse([string]$obj.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW, [ref]$pinned)) { return $true }
+    $catalog = Get-CopilotModelCatalog
+    try { $limit = Get-CopilotClaudeCompactWindow -Model $Model -Catalog $catalog } catch { Write-Error $_; return $false }
+    if ($null -ne $limit -and $pinned -gt $limit) {
+        Write-Error "claude-copilot: active copilot-here pin has compact window $pinned, but $Model allows $limit. Run: copilot-model $(Remove-CopilotContextHint $Model), then restart Claude Code."
+        return $false
+    }
+    $true
 }
 
 # --------------------------------------------------------- claude-copilot -----
@@ -2580,14 +2645,23 @@ function claude-copilot {
             }
         } else { return }
     }
-    if ($ss -eq 'auto' -and (Get-Command specstory -ErrorAction SilentlyContinue)) {
-        $command = New-SpecstoryClaudeCommand -Argv $Argv
-        copilot-run specstory run claude -c $command
-    } else {
-        # No specstory on PATH (the Windows default — no native CLI yet): run claude
-        # directly, still bypassing permission prompts so behaviour matches the
-        # specstory path regardless of whether specstory is installed.
-        copilot-run claude --dangerously-skip-permissions @Argv
+    $launchModel = Resolve-CopilotClaudeLaunchModel -Argv $Argv
+    if (-not (Assert-CopilotPinnedCompactSafe -Model $launchModel)) { return }
+    $savedLaunchModel = [Environment]::GetEnvironmentVariable('COPILOT_CLAUDE_MODEL')
+    $env:COPILOT_CLAUDE_MODEL = $launchModel
+    try {
+        if ($ss -eq 'auto' -and (Get-Command specstory -ErrorAction SilentlyContinue)) {
+            $command = New-SpecstoryClaudeCommand -Argv $Argv
+            copilot-run specstory run claude -c $command
+        } else {
+            # No specstory on PATH (the Windows default — no native CLI yet): run claude
+            # directly, still bypassing permission prompts so behaviour matches the
+            # specstory path regardless of whether specstory is installed.
+            copilot-run claude --dangerously-skip-permissions @Argv
+        }
+    } finally {
+        if ($null -eq $savedLaunchModel) { Remove-Item env:COPILOT_CLAUDE_MODEL -ErrorAction SilentlyContinue }
+        else { $env:COPILOT_CLAUDE_MODEL = $savedLaunchModel }
     }
 }
 
@@ -2607,7 +2681,20 @@ function claude-copilot-once {
     if (Test-Path '.claude/settings.local.json') {
         try { if ((Get-Content -Raw '.claude/settings.local.json' | ConvertFrom-Json).env.ANTHROPIC_BASE_URL) { $wasOn = $true } } catch { $null = $_ }
     }
-    if (-not $wasOn) { copilot-here on }
+    if (-not $wasOn) {
+        $explicitModel = Get-CopilotClaudeModelArgument -Argv $Argv
+        $wantsFast = $Argv -contains '--fast'
+        if ($explicitModel -or $wantsFast) {
+            $pinModel = Resolve-CopilotClaudeFastBaseModel -ExplicitModel $explicitModel
+            if ($wantsFast) {
+                $fastPinModel = Resolve-CopilotFastModel -Model $pinModel
+                if ($fastPinModel) { $pinModel = $fastPinModel }
+            }
+            copilot-here on $pinModel
+        } else {
+            copilot-here on
+        }
+    }
     else {
         # Already pinned here. If the pin drifted from current defaults (model bump,
         # proxy moved, a key added since), offer to refresh it in place; otherwise
@@ -2648,7 +2735,7 @@ function claude-copilot-once {
 # ------------------------------------------------------------ copilot-here ----
 $script:CopilotHereKeys = @(
     'ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_FABLE_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL',
-    'ANTHROPIC_DEFAULT_SONNET_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL', 'ANTHROPIC_SMALL_FAST_MODEL',
+    'ANTHROPIC_DEFAULT_SONNET_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL', 'ANTHROPIC_SMALL_FAST_MODEL', 'CLAUDE_CODE_AUTO_COMPACT_WINDOW',
     'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', 'CLAUDE_CODE_ATTRIBUTION_HEADER',
     'CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION', 'CLAUDE_CODE_ENABLE_AWAY_SUMMARY', 'DISABLE_NON_ESSENTIAL_MODEL_CALLS'
 )
@@ -2699,11 +2786,18 @@ function copilot-here {
             $obj = if (Test-Path $settings) { try { Get-Content -Raw $settings | ConvertFrom-Json } catch { [pscustomobject]@{} } } else { [pscustomobject]@{} }
             if (-not $obj.PSObject.Properties['env']) { $obj | Add-Member -NotePropertyName env -NotePropertyValue ([pscustomobject]@{}) }
             # Single source of truth, shared with copilot-run and the drift check.
-            $envSet = Get-CopilotEnvBlock -Pinned
+            $oldModel = if ($obj.env.ANTHROPIC_MODEL) { [string]$obj.env.ANTHROPIC_MODEL } else { '' }
+            $oldCompact = if ($obj.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) { [string]$obj.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW } else { '' }
+            $requestedModel = if ($Argv.Count -ge 2 -and $Argv[1]) { $Argv[1] } else { Get-CopilotDefaultModel }
+            $envSet = Get-CopilotEnvBlock -Pinned -Model $requestedModel
             $model = $envSet.ANTHROPIC_MODEL
             foreach ($k in $envSet.Keys) {
                 if ($obj.env.PSObject.Properties[$k]) { $obj.env.$k = $envSet[$k] }
                 else { $obj.env | Add-Member -NotePropertyName $k -NotePropertyValue $envSet[$k] }
+            }
+            $hasCompact = $envSet.Contains('CLAUDE_CODE_AUTO_COMPACT_WINDOW')
+            if (-not $hasCompact -and (Remove-CopilotContextHint $oldModel) -ne (Remove-CopilotContextHint $model) -and $obj.env.PSObject.Properties['CLAUDE_CODE_AUTO_COMPACT_WINDOW']) {
+                $obj.env.PSObject.Properties.Remove('CLAUDE_CODE_AUTO_COMPACT_WINDOW')
             }
             $obj | ConvertTo-Json -Depth 10 | Set-Content -Path $settings -Encoding utf8
             # Belt-and-braces gitignore via .git/info/exclude (un-anchored **/ form).
@@ -2716,6 +2810,9 @@ function copilot-here {
                 }
             }
             Write-Host "copilot-here: ON — $settings pins Claude Code to $(Get-CopilotBase) (model: $model)"
+            if ($hasCompact) { Write-Host "  compact window: $($envSet.CLAUDE_CODE_AUTO_COMPACT_WINDOW) tokens (live model metadata)" }
+            elseif ($oldCompact -and (Remove-CopilotContextHint $oldModel) -eq (Remove-CopilotContextHint $model)) { Write-Host "  WARNING compact window: $oldCompact tokens (last-known; live metadata unavailable)" }
+            else { Write-Host "  WARNING compact window not pinned; refresh with 'copilot-here on' when the proxy is available" }
             if (-not (Test-CopilotAlive)) { Write-Host "  WARNING proxy not running — start it: copilot-proxy start" }
         }
         'off' {
@@ -2738,6 +2835,8 @@ function copilot-here {
                 try { $obj = Get-Content -Raw $settings | ConvertFrom-Json } catch { $obj = $null }
                 if ($obj.env.ANTHROPIC_BASE_URL) {
                     Write-Host "copilot-here: ON  (base: $($obj.env.ANTHROPIC_BASE_URL), model: $($obj.env.ANTHROPIC_MODEL))"
+                    $compactLabel = if ($obj.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) { $obj.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW } else { 'unverified' }
+                    Write-Host "  compact window: $compactLabel"
                     $drift = Get-CopilotHereDrift
                     if ($drift) {
                         Write-Host '  ! stale vs current defaults:'
@@ -2826,12 +2925,16 @@ function copilot-model {
                     haiku  = if ($envBlock.ANTHROPIC_DEFAULT_HAIKU_MODEL) { $envBlock.ANTHROPIC_DEFAULT_HAIKU_MODEL } else { $envBlock.ANTHROPIC_MODEL }
                 }
                 Write-Host "model profile (project: $settings)"
+                $compactLabel = if ($envBlock.CLAUDE_CODE_AUTO_COMPACT_WINDOW) { $envBlock.CLAUDE_CODE_AUTO_COMPACT_WINDOW } else { 'unverified' }
             } else {
                 $catalog = Get-CopilotModelCatalog
                 $modelProfile = Get-CopilotModelProfile -Model $currentModel -Catalog $catalog
+                $compact = Get-CopilotClaudeCompactWindow -Model $currentModel -Catalog $catalog
+                $compactLabel = if ($null -ne $compact) { $compact } else { 'unverified' }
                 Write-Host "model profile (global main: $statef)"
             }
             Write-CopilotModelProfile $modelProfile
+            Write-Host "  compact: $compactLabel"
             return
         }
         { $_ -in '-h', '--help' } {
@@ -2893,6 +2996,7 @@ function copilot-model {
     if ($target -eq 'local') {
         $obj = Get-Content -Raw $settings | ConvertFrom-Json
         $modelProfile = Get-CopilotModelProfile -Model $resolved -Catalog $catalog
+        $compactWindow = Get-CopilotClaudeCompactWindow -Model $resolved -Catalog $catalog
         $roleSet = [ordered]@{
             ANTHROPIC_MODEL                 = $modelProfile.main
             ANTHROPIC_DEFAULT_FABLE_MODEL   = $modelProfile.fable
@@ -2905,10 +3009,18 @@ function copilot-model {
             if ($obj.env.PSObject.Properties[$k]) { $obj.env.$k = $roleSet[$k] }
             else { $obj.env | Add-Member -NotePropertyName $k -NotePropertyValue $roleSet[$k] }
         }
+        if ($null -ne $compactWindow) {
+            if ($obj.env.PSObject.Properties['CLAUDE_CODE_AUTO_COMPACT_WINDOW']) { $obj.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = [string]$compactWindow }
+            else { $obj.env | Add-Member -NotePropertyName CLAUDE_CODE_AUTO_COMPACT_WINDOW -NotePropertyValue ([string]$compactWindow) }
+        } elseif ((Remove-CopilotContextHint $old) -ne (Remove-CopilotContextHint $resolved) -and $obj.env.PSObject.Properties['CLAUDE_CODE_AUTO_COMPACT_WINDOW']) {
+            $obj.env.PSObject.Properties.Remove('CLAUDE_CODE_AUTO_COMPACT_WINDOW')
+        }
         $obj | ConvertTo-Json -Depth 10 | Set-Content -Path $settings -Encoding utf8
         if ($old -eq $resolved) { Write-Host "copilot-model: refreshed role profile for $resolved  (project: $settings)" }
         else { Write-Host "copilot-model: $old -> $resolved  (project: $settings)" }
         Write-CopilotModelProfile $modelProfile
+        if ($null -ne $compactWindow) { Write-Host "  compact: $compactWindow tokens (live max prompt)" }
+        else { Write-Host '  WARNING compact: metadata unavailable; existing same-model value was preserved when possible' }
         Write-Host "  restart Claude Code to apply (exit, then: claude -c)"
     } else {
         New-Item -ItemType Directory -Force -Path (Split-Path $statef) | Out-Null

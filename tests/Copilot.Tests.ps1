@@ -673,6 +673,28 @@ Describe 'Copilot module' {
             }
         }
 
+        It 'uses max_prompt_tokens then context minus output for Claude auto-compact' {
+            InModuleScope Copilot {
+                $catalog = [pscustomobject]@{ data = @(
+                    [pscustomobject]@{ id = 'direct'; capabilities = [pscustomobject]@{ limits = [pscustomobject]@{ max_context_window_tokens = 1050000; max_prompt_tokens = 922000; max_output_tokens = 128000 } } },
+                    [pscustomobject]@{ id = 'derived'; capabilities = [pscustomobject]@{ limits = [pscustomobject]@{ max_context_window_tokens = 500000; max_output_tokens = 128000 } } },
+                    [pscustomobject]@{ id = 'huge'; capabilities = [pscustomobject]@{ limits = [pscustomobject]@{ max_prompt_tokens = 1500000 } } }
+                ) }
+                Get-CopilotClaudeCompactWindow -Model direct -Catalog $catalog | Should -Be 922000
+                Get-CopilotClaudeCompactWindow -Model derived -Catalog $catalog | Should -Be 372000
+                Get-CopilotClaudeCompactWindow -Model huge -Catalog $catalog | Should -Be 1000000
+            }
+        }
+
+        It 'rejects a known prompt ceiling below Claude Code minimum' {
+            InModuleScope Copilot {
+                $catalog = [pscustomobject]@{ data = @(
+                    [pscustomobject]@{ id = 'tiny'; capabilities = [pscustomobject]@{ limits = [pscustomobject]@{ max_prompt_tokens = 64000 } } }
+                ) }
+                { Get-CopilotClaudeCompactWindow -Model tiny -Catalog $catalog } | Should -Throw '*100000-token minimum*'
+            }
+        }
+
         It 'maps an OpenAI main model to Sol/Sol/Terra/Luna role tiers' {
             InModuleScope Copilot {
                 $limits = [pscustomobject]@{ limits = [pscustomobject]@{ max_context_window_tokens = 1000000 } }
@@ -739,9 +761,9 @@ Describe 'Copilot module' {
         It 'injects the complete role profile including Fable and small-fast' {
             InModuleScope Copilot {
                 $catalog = [pscustomobject]@{ data = @(
-                    [pscustomobject]@{ id = 'gpt-5.6-sol' },
-                    [pscustomobject]@{ id = 'gpt-5.6-terra' },
-                    [pscustomobject]@{ id = 'gpt-5.6-luna' }
+                    [pscustomobject]@{ id = 'gpt-5.6-sol'; capabilities = [pscustomobject]@{ limits = [pscustomobject]@{ max_prompt_tokens = 922000 } } },
+                    [pscustomobject]@{ id = 'gpt-5.6-terra'; capabilities = [pscustomobject]@{ limits = [pscustomobject]@{ max_prompt_tokens = 922000 } } },
+                    [pscustomobject]@{ id = 'gpt-5.6-luna'; capabilities = [pscustomobject]@{ limits = [pscustomobject]@{ max_prompt_tokens = 922000 } } }
                 ) }
                 $envBlock = Get-CopilotEnvBlock -Pinned -Model 'gpt-5.6-sol' -Catalog $catalog
                 $envBlock.ANTHROPIC_DEFAULT_FABLE_MODEL | Should -Be 'gpt-5.6-sol'
@@ -749,6 +771,8 @@ Describe 'Copilot module' {
                 $envBlock.ANTHROPIC_DEFAULT_SONNET_MODEL | Should -Be 'gpt-5.6-terra'
                 $envBlock.ANTHROPIC_DEFAULT_HAIKU_MODEL | Should -Be 'gpt-5.6-luna'
                 $envBlock.ANTHROPIC_SMALL_FAST_MODEL | Should -Be 'gpt-5.6-luna'
+                $envBlock.CLAUDE_CODE_AUTO_COMPACT_WINDOW | Should -Be '922000'
+                $envBlock.Contains('CLAUDE_AUTOCOMPACT_PCT_OVERRIDE') | Should -BeFalse
             }
         }
     }
@@ -802,7 +826,7 @@ Describe 'Copilot module' {
                         UNRELATED = 'keep-me'
                     }
                 } | ConvertTo-Json -Depth 8 | Set-Content '.claude/settings.local.json'
-                $limits = [pscustomobject]@{ limits = [pscustomobject]@{ max_context_window_tokens = 1000000 } }
+                $limits = [pscustomobject]@{ limits = [pscustomobject]@{ max_context_window_tokens = 1000000; max_prompt_tokens = 922000 } }
                 $catalog = [pscustomobject]@{ data = @(
                     [pscustomobject]@{ id = 'gpt-5.6-sol'; capabilities = $limits },
                     [pscustomobject]@{ id = 'gpt-5.6-terra'; capabilities = $limits },
@@ -819,6 +843,7 @@ Describe 'Copilot module' {
                 $saved.env.ANTHROPIC_DEFAULT_SONNET_MODEL | Should -Be 'gpt-5.6-terra[1m]'
                 $saved.env.ANTHROPIC_DEFAULT_HAIKU_MODEL | Should -Be 'gpt-5.6-luna[1m]'
                 $saved.env.ANTHROPIC_SMALL_FAST_MODEL | Should -Be 'gpt-5.6-luna[1m]'
+                $saved.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW | Should -Be '922000'
                 $saved.env.UNRELATED | Should -Be 'keep-me'
                 $saved.permissions.allow | Should -Contain 'Read'
             }
@@ -1121,7 +1146,7 @@ Describe 'Copilot module' {
                 Mock Assert-CopilotShim { $true }
                 Mock Resolve-CopilotFastModel { param($Model) "$Model-fast" }
                 Mock Get-Command { $null } -ParameterFilter { $Name -eq 'specstory' }
-                Mock copilot-run { $script:capturedLaunch = @($Argv) }
+                Mock copilot-run { $script:capturedLaunch = @($Argv); $script:capturedLaunchModel = $env:COPILOT_CLAUDE_MODEL }
 
                 claude-copilot --no-specstory --fast --model gpt-explicit 'two words'
 
@@ -1130,6 +1155,7 @@ Describe 'Copilot module' {
                     'two words', '--model', 'gpt-explicit-fast'
                 )
                 Should -Invoke Resolve-CopilotFastModel -Times 1 -Exactly -ParameterFilter { $Model -eq 'gpt-explicit' }
+                $script:capturedLaunchModel | Should -BeExactly 'gpt-explicit-fast'
             }
         }
         It 'keeps the standard model when no fast sibling is available' {
@@ -1159,6 +1185,21 @@ Describe 'Copilot module' {
 
                 $script:delegated | Should -Be @('--specstory', '--resume', 'session-id')
                 Should -Invoke claude-copilot -Times 1 -Exactly
+            }
+        }
+        It 'builds a temporary pin for the explicit launch model' {
+            InModuleScope Copilot {
+                $script:capturedPins = [System.Collections.Generic.List[object]]::new()
+                Mock Test-CopilotAlive { $true }
+                Mock Test-Path { $false } -ParameterFilter { $Path -eq '.claude/settings.local.json' }
+                Mock copilot-here { $script:capturedPins.Add(@($Argv)) }
+                Mock claude-copilot {}
+                Mock Get-CopilotBase { 'http://127.0.0.1:4141' }
+
+                claude-copilot-once --model gpt-5-mini
+
+                $script:capturedPins[0] | Should -Be @('on', 'gpt-5-mini')
+                $script:capturedPins[1] | Should -Be @('off')
             }
         }
 
@@ -1962,8 +2003,8 @@ $m.Dispose()
     Context 'Responses compatibility shim' {
         It 'matches the reviewed Unix shim artifact without a sibling checkout' {
             $shimContract = [ordered]@{
-                UnixSourceCommit = '9e737934f6e90d80ccedc5eccc9e0e032b18c81c'
-                Sha256 = '20F493B198CCA50430CE5300983F00641F675A3541E04AB986EA8CD7DE10A58E'
+                UnixSourceCommit = 'a42be888be2eb5f027f802391709b2d646383844'
+                Sha256 = 'D05632B0863EA8A63E5E78EE50301B188E93896812928F91738147E2C3CED31A'
             }
             $windowsShim = Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-throttle-shim.js'
             $shimContract.UnixSourceCommit | Should -Match '^[0-9a-f]{40}$'

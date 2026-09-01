@@ -150,6 +150,13 @@ model's live `max_context_window_tokens` metadata when the value is at least one
 million. Raw API clients must use the plain id. Offline manual discovery remains
 available, but offline `--auto` refuses to write a potentially stale pin.
 
+Auto-compact is configured separately from the full context hint. The launchers
+set `CLAUDE_CODE_AUTO_COMPACT_WINDOW` from live `max_prompt_tokens` (or context
+minus maximum output when that field is absent), then leave Claude Code's default
+roughly-95% threshold unchanged. This prevents a 1M-class client window from
+crossing a smaller provider prompt ceiling such as 922k. `copilot-model -c` and
+`copilot-here status` display the effective value.
+
 ### Selection, retry and failover are different
 
 - **Catalog auto-selection** ranks eligible models before launch/inference:
@@ -172,10 +179,15 @@ ANTHROPIC_DEFAULT_OPUS_MODEL
 ANTHROPIC_DEFAULT_SONNET_MODEL
 ANTHROPIC_DEFAULT_HAIKU_MODEL
 ANTHROPIC_SMALL_FAST_MODEL
+CLAUDE_CODE_AUTO_COMPACT_WINDOW
 ```
 
 `CLAUDE_CODE_SUBAGENT_MODEL` is intentionally left unset so workflow/frontmatter
 routing remains authoritative. Restart Claude Code after changing the profile.
+The helper deliberately does not set `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`; set it
+yourself only to compact earlier. If live metadata is unavailable, an unchanged
+offline pin keeps its last-known ceiling with a warning, while an offline model
+change drops the stale value.
 
 ## Claude Code feature compatibility
 
@@ -266,9 +278,12 @@ no automatic paid inference probe is performed.
 - The metrics/throttle shim is shared byte-for-byte with the Unix implementation.
   It derives Fast sibling routes from the live catalog and retries the **same
   buffered request and effective model** on network errors or HTTP
-  403/429/500/502/503/504 before any upstream body is exposed. HTTP 402 and bare
-  401 pass through once; no request-time model substitution occurs. Queue/backoff
+  403/429/500/502/503/504 before any upstream body is exposed. A
+  `408 user_request_timeout` while the upstream reads that buffered body gets at
+  most one replay. HTTP 402, bare 401 and policy 422 pass through once; no request-time model substitution occurs. Queue/backoff
   cancellation releases permits promptly.
+- A `422 cyber_policy` response is the provider's content-policy decision. The
+  shim does not retry, rewrite, or attempt to bypass it.
 - Admission starts at `COPILOT_SHIM_MIN=4` and grows toward
   `COPILOT_SHIM_MAX=8` only under sustained clean queue pressure. A 403/429 returns
   it to the floor for a five-minute cooldown. `copilot-proxy limiter status`,
