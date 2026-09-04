@@ -226,12 +226,60 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
 | summarize | [`summarize`](https://github.com/steipete/summarize) —— YouTube／podcast／網頁／PDF → LLM 摘要，預設輸出繁體中文。沒有 scoop/winget manifest，所以用 npm 全域套件（`@steipete/summarize`，Node 24+ 由 baseline 的 `nodejs-lts` 提供），外加 scoop 的 `ffmpeg`／`yt-dlp`／`tesseract`。`--cli claude|codex|gemini|pi` 可沿用已登入的 coding CLI 而非 API key。`~/.summarize/config.json` 採 `modify_` overlay，因為 summarize 自己也會改寫該檔；包裝函式 `ytsum`／`sumq`／`suml`／`sumj` 放在 `profile.d/32_summarize.ps1`。以 `just upgrade-summarize` 升級。見 [summarize](summarize.zh-TW.md)。 |
 | Tunnel tools | ngrok、cloudflared（scoop） |
 | IaC tools | Terraform、OpenTofu（scoop）+ Azure CLI 與 `azure-devops` 擴充（`az devops`/`az repos`,winget） |
-| OpenSSH server | Microsoft OpenSSH Server（sshd）：Windows capability + 自動啟動服務 + inbound TCP 22 防火牆規則，並以 pwsh 為預設 shell。需系統管理員 —— 用提升權限的 `chezmoi apply`，或在提升權限的 pwsh 執行 `just enable-sshd`。 |
+| OpenSSH server | Microsoft OpenSSH Server（sshd）：保留既有 Microsoft MSI 安裝，否則安裝 Windows capability；驗證 service／listener／firewall，並把真實 pwsh executable 設為整台機器的預設 shell。需系統管理員；見下方檢查清單。 |
 | herdr multiplexer | herdr，原生 Windows 終端多工器（**preview beta**）。沒有 scoop/winget manifest —— 透過 herdr.dev 的 `irm \| iex` 腳本安裝；設定受管於 `~/.config/herdr/config.toml`（以 pwsh 為預設 shell）。此套件也會從官方 Go target 安裝 [`dev`](https://github.com/daviddwlee84/dev-cli) v0.1.0 到 `~\.local\bin`，並以 `dev-cli` 名稱提供，讓 Microsoft DevTool 保留 `dev`（`prefix+d` dashboard + PowerShell completion）；另安裝 herdr-plus（`prefix+y` Quick Actions / `prefix+O` Projects）。即使 Extra runtimes 關閉，dev build 也會自行安裝 Go；同一份 Go 接著用來編譯 herdr-plus。六個低頻 pane/workspace copy 操作集中在 `prefix+y`，互動式 path picker 保留在 `prefix+p`。`prefix+alt+e` 會直接編輯既有且非空的 `HERDR_CONFIG_PATH` target；未設定時則編輯 `~/.config/herdr/config.toml`。它驗證同一個檔案，再透過繼承的 socket reload 目前 server，整個流程絕不呼叫 chezmoi。開啟 editor 前會在同一目錄建立唯一且保留 metadata 的備份。editor 或驗證失敗時，拒絕的內容會以權限受限的 `config.toml.invalid-*` sibling 保留，並原子式還原先前有效的 target；若只有 reload 失敗，則保留有效的新 target 與備份。`$env:EDITOR` 必須只指定一個會阻塞的 executable 或 wrapper；`code --wait` 之類的參數應放進 wrapper，不可塞入變數。未設定時，helper 依序 fallback 到 nvim，以及明確等待結束的 Notepad。日後執行 `chezmoi apply` 仍可重新套用 canonical `[theme]`、`[ui]`、`[terminal]` 與 `[keys]` tables。若要永久保存 runtime 改動，必須另外手動、選擇性地編輯 `.chezmoitemplates/herdr/config.toml`；此 target 使用 `modify_` merger，禁止對它執行 `chezmoi add` 或 `chezmoi re-add`，以免取代／繞過 merger 並匯入 runtime-owned state。每次 apply 也會把目前 Herdr binary 的官方 skill 寫入兩個 agent skill root。見 [rationale](rationale.zh-TW.md#wezterm-herdr-beta)。 |
 | Clink (cmd.exe) | [Clink](https://chrisant996.github.io/clink/)（scoop `main`）—— cmd.exe 的 Bash 風格行編輯，讓 **starship** + **zoxide** + **fzf** 也能用在 DOS 提示字元。沿用共用的 `starship.toml`；註冊使用者層級 cmd AutoRun、部署我們的 `starship.lua`，並把社群的 `clink-zoxide` / `clink-fzf` 橋接抓進 `%LocalAppData%\clink`。pwsh 仍是預設 —— 這是選用的次要 shell，只有 prompt + 導覽對等。見 [rationale](rationale.zh-TW.md#powershell-7-cmdexe-clink) 與 [Shell](shell.zh-TW.md#cmdexe-via-clink)。 |
 | try（暫時性 workspace） | [`try`](https://github.com/tobi/try)，透過 `gem install try-cli` 安裝（若無 ruby 會一併裝）。建立以日期命名的 `~/src/tries/YYYY-MM-DD-name` 試驗目錄 + 模糊選擇器；`tri <git-url>` 會 clone 進其中一個。pwsh 指令是 **`tri`**（`try` 是保留字 —— 裸打 `try` 無法 parse；`& try` 可用）。見 [Shell](shell.zh-TW.md#try)。 |
 | translate（workstation 預設開） | [`translate`](https://github.com/daviddwlee84/translate) —— 終端機翻譯工具（CLI + TUI），走 copilot-proxy / Ollama / Google，另有離線的 CC-CEDICT + ECDICT 辭典。它沒有 scoop/winget manifest，也沒有預先編譯的 Windows release，所以用 `go install` 從原始碼編進 `~\.local\bin`（go 由該區塊自己裝，不必開「Extra runtimes」）；**第一次編譯要好幾分鐘**。附帶 pwsh tab 補全與 `translate` tv channel。見 [translate](translate.zh-TW.md)。 |
 | Rime 輸入法 | [小狼毫 / Weasel](https://github.com/rime/weasel)（`Rime.Weasel`），Windows 版 Rime，註冊為**繁體中文**。winget manifest 是 machine-scope NSIS，套用時會跳 **UAC**。`%APPDATA%\Rime` 下的 `*.custom.yaml` 由 chezmoi 納管，其中引擎層設定與 macOS/Linux repo（鼠鬚管 / ibus-rime）**逐位元組共用**。見 [輸入法](input-method.zh-TW.md)。 |
+
+### OpenSSH server：先檢查、再啟用、最後驗證
+
+OpenSSH 預設不安裝。先在 chezmoi source 目錄檢查；check-only 不會安裝
+capability、修改 service／firewall／registry，也不會要求提權：
+
+```powershell
+pwsh -NoProfile -File .\scripts\enable-sshd.ps1 -CheckOnly
+```
+
+接著在 Windows **本機提升權限的 pwsh 視窗**執行，並保持該視窗開啟，直到第二台
+主機證明新連線可用：
+
+```powershell
+just enable-sshd
+```
+
+helper 會先偵測可用的 Microsoft OpenSSH MSI／service，只有真的沒有 server 時才考慮
+Windows capability；不會只因 capability 顯示 `NotPresent` 就裝出互相競爭的第二套。
+它會解析真正的 Scoop `apps\pwsh\current\pwsh.exe`（或 PowerShell 7 MSI
+executable）、驗證為 Core 7+，再把該路徑寫入
+`HKLM\SOFTWARE\OpenSSH\DefaultShell`。這是 machine-wide 設定，會影響所有透過
+sshd 登入的帳號。若有 machine-wide PowerShell 7 MSI 會優先使用；若只有使用者層級
+Scoop 安裝，setup 會使用其真實 executable，但會警告其他 SSH 帳號可能無權穿越該
+使用者的 profile。多帳號 server 應先安裝並驗證 machine-wide PowerShell 7。
+`DefaultShellCommandOption` 只報告、不修改；應在實際安裝的 OpenSSH 版本上驗證
+command mode，而不是照搬歷史 registry 值。
+
+既有且相容的 TCP/22 規則會保留；範圍過寬時只警告，不在遠端 session 中偷偷重寫。
+若完全沒有相容規則，helper 只建立 inbound Domain/Private + `LocalSubnet` 規則。本機
+ready 也要求目前真的有 **active** Private 或 DomainAuthenticated 網路；只有 Public，
+或 firewall／network 稽核不完整時一律 fail closed，並提示到 Windows Settings 處理。
+helper 絕不開放 Public、更改 network category、改寫 `sshd_config` 或配置
+`authorized_keys`。`just enable-sshd` 只有全部本機 readiness check 通過才回傳 0；
+嵌入 chezmoi 的 run-script 仍保持 nonfatal，避免單一 optional setup 中斷整個 apply。
+
+關閉提升權限視窗前，請從另一台主機證明三種行為：
+
+```powershell
+ssh windows-host '$PSVersionTable.PSEdition; $PSVersionTable.PSVersion; [Environment]::ProcessPath'
+ssh windows-host 'exit 23'
+$LASTEXITCODE  # 必須是 23
+ssh -t windows-host
+```
+
+本機驗證失敗時，helper 會精確還原先前的 `DefaultShell`，且只移除這次建立的
+firewall rule。若外部連線測試失敗，請從仍開著的本機提升權限視窗還原預先記錄的
+registry 狀態；若該值原本存在，不能直接刪掉。
 
 ## 套件 registry
 

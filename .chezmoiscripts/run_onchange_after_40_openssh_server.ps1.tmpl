@@ -3,9 +3,9 @@
 # server (sshd) during `chezmoi apply` when the installSshServer toggle is on.
 # No-op otherwise. The setup logic lives once in scripts/enable-sshd.ps1 (also run
 # by `just enable-sshd`) and is embedded below via include, so run_onchange
-# re-fires whenever that logic changes. Needs an elevated apply — the embedded
-# script prints guidance and returns cleanly when not elevated (never aborts the
-# apply). See docs/tools.md and scripts/enable-sshd.ps1.
+# re-fires whenever that logic changes. The embedded script requests elevation
+# once when needed and otherwise prints one local recovery command; every failure
+# stays non-fatal to the apply. See docs/tools.md and scripts/enable-sshd.ps1.
 {{ if .installSshServer -}}
 {{ include "scripts/enable-sshd.ps1" }}
 {{ end -}}

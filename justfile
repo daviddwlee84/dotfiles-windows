@@ -84,9 +84,9 @@ upgrade-herdr:
 specstory-build:
     pwsh -NoProfile -File ./scripts/build-specstory.ps1
 
-# enable the OpenSSH server (sshd) — run from an ELEVATED pwsh (opt-in; opens TCP 22)
+# enable OpenSSH (pops UAC if needed); exits nonzero unless local readiness verifies
 enable-sshd:
-    pwsh -NoProfile -File ./scripts/enable-sshd.ps1
+    pwsh -NoProfile -File ./scripts/enable-sshd.ps1 -RequireSuccess
 
 # install WSL2 (Docker Desktop backend) — pops one UAC prompt; reboot required after
 enable-wsl:

@@ -1,6 +1,6 @@
 # Windows as a `fleet` worker — what this repo has to provide
 
-**Status**: P? — blocked on a per-box reachability spike (see below), not on effort.
+**Status**: P? — local laptop passed on 2026-09-04; managed/corporate boxes still need per-box reachability spikes.
 **Effort**: S here. The runner-side work is L and lives in `daviddwlee84/dotfiles`.
 **Related**: `scripts/enable-sshd.ps1` · `scripts/enable-wsl-ubuntu.ps1` · `.chezmoiscripts/run_onchange_after_40_openssh_server.ps1.tmpl` · `dot_ssh/private_config.d/create_private_00-defaults`
 
@@ -71,9 +71,40 @@ here as *"Managed or corporate machine (skip org-policy-blocked apps like
 **Tailscale** and Grammarly)"* — so a managed box has no overlay network, and a
 Dev Box has no public IP either.
 
+## 2026-09-04 local laptop spike
+
+A local Windows laptop passed the transport spike from a macOS head after a real
+minimal bootstrap:
+
+- Microsoft OpenSSH **MSI 9.5** was already running from
+  `C:\Program Files\OpenSSH\sshd.exe`; the Windows capability reported
+  `NotPresent`. The helper preserved the usable, Authenticode-valid MSI instead
+  of installing a competing capability.
+- The active Wi-Fi profile was Private. The existing inbound TCP/22 rule was
+  Private and executable-scoped to that sshd, but `RemoteAddress=Any`; setup
+  preserved it and reported the broader-than-`LocalSubnet` warning.
+- `administrators_authorized_keys` already existed with only SYSTEM and
+  Administrators ACL entries, so BatchMode key authentication worked. This was
+  pre-existing per-box state, not automatic provisioning by the repo.
+- Before setup, command mode launched `cmd.exe`. After bootstrap installed
+  PowerShell **7.6.5** and the helper set `DefaultShell`, new connections launched
+  the real Scoop-current `pwsh.exe`; `DefaultShellCommandOption` remained absent.
+- Raw PowerShell command mode, separate Traditional Chinese UTF-8 stdout/stderr,
+  remote `exit 23`, explicit UTF-16LE `-EncodedCommand`, and a no-command
+  interactive pseudo-TTY login all passed from the head.
+- The registry setting is machine-wide but its current executable is user-scoped
+  under `%USERPROFILE%\scoop`. The enabling account passed end to end;
+  a multi-account worker should install a machine-wide PowerShell 7 or separately
+  prove every SSH account can execute the selected path.
+
+This proves the existing inbound design on one trusted local-network laptop. It
+does **not** answer whether a managed Dev Box permits inbound 22 or has an overlay
+route; run the same spike per managed box before changing the transport design.
+
 ## Decision (so far)
 
-Nothing to implement here yet. When the spike passes, the likely addition is
-small and additive: an `authorized_keys` provisioning path for the head's key,
-plus a worker-setup docs page. Deliberately **not** doing: porting `fleet`,
-changing `DefaultShell`, or running a queue natively.
+Keep the runner-side encoded-command design and native pwsh execution. The
+remaining worker-specific addition is still small and additive: an
+`authorized_keys` provisioning path for the head's key, plus a worker-setup docs
+page. Deliberately **not** doing: porting `fleet`, changing queue placement, or
+assuming this local-network result applies to managed boxes.

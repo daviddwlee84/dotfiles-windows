@@ -61,41 +61,43 @@ dotfile,下個 shell 就生效。
 登入時 Windows 把 Machine + User 串接成每個行程的 `$env:PATH`。改登錄檔**不會**
 更新已在執行的行程。
 
-### 我們不用 GUI 就改了 PATH
+### 我們不用 GUI 就調整 PATH
 
-這個 repo 動 `PATH` 有兩條路,都是腳本 —— 從不打開系統內容的「環境變數」對話框:
+這個 repo 從不打開系統內容的「環境變數」對話框；持久設定與實際解析順序是兩件事：
 
-1. **持久(登錄檔 User PATH)—— 只有 scoop。** scoop 安裝時會用程式方式把
-   `~/scoop/shims` 寫進 User PATH（`[Environment]::SetEnvironmentVariable('Path', …, 'User')`),
-   所以 scoop 的 CLI 在*每個* shell 與 GUI app 都找得到 —— 不需管理員、不需對話框。
+1. **持久 User PATH —— 由 Scoop 等 installer 負責。** Scoop 會用程式方式把
+   `~/scoop/shims`，以及 manifest 宣告的 app 實體目錄寫進 User PATH。新啟動的 shell
+   與 GUI app 都能拿到這些項目，不需系統管理員權限。此 repo 本身不重寫登錄檔 PATH。
 
-2. **只在行程內 —— 我們的 profile。** `00_env.ps1` 在每次 shell 啟動時,把
-   `~/.local/bin` 與 `~/scoop/shims` 前置到 `$env:PATH`,冪等、且只在目錄存在時:
+2. **當前行程的有效順序 —— 由此 repo 負責。** 共用 helper
+   `scripts/windows-path-precedence.ps1` 讀取持久的 User 與 Machine 值、展開環境變數、
+   丟掉空項目，並以不分大小寫的方式去重；它只修改當前 `$env:PATH`。
 
-   ```powershell
-   $UserPaths = @(
-       (Join-Path $HOME '.local/bin'),
-       (Join-Path $HOME 'scoop/shims')
-   ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
-   foreach ($p in $UserPaths) {
-       if (($env:PATH -split ';') -notcontains $p) { $env:PATH = "$p;$env:PATH" }
-   }
-   ```
+有效解析順序如下：
 
-`bootstrap.ps1` 還有第三種、一次性的變體:在 scoop 裝完基礎工具後,立刻用
-`Machine + User` 的登錄檔值重建 `$env:PATH`,讓剛裝好的 shim 在**同一個 session**
-就找得到(scoop 已寫入持久層,但當前行程的複本早於那次寫入)。
+1. 只存在於繼承來的行程 PATH 內的項目（例如 portable launcher 或 CI toolcache），
+   保留繼承順序；
+2. profile 明確管理的目錄，依宣告順序排列 —— 特別是 `~/scoop/shims` 在
+   `~/.local/bin` 前面，之後才是確認存在的選用工具目錄；
+3. 持久 User PATH 的所有項目，完整保留登錄檔中的儲存順序；
+4. Machine PATH 的所有項目，統一放最後。
 
-!!! warning "`~/.local/bin` 只在 pwsh session 範圍"
+整段 User PATH 都放在 Machine 前面很重要：即使使用者範圍的 package 加入的是實體
+安裝目錄而不只是 shim，也能勝過較舊的 machine-wide 指令。第一次出現的大小寫版本會
+保留，因此重載 profile 仍是冪等的。
+
+沒載入 profile 時也套用同一政策。packages run-script 會 include 這個 helper，並在第一次
+找指令前先正規化 PATH；Scoop 可能寫入新 shim 或實體目錄後，還會再次 refresh，才解析
+後續工具。因此直接用 `pwsh -NoProfile` / `chezmoi apply` 不會悄悄退回 Machine-first。
+獨立的 `bootstrap.ps1` 為了維持 `irm …/bootstrap.ps1 | iex` 零檔案相依，內嵌同一套
+mirror：行程專屬項目 → 持久 User → Machine，並在 Scoop 安裝階段後 refresh。
+
+!!! warning "`~/.local/bin` 通常只在 pwsh session 範圍"
     `~/.local/bin` 是你自己 script/binary 在 Windows 的落腳處 —— 路徑名跟 Unix
-    一樣。但與 `~/scoop/shims` 不同,它**只**由這份 profile 加進 `$env:PATH`,
-    **從不**寫進登錄檔。所以它在載入此 profile 的 pwsh session 內才在 PATH 上,
-    在 Windows PowerShell 5.1、GUI app、或任何在 pwsh 外啟動的東西裡都**看不到**。
-    若要讓那裡的 binary 全系統可見,請自己把 `~/.local/bin` 加進 User PATH
-    （`setx` 或 `[Environment]::SetEnvironmentVariable(…, 'User')`）。
-
-profile 跑完後的解析順序:`~/scoop/shims` → `~/.local/bin` → 繼承來的 PATH
-（每個都是前置,所以最後加的排最前）。
+    一樣。與 `~/scoop/shims` 不同，此 repo 只把它當成 profile 明確路徑，從不寫進
+    登錄檔。因此載入這份 profile 的 pwsh session 會有它，但 Windows PowerShell 5.1、
+    GUI app 或其他 no-profile 行程不會自動拿到。若 launcher 已提供它，則會當成
+    process-only 項目保留下來。
 
 ## Windows 上的 XDG base 目錄
 

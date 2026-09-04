@@ -40,16 +40,11 @@ if (-not $env:YAZI_FILE_ONE) {
 # `python.exe` app-execution-alias.
 $env:UV_PYTHON_BIN_DIR = Join-Path $HOME '.local/bin'
 
-# Default editor
-if (Get-Command nvim -ErrorAction SilentlyContinue) { $env:EDITOR = 'nvim' }
-
-# Prepend user bin dirs to PATH, idempotently. scoop already adds its shims to
-# the persisted user PATH, but a fresh session inside chezmoi apply may not have
-# it yet; ~/.local/bin carries uv tools + the uv-managed python. The remaining
-# paths are presence-gated so a disabled/failed optional install never leaves a
-# dead PATH entry: pia's external checkout, OMP's official binary directory, and
-# Scoop Git's unshimmed bash.exe (used by OMP). Normalize entries to backslashes
-# because mixed slashes can fail Windows command resolution.
+# Rebuild the process PATH before resolving commands. Windows normally inherits
+# Machine before User, which lets stale machine-wide tools shadow Scoop manifests
+# that persist direct app paths. Keep repo-managed profile paths in their declared
+# order, then let the shared helper append persisted User and Machine entries.
+# Presence-gating optional paths avoids dead entries after a disabled/failed install.
 {{ if .installCodingAgents -}}
 $ScoopRoot = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $HOME 'scoop' }
 $PiaRoot = Join-Path $HOME '.local\share\pi-agents'
@@ -58,24 +53,11 @@ $OmpRoot = Join-Path $env:LOCALAPPDATA 'omp'
 $ScoopGitBin = Join-Path $ScoopRoot 'apps\git\current\bin'
 $PiOwnedLauncher = Join-Path $PiWrapperRoot 'pia-pi.ps1'
 $OmpOwnedBinary = Join-Path $OmpRoot 'omp.exe'
-if (-not $env:PIA_PI_BIN) {
-    $env:PIA_PI_BIN = $PiOwnedLauncher
-}
-if (-not $env:PIA_OMP_BIN) {
-    $env:PIA_OMP_BIN = $OmpOwnedBinary
-}
-# Keep PowerShell on an argv-preserving script path instead of resolving the
-# trusted-interactive pi.cmd batch shim. A pre-existing user alias/function wins.
-if ((Test-Path -LiteralPath $PiOwnedLauncher -PathType Leaf) -and
-    -not (Get-Command pi -CommandType Alias, Function -ErrorAction SilentlyContinue)) {
-    function global:pi {
-        & (Join-Path $HOME '.config\powershell\bin\pia-pi.ps1') @args
-    }
-}
 {{ end -}}
-$UserPaths = @(
-    (Join-Path $HOME '.local/bin'),
+$ProfilePaths = @(
+    # Keep Scoop shims above ~/.local/bin: this is the documented shell policy.
     (Join-Path $HOME 'scoop/shims'),
+    (Join-Path $HOME '.local/bin'),
 {{ if .installCodingAgents -}}
     $(if (Test-Path -LiteralPath (Join-Path $PiaRoot 'bin\pia.cmd') -PathType Leaf) {
         Join-Path $PiaRoot 'bin'
@@ -93,10 +75,28 @@ $UserPaths = @(
 {{ end -}}
     # herdr has no scoop shim; its bin junction lives here (opt-in installHerdr).
     (Join-Path $env:LOCALAPPDATA 'Programs\Herdr\bin')
-) | Where-Object { $_ -and (Test-Path $_) } |
-    ForEach-Object { [System.IO.Path]::GetFullPath($_) } | Select-Object -Unique
+) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } |
+    ForEach-Object { [System.IO.Path]::GetFullPath($_) }
 
-$SepPaths = $env:PATH -split ';'
-foreach ($p in $UserPaths) {
-    if ($SepPaths -notcontains $p) { $env:PATH = "$p;$env:PATH" }
+{{ include "scripts/windows-path-precedence.ps1" }}
+Set-WindowsPathPrecedence -ManagedPaths $ProfilePaths
+
+{{ if .installCodingAgents -}}
+if (-not $env:PIA_PI_BIN) {
+    $env:PIA_PI_BIN = $PiOwnedLauncher
 }
+if (-not $env:PIA_OMP_BIN) {
+    $env:PIA_OMP_BIN = $OmpOwnedBinary
+}
+# Keep PowerShell on an argv-preserving script path instead of resolving the
+# trusted-interactive pi.cmd batch shim. A pre-existing user alias/function wins.
+if ((Test-Path -LiteralPath $PiOwnedLauncher -PathType Leaf) -and
+    -not (Get-Command pi -CommandType Alias, Function -ErrorAction SilentlyContinue)) {
+    function global:pi {
+        & (Join-Path $HOME '.config\powershell\bin\pia-pi.ps1') @args
+    }
+}
+{{ end -}}
+
+# Default editor (resolved only after PATH precedence is normalized).
+if (Get-Command nvim -ErrorAction SilentlyContinue) { $env:EDITOR = 'nvim' }

@@ -3,6 +3,7 @@
 BeforeAll {
     $RepoRoot = Split-Path -Parent $PSScriptRoot
     $ToolsProfile = Join-Path $RepoRoot 'dot_config' 'powershell' 'profile.d' '10_tools.ps1'
+    $PsReadLineTemplate = Join-Path $RepoRoot 'dot_config' 'powershell' 'profile.d' '90_psreadline.ps1.tmpl'
     $tokens = $null
     $parseErrors = $null
     $ast = [System.Management.Automation.Language.Parser]::ParseFile(
@@ -20,6 +21,18 @@ BeforeAll {
     }, $true)
     if (-not $functionAst) { throw 'Import-CachedInit was not found' }
     . ([scriptblock]::Create($functionAst.Extent.Text))
+}
+
+Describe 'PSReadLine command-mode guard' {
+    It 'returns on redirected streams before importing PSReadLine' {
+        $source = Get-Content -Raw -LiteralPath $PsReadLineTemplate
+        $guard = $source.IndexOf('[Console]::IsInputRedirected -or [Console]::IsOutputRedirected')
+        $import = $source.IndexOf('Import-Module PSReadLine')
+
+        $guard | Should -BeGreaterOrEqual 0
+        $import | Should -BeGreaterThan $guard
+        $source.Substring($guard, $import - $guard) | Should -Match '\{\s*return\s*\}'
+    }
 }
 
 Describe 'Import-CachedInit revision stamp' {

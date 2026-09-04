@@ -68,44 +68,50 @@ Editing the registry does **not** update already-running processes.
 
 ### We change PATH without the GUI
 
-This repo touches `PATH` two ways, both scripted — the System Properties
-"Environment Variables" dialog is never opened:
+The System Properties "Environment Variables" dialog is never opened. There are
+two separate responsibilities:
 
-1. **Persistent (registry User PATH) — scoop only.** When scoop installs, it
-   writes `~/scoop/shims` into the User PATH programmatically
-   (`[Environment]::SetEnvironmentVariable('Path', …, 'User')`), so scoop CLIs
-   resolve in *every* shell and GUI app — no admin, no dialog.
+1. **Persistent User PATH — owned by installers such as Scoop.** Scoop writes
+   `~/scoop/shims` and any manifest-declared direct app directories to the User
+   PATH programmatically. Those entries then reach every newly started shell and
+   GUI app without admin access. This repo does not rewrite the registry PATH.
 
-2. **In-process only — our profile.** `00_env.ps1` prepends `~/.local/bin` and
-   `~/scoop/shims` to `$env:PATH` on every shell start, idempotently and only
-   when the directory exists:
+2. **Effective process order — owned by this repo.** The shared
+   `scripts/windows-path-precedence.ps1` helper reads the persisted User and
+   Machine values, expands environment variables, drops empty entries, and
+   deduplicates case-insensitively. It changes only the current `$env:PATH`.
 
-   ```powershell
-   $UserPaths = @(
-       (Join-Path $HOME '.local/bin'),
-       (Join-Path $HOME 'scoop/shims')
-   ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
-   foreach ($p in $UserPaths) {
-       if (($env:PATH -split ';') -notcontains $p) { $env:PATH = "$p;$env:PATH" }
-   }
-   ```
+The effective order is:
 
-`bootstrap.ps1` does a third, one-shot variant: right after scoop installs the
-baseline tools it rebuilds `$env:PATH` from the `Machine + User` registry values
-so the just-installed shims resolve **in the same session** (scoop persisted
-them, but the running process's copy predates that write).
+1. entries that exist only in the inherited process PATH (for example a portable
+   launcher or CI toolcache), in inherited order;
+2. explicit repo-managed profile directories, in declared order — notably
+   `~/scoop/shims` before `~/.local/bin`, followed by presence-gated optional
+   tool directories;
+3. every persisted User PATH entry, preserving its stored order;
+4. every Machine PATH entry, last.
 
-!!! warning "`~/.local/bin` is pwsh-session-scoped"
+Putting the entire User block before Machine is important: a user-scoped package
+that adds its real install directory, not just a shim, still wins over an older
+machine-wide command. Re-loading the profile is idempotent because the first
+case-insensitive occurrence wins.
+
+The same policy also applies without a profile. The packages run-script includes
+the helper and normalizes PATH before its first command lookup; after Scoop can
+persist new shims or direct directories, it refreshes again before resolving
+later tools. Therefore a direct `pwsh -NoProfile` / `chezmoi apply` does not
+silently fall back to Machine-first resolution. The standalone `bootstrap.ps1`
+keeps an inline mirror (so `irm …/bootstrap.ps1 | iex` has no file dependency):
+process-only entries first, then persisted User, then Machine, refreshed after
+Scoop installation stages.
+
+!!! warning "`~/.local/bin` is normally pwsh-session-scoped"
     `~/.local/bin` is the Windows home for your own scripts and binaries — same
-    path name as Unix. But unlike `~/scoop/shims`, it is added to `$env:PATH`
-    **only** by this profile; it is **never** persisted to the registry. So it's
-    on PATH inside pwsh sessions that load the profile, but **not** in Windows
-    PowerShell 5.1, in GUI apps, or in anything launched outside pwsh. To make a
-    binary there visible everywhere, add `~/.local/bin` to the User PATH
-    yourself (`setx` or `[Environment]::SetEnvironmentVariable(…, 'User')`).
-
-Resolution order after the profile runs: `~/scoop/shims` → `~/.local/bin` →
-inherited PATH (each is prepended, so the last one added ends up first).
+    path name as Unix. Unlike `~/scoop/shims`, this repo adds it as an explicit
+    profile path and never persists it to the registry. It is therefore present
+    in pwsh sessions that load this profile, but not automatically in Windows
+    PowerShell 5.1, GUI apps, or unrelated no-profile processes. If it is already
+    supplied by a launcher, it is preserved as a process-only entry.
 
 ## XDG base dirs on Windows
 

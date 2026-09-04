@@ -28,6 +28,23 @@ notepad "%TEMP%\bootstrap.ps1"
 powershell -ExecutionPolicy Bypass -File "%TEMP%\bootstrap.ps1"
 ```
 
+For an unattended **minimal** setup, download and inspect the file first, then
+pass the role and Git identity explicitly. The canonical `irm | iex` form stays
+interactive because it cannot safely accept script parameters:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File "$env:TEMP\bootstrap.ps1" `
+  -NonInteractive -Role minimal `
+  -Name 'Da-Wei Lee' -Email 'daviddwlee84@gmail.com'
+```
+
+`-NonInteractive` deliberately supports only `minimal`; it rejects a missing
+role/name/email **or any existing chezmoi config/source** before changing execution
+policy or installing anything. Existing `prompt*Once` data must be changed with
+interactive `chezmoi init` or by editing the config—an unattended rerun cannot
+safely turn a stored workstation profile into minimal. This prevents automation
+from silently selecting or retaining the full `workstation` bundle.
+
 Use `powershell`, **not** `pwsh` — pwsh isn't installed yet on a fresh box. The
 bootstrap logic lives once, in PowerShell (`bootstrap.ps1`): cmd is a poor
 language for the elevation / `PATH` / `chezmoi` steps, and these dotfiles are
@@ -55,10 +72,16 @@ PowerShell anyway, so a machine with *no* PowerShell couldn't use the repo.
    is already elevated it auto-passes `-RunAsAdmin`, which the installer
    otherwise refuses with *"Running the installer as administrator is disabled
    by default"*).
-3. Installs `git`, PowerShell 7 (`pwsh`), `chezmoi`, and `uv` via scoop.
+3. Installs `git`, `7zip`, PowerShell 7 (`pwsh`), `chezmoi`, and `uv` via
+   scoop. When pwsh is missing, bootstrap first refreshes Scoop/bucket metadata,
+   so the install uses the current **stable** manifest. An existing pwsh is not
+   upgraded implicitly; use `scoop update pwsh` when you intend to upgrade it.
 4. Refreshes `PATH` from the registry so the just-installed scoop shims
    (`chezmoi`, `pwsh`, `uv`) resolve in the same session.
-5. Runs `chezmoi init --apply` (or `chezmoi update` if the source is already
+5. Launches the resolved pwsh and requires `PSEdition=Core`, version 7 or newer.
+   A failed/partial PowerShell install stops here instead of failing later inside
+   chezmoi.
+6. Runs `chezmoi init --apply` (or `chezmoi update` if the source is already
    cloned) — chezmoi runs the repo's `.ps1` scripts under pwsh itself
    (`[interpreters.ps1]`), so it never relaunches the shell. Works from Windows
    PowerShell 5.1 or pwsh 7.
@@ -70,7 +93,10 @@ PowerShell anyway, so a machine with *no* PowerShell couldn't use the repo.
 
 ## Init prompts
 
-`chezmoi init` asks a few questions once (answers are stored and never re-asked):
+`chezmoi init` asks a few questions once (answers are stored and never re-asked).
+`minimal` means the shell-only development baseline, **not** a tiny install: it
+still installs the core CLI/toolchain set and is estimated around 2 GB before
+Scoop download cache and temporary staging. See [Disk space](disk-space.md).
 
 !!! note "Private pia checkout"
     `pi-agents` is private. Before enabling coding agents, make sure Git can

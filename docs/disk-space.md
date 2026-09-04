@@ -15,6 +15,54 @@ the toggles.
     To see the truth on a real box, use the bundled **WinDirStat** / **TreeSize**
     (utility apps) or `scoop cache show`.
 
+## Read-only preflight
+
+Check the volumes used by Windows, the user profile/Scoop, and TEMP **before** a
+fresh apply. This only reads volume metadata:
+
+```powershell
+$targets = [ordered]@{
+  SystemDrive = $env:SystemDrive
+  UserProfile = $env:USERPROFILE
+  Scoop       = $(if ($env:SCOOP) { $env:SCOOP } else { Join-Path $HOME 'scoop' })
+  Temp        = $env:TEMP
+}
+$rows = foreach ($entry in $targets.GetEnumerator()) {
+  $volume = [IO.Path]::GetPathRoot($entry.Value).TrimEnd([char[]]'\')
+  $disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$volume'"
+  [pscustomobject]@{
+    Label    = $entry.Key
+    Volume   = $volume
+    FreeGiB  = [math]::Round($disk.FreeSpace / 1GB, 2)
+    TotalGiB = [math]::Round($disk.Size / 1GB, 2)
+  }
+}
+$rows | Format-Table -AutoSize
+```
+
+The ~2 GB minimal estimate is the installed result, not the peak working space.
+Scoop downloads, extraction, source staging, and Windows itself all need margin.
+For a fresh minimal dogfood run, **8 GiB free is a conservative operational
+starting point**, not a hard-coded bootstrap requirement or a guarantee for
+future package versions.
+
+If space is low, measure before deleting. Prefer rebuildable package caches, and
+confirm no installer/process is using a recent TEMP staging directory. Docker's
+reported reclaimable bytes live inside its virtual disk and might not immediately
+become free space on `C:`; personal Downloads/Documents/media are never safe
+automatic cleanup targets.
+
+### 2026-09 real-host observation
+
+One Windows 11 x64 minimal dogfood run first found only **0.84 GiB** free and
+stopped before installing anything. After user-owned files were moved elsewhere,
+the run started at **15.85 GiB** free and reached **13.20 GiB** immediately after
+bootstrap: a **2.65 GiB** working delta. At that point Scoop apps measured
+**1.614 GiB**, Scoop cache **0.463 GiB**, and the unpublished source staging tree
+**0.146 GiB**. The host already had Scoop, Git, uv, and some older duplicate
+tools, so this is evidence for the safety margin—not a universal clean-install
+benchmark. Temporary validation environments were removed afterward.
+
 ## Per-toggle estimate
 
 | Toggle | Biggest items | Est. (installed) | Default on `workstation` |

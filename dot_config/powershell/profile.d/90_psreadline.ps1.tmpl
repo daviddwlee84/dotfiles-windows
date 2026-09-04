@@ -1,5 +1,10 @@
 # 90_psreadline.ps1 — history, inline predictions, and edit mode.
 # Templated: edit mode follows the `enableVimMode` init toggle.
+# Command-mode SSH, pipelines, and redirected CI output have no interactive line
+# editor. Loading PSReadLine there adds startup work and prediction setup throws
+# when no VT console is available, polluting otherwise clean command output.
+if ([Console]::IsInputRedirected -or [Console]::IsOutputRedirected) { return }
+
 # PSReadLine ships with pwsh; import directly rather than scanning PSModulePath
 # with Get-Module -ListAvailable. Get-Module -Name checks only loaded modules.
 Import-Module PSReadLine -ErrorAction SilentlyContinue

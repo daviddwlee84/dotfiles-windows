@@ -58,4 +58,5 @@ Add new entries here as you create them. Keep alphabetical.
 | [specstory-windows-native-cli](specstory-windows-native-cli.md) | P? (blocked on PR #191) | SpecStory Windows-native CLI |
 | [translate-windows-distribution](translate-windows-distribution.md) | P2 | Prebuilt Windows binaries + scoop bucket for `translate` |
 | [windows-arm64-managed-machine-rough-edges](windows-arm64-managed-machine-rough-edges.md) | P? (environmental) | Windows-on-ARM64 + managed-machine rough edges |
+| [windows-pester-gate-portability](windows-pester-gate-portability.md) | P2 reproduced 2026-09 | Make the full Windows Pester gate portable |
 | [wsl-ubuntu-auto-dotfiles](wsl-ubuntu-auto-dotfiles.md) | shipped (2026-07) | Setup WSL Ubuntu + auto-install dotfiles |

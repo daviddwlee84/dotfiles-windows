@@ -246,12 +246,67 @@ Off by default; enable the matching init prompt:
 | summarize | [`summarize`](https://github.com/steipete/summarize) — YouTube / podcast / web / PDF → LLM summary, defaulting to 繁體中文 output. No scoop/winget manifest, so it is an npm global (`@steipete/summarize`, Node 24+ from the baseline `nodejs-lts`) plus scoop `ffmpeg`/`yt-dlp`/`tesseract`. `--cli claude|codex|gemini|pi` reuses an already-authenticated coding CLI instead of an API key. `~/.summarize/config.json` is a `modify_` overlay because summarize rewrites that file itself; wrappers `ytsum`/`sumq`/`suml`/`sumj` live in `profile.d/32_summarize.ps1`. Upgrade with `just upgrade-summarize`. See [summarize](summarize.md). |
 | Tunnel tools | ngrok, cloudflared (scoop) |
 | IaC tools | Terraform, OpenTofu (scoop) + Azure CLI & the `azure-devops` extension (`az devops`/`az repos`, winget) |
-| OpenSSH server | Microsoft OpenSSH Server (sshd): Windows capability + auto-start service + inbound TCP 22 firewall rule, with pwsh as the default shell. Needs admin — set up on an elevated `chezmoi apply`, or run `just enable-sshd` from an elevated pwsh. |
+| OpenSSH server | Microsoft OpenSSH Server (sshd): preserves an existing Microsoft MSI install or installs the Windows capability, verifies the service/listener/firewall, and sets a real pwsh executable as the machine-wide default shell. Needs admin; see the checklist below. |
 | herdr multiplexer | herdr, a native Windows terminal multiplexer (**preview beta**). No scoop/winget manifest — installs via herdr.dev's `irm \| iex` script; config managed at `~/.config/herdr/config.toml` (pwsh as the default shell). The stack also installs [`dev`](https://github.com/daviddwlee84/dev-cli) v0.1.0 from its official Go target into `~\.local\bin`, exposed as `dev-cli` so Microsoft DevTool may keep `dev` (`prefix+d` dashboard; PowerShell completion), and herdr-plus (`prefix+y` Quick Actions / `prefix+O` Projects). The dev build makes Go self-contained even when Extra runtimes is off, and the same Go installation builds herdr-plus. Six low-frequency pane/workspace copy operations live under `prefix+y`; the interactive path picker stays on `prefix+p`. `prefix+alt+e` directly edits the existing non-empty `HERDR_CONFIG_PATH` target, or `~/.config/herdr/config.toml` by default, validates that exact file, and reloads the current server through its inherited socket; it never invokes chezmoi. Before opening the editor it makes a unique same-directory metadata-preserving backup. An editor or validation failure retains the rejected bytes as a restrictive `config.toml.invalid-*` sibling and atomically restores the prior valid target; a reload failure keeps the valid edited target and its backup. `$env:EDITOR` must name one blocking executable or wrapper — put arguments such as `code --wait` in the wrapper rather than the variable; when it is unset, the helper falls back to nvim, then explicitly waited Notepad. A later `chezmoi apply` can reassert the canonical `[theme]`, `[ui]`, `[terminal]`, and `[keys]` tables. Persistence is a separate manual, selective edit of `.chezmoitemplates/herdr/config.toml`; never use `chezmoi add` or `chezmoi re-add` on this `modify_` target, because those commands can replace/bypass the merger and import runtime-owned state. Every apply exports the installed Herdr binary's official skill into both agent skill roots. See [rationale](rationale.md#terminal-multiplexer-wezterm-stable-default-herdr-native-beta). |
 | Clink (cmd.exe) | [Clink](https://chrisant996.github.io/clink/) (scoop `main`) — Bash-style line editing for `cmd.exe`, so **starship** + **zoxide** + **fzf** work in the DOS prompt. Reuses the shared `starship.toml`; registers a per-user cmd AutoRun, deploys our `starship.lua`, and fetches the community `clink-zoxide` / `clink-fzf` bridges into `%LocalAppData%\clink`. pwsh stays the default — this is an opt-in secondary shell with prompt + nav parity only. See [rationale](rationale.md#powershell-7-default-cmdexe-optional-via-clink) & [Shell](shell.md#cmdexe-via-clink). |
 | try (ephemeral workspaces) | [`try`](https://github.com/tobi/try) via `gem install try-cli` (ruby installed if absent). Dated `~/src/tries/YYYY-MM-DD-name` trial dirs + a fuzzy selector; `tri <git-url>` clones into one. The pwsh command is **`tri`** (`try` is a reserved keyword — bareword `try` won't parse; `& try` works). See [Shell](shell.md#try). |
 | translate (on for workstation) | [`translate`](https://github.com/daviddwlee84/translate) — terminal translator (CLI + TUI) over copilot-proxy / Ollama / Google plus an offline CC-CEDICT + ECDICT dictionary. Installed from the author's own scoop bucket (`daviddwlee84/translate`) as a prebuilt binary — seconds, no Go toolchain. Until 2026-08 it was built from source with `go install` into `~\.local\bin`, which took minutes; a leftover copy there shadows the scoop shim and is removed automatically. Ships pwsh tab-completion and the `translate` tv channel. See [translate](translate.md). |
 | Rime input method | [Weasel / 小狼毫](https://github.com/rime/weasel) (`Rime.Weasel`), Rime for Windows, registered as **Traditional Chinese**. Machine-scope NSIS installer, so applying raises a **UAC prompt**. The `*.custom.yaml` under `%APPDATA%\Rime` is chezmoi-managed and the engine-level part is **shared byte-for-byte with the macOS/Linux repo** (Squirrel / ibus-rime). See [Input method](input-method.md). |
+
+### OpenSSH server: inspect, enable, verify
+
+OpenSSH is opt-in. Inspect it first from the chezmoi source directory; check-only
+mode does not install a capability, change a service/firewall/registry value, or
+request elevation:
+
+```powershell
+pwsh -NoProfile -File .\scripts\enable-sshd.ps1 -CheckOnly
+```
+
+Then use a **local elevated pwsh window** and keep it open until a second host has
+proved a new connection works:
+
+```powershell
+just enable-sshd
+```
+
+The helper detects a usable Microsoft OpenSSH MSI/service before considering the
+Windows capability, so it never installs a competing server merely because the
+capability reports `NotPresent`. It resolves the real Scoop
+`apps\pwsh\current\pwsh.exe` (or the PowerShell 7 MSI executable), verifies Core
+7+, and writes that path to `HKLM\SOFTWARE\OpenSSH\DefaultShell`. This registry
+value is machine-wide and affects every account that logs in through sshd. A
+machine-wide PowerShell 7 MSI is preferred when present. If only the user-scoped
+Scoop install exists, setup uses its real executable but warns that other SSH
+accounts may not have permission to traverse that user's profile; multi-account
+servers should install/verify a machine-wide PowerShell 7 first.
+`DefaultShellCommandOption` is reported but deliberately left untouched; verify
+command mode on the installed OpenSSH version instead of copying a historical
+registry value.
+
+An existing compatible TCP/22 rule is preserved and any broad scope is reported,
+not silently rewritten during a remote session. If no compatible rule exists,
+the helper creates only an inbound Domain/Private + `LocalSubnet` rule. Local
+readiness also requires an **active** Private or DomainAuthenticated network;
+Public-only or incomplete firewall/network inspection fails closed with Windows
+Settings guidance. The helper never opens Public, changes the network category,
+edits `sshd_config`, or provisions `authorized_keys`. `just enable-sshd` exits
+nonzero unless all local readiness checks pass; the embedded chezmoi run remains
+nonfatal so one optional setup failure cannot abort the full apply.
+
+From another host, prove all three behaviors before closing the elevated window:
+
+```powershell
+ssh windows-host '$PSVersionTable.PSEdition; $PSVersionTable.PSVersion; [Environment]::ProcessPath'
+ssh windows-host 'exit 23'
+$LASTEXITCODE  # must be 23
+ssh -t windows-host
+```
+
+A local failure restores the prior `DefaultShell` exactly and removes only a
+firewall rule created by that invocation. If the external test fails, restore the
+captured prior registry state from the still-open local elevated window; do not
+remove a value that existed before setup.
 
 ## Package registries
 

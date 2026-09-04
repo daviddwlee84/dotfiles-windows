@@ -5,24 +5,57 @@ function Resolve-PueueCommand {
     param(
         [Parameter(Mandatory)]
         [ValidateSet('pueue', 'pueued')]
-        [string]$Name
+        [string]$Name,
+        [switch]$ScoopOnly
     )
+
+    # Resolve both executables from one Scoop `current` directory before PATH.
+    # A legacy ~/bin or ~/.local/bin Pueue can otherwise shadow Scoop's shims and
+    # mix a 3.x client/daemon with the installed 4.x package.
+    $prefixes = [System.Collections.Generic.List[string]]::new()
+    try {
+        $scoop = Get-Command scoop -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandType -in @('Application', 'ExternalScript') } |
+            Select-Object -First 1
+        if ($scoop) {
+            $scoopPath = if ($scoop.Path) { $scoop.Path } elseif ($scoop.Source) { $scoop.Source } else { $scoop.Name }
+            $prefixOutput = @(& $scoopPath prefix pueue 2>$null)
+            if ($LASTEXITCODE -eq 0) {
+                $prefix = @($prefixOutput | ForEach-Object { ([string]$_).Trim().Trim('"') } |
+                    Where-Object { $_ }) | Select-Object -Last 1
+                if ($prefix) { $prefixes.Add($prefix) }
+            }
+        }
+    } catch {
+        # Direct Scoop roots below still cover a stale PATH or failed prefix call.
+        $null = $_
+    }
+
+    $scoopRoots = [System.Collections.Generic.List[string]]::new()
+    if ($env:SCOOP) { $scoopRoots.Add($env:SCOOP) }
+    if ($HOME) { $scoopRoots.Add((Join-Path $HOME 'scoop')) }
+    if ($env:SCOOP_GLOBAL) { $scoopRoots.Add($env:SCOOP_GLOBAL) }
+    if ($env:ProgramData) { $scoopRoots.Add((Join-Path $env:ProgramData 'scoop')) }
+    foreach ($root in $scoopRoots) {
+        $prefix = Join-Path $root 'apps\pueue\current'
+        if ($prefix -notin $prefixes) { $prefixes.Add($prefix) }
+    }
+
+    foreach ($prefix in $prefixes) {
+        $clientCandidate = Join-Path $prefix 'pueue.exe'
+        $daemonCandidate = Join-Path $prefix 'pueued.exe'
+        if ((Test-Path -LiteralPath $clientCandidate -PathType Leaf) -and
+            (Test-Path -LiteralPath $daemonCandidate -PathType Leaf)) {
+            if ($Name -eq 'pueue') { return $clientCandidate }
+            return $daemonCandidate
+        }
+    }
+
+    if ($ScoopOnly) { return $null }
 
     $command = Get-Command $Name -CommandType Application -ErrorAction SilentlyContinue |
         Select-Object -First 1
     if ($command) { return $command.Source }
-
-    # A first-time Scoop install can create the shim after this pwsh process
-    # captured PATH. Resolve the stable `current` junction as a fallback.
-    $scoop = Get-Command scoop -CommandType Application -ErrorAction SilentlyContinue |
-        Select-Object -First 1
-    if (-not $scoop) { return $null }
-
-    $prefixOutput = @(& $scoop.Source prefix pueue 2>$null)
-    if ($LASTEXITCODE -ne 0 -or -not $prefixOutput) { return $null }
-    $prefix = ([string]$prefixOutput[-1]).Trim()
-    $candidate = Join-Path $prefix "$Name.exe"
-    if (Test-Path -LiteralPath $candidate) { return $candidate }
     return $null
 }
 
@@ -90,6 +123,9 @@ function Start-PueuedIfNeeded {
         [int]$ReadyTimeoutMilliseconds = 3000
     )
 
+    # Resolve both names through the Scoop-first resolver before probing either
+    # one. When Scoop's current pair exists, both paths share that directory even
+    # if an older pair appears first on PATH or could not be removed.
     $clientPath = Resolve-PueueCommand -Name pueue
     $daemonPath = Resolve-PueueCommand -Name pueued
     if (-not $clientPath -or -not $daemonPath) {

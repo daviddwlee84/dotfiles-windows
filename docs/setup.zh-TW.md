@@ -26,6 +26,21 @@ notepad "%TEMP%\bootstrap.ps1"
 powershell -ExecutionPolicy Bypass -File "%TEMP%\bootstrap.ps1"
 ```
 
+若要無人值守地安裝 **minimal**，請先下載並檢閱檔案，再明確傳入 role 與 Git
+identity。慣用的 `irm | iex` 仍保持互動式，因為它不適合安全地傳遞腳本參數：
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File "$env:TEMP\bootstrap.ps1" `
+  -NonInteractive -Role minimal `
+  -Name 'Da-Wei Lee' -Email 'daviddwlee84@gmail.com'
+```
+
+`-NonInteractive` 刻意只支援 `minimal`；role／name／email 任一缺少，或已存在
+chezmoi config／source，都會在修改 execution policy 或安裝任何東西前拒絕執行。
+既有 `prompt*Once` 資料必須用互動式 `chezmoi init` 或直接編輯 config 修改；
+unattended 重跑不能安全地把已儲存的 workstation 切成 minimal。如此可避免自動化
+意外選到或沿用完整的 `workstation` 套件組。
+
 用 `powershell`，**不是** `pwsh` —— 全新機器上 pwsh 還沒裝。bootstrap 邏輯只維護一份、
 寫在 PowerShell（`bootstrap.ps1`）：elevation / `PATH` / `chezmoi` 這些步驟用 cmd 寫
 會又醜又易錯，而且這份 dotfiles 本來就是 PowerShell，一台完全沒有 PowerShell 的機器
@@ -50,10 +65,15 @@ powershell -ExecutionPolicy Bypass -File "%TEMP%\bootstrap.ps1"
 2. 安裝 [scoop](https://scoop.sh)（使用者層級、免系統管理員 —— 但若 shell 本身是
    系統管理員身分，會自動帶上 `-RunAsAdmin`；否則安裝程式會以
    *「Running the installer as administrator is disabled by default」* 拒絕執行）。
-3. 透過 scoop 安裝 `git`、PowerShell 7（`pwsh`）、`chezmoi`、`uv`。
+3. 透過 scoop 安裝 `git`、`7zip`、PowerShell 7（`pwsh`）、`chezmoi`、`uv`。
+   若尚無 pwsh，bootstrap 會先更新 Scoop／bucket metadata，確保安裝目前的
+   **stable** manifest。既有 pwsh 不會被隱式升級；確定要升級時請執行
+   `scoop update pwsh`。
 4. 從 registry 重新載入 `PATH`，讓剛裝好的 scoop shim（`chezmoi`、`pwsh`、`uv`）
    在同一個 session 就能被找到。
-5. 執行 `chezmoi init --apply`（若 source 已經 clone 過則改用 `chezmoi update`）
+5. 實際啟動解析到的 pwsh，並要求 `PSEdition=Core`、版本至少為 7。PowerShell
+   安裝失敗或不完整時會在這裡停止，不會拖到 chezmoi 裡才失敗。
+6. 執行 `chezmoi init --apply`（若 source 已經 clone 過則改用 `chezmoi update`）
    —— chezmoi 會透過 `[interpreters.ps1]` 自己用 pwsh 跑 repo 的 `.ps1`，所以**不會**
    重啟 shell。從 Windows PowerShell 5.1 或 pwsh 7 起手都可以。
 
@@ -64,7 +84,9 @@ powershell -ExecutionPolicy Bypass -File "%TEMP%\bootstrap.ps1"
 
 ## 初始化提問
 
-`chezmoi init` 只會問一次（答案會被記住，不再重複問）：
+`chezmoi init` 只會問一次（答案會被記住，不再重複問）。`minimal` 指只有
+shell 的開發 baseline，**不是**極小安裝：它仍會安裝核心 CLI／toolchain，Scoop
+下載 cache 與暫存 staging 尚未計入前，估計約 2 GB。見[磁碟空間](disk-space.zh-TW.md)。
 
 !!! note "Private pia checkout"
     `pi-agents` 是 private repo。啟用 coding agents 前，先確保 Git 能透過 HTTPS

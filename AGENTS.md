@@ -79,6 +79,7 @@ chezmoi execute-template --config="$TMPD/c.toml" --source="$PWD" < some.ps1.tmpl
 - Any edit under `.chezmoitemplates/rime/` → copy the file verbatim into the parent repo's `.chezmoitemplates/rime/` (`chezmoi source-path` there, usually `~/.local/share/chezmoi`). They must stay byte-identical; verify with `diff -r`. Frontend-only changes (`weasel.custom.yaml`) do **not** cross over.
 - `dot_config/powershell/copilot-throttle-shim.js` is copied verbatim from the parent repo's `dot_config/shell/copilot-throttle-shim.js`. Update both in the same maintenance session, then update the reviewed Unix source commit + SHA-256 contract in `tests/Copilot.Tests.ps1`; the Windows test must remain runnable without a sibling checkout.
 - `core.autocrlf = input` has **two writers** — `bootstrap.ps1` (runs before chezmoi exists, so scoop's first bucket clone is protected) and `.chezmoitemplates/git/gitconfig` (the managed baseline). Change one → change the other.
+- Windows process PATH precedence has a shared implementation in `scripts/windows-path-precedence.ps1` (included by the profile and packages script) and a self-contained `irm | iex` mirror in `bootstrap.ps1`. Change either ordering/classification algorithm → update the other and `tests/WindowsPath.Tests.ps1` together.
 
 ### `scripts/*.sh` are wrappers, not implementations
 

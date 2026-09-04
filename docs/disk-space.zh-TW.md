@@ -11,6 +11,49 @@
     cache），這些經常遠超靜態安裝量。要看真實佔用，用內建的 **WinDirStat** /
     **TreeSize**（utility apps），或 `scoop cache show`。
 
+## 套用前只讀檢查
+
+全新 apply 前，先檢查 Windows、使用者 profile／Scoop 與 TEMP 所在 volume。以下
+命令只讀取 volume metadata：
+
+```powershell
+$targets = [ordered]@{
+  SystemDrive = $env:SystemDrive
+  UserProfile = $env:USERPROFILE
+  Scoop       = $(if ($env:SCOOP) { $env:SCOOP } else { Join-Path $HOME 'scoop' })
+  Temp        = $env:TEMP
+}
+$rows = foreach ($entry in $targets.GetEnumerator()) {
+  $volume = [IO.Path]::GetPathRoot($entry.Value).TrimEnd([char[]]'\')
+  $disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$volume'"
+  [pscustomobject]@{
+    Label    = $entry.Key
+    Volume   = $volume
+    FreeGiB  = [math]::Round($disk.FreeSpace / 1GB, 2)
+    TotalGiB = [math]::Round($disk.Size / 1GB, 2)
+  }
+}
+$rows | Format-Table -AutoSize
+```
+
+minimal 約 2 GB 是安裝完成後的估計，不是過程中的最高用量；Scoop 下載、解壓、
+source staging 與 Windows 本身都需要餘裕。全新 minimal dogfood 以 **8 GiB 可用空間**
+作為保守的操作起點，但 bootstrap 不會硬編碼此門檻，也不保證未來套件版本一定足夠。
+
+空間不足時應先量測再刪除。優先考慮可重建的套件 cache；近期的 TEMP installer
+staging 則先確認沒有安裝器／process 使用。Docker 顯示的可回收 bytes 位於虛擬磁碟
+內，不一定立即變成 `C:` 可用空間；Downloads／Documents／影音等個人資料永遠不應
+成為自動清理目標。
+
+### 2026-09 實機觀察
+
+一次 Windows 11 x64 minimal dogfood 起初只剩 **0.84 GiB**，因此在安裝任何東西
+前就停止。使用者把自有檔案移到其他磁碟後，以 **15.85 GiB** 開始，bootstrap 完成
+當下為 **13.20 GiB**，過程差值 **2.65 GiB**。當時 Scoop apps 為 **1.614 GiB**、
+Scoop cache **0.463 GiB**、尚未發布的 source staging tree **0.146 GiB**。該主機原本
+已有 Scoop、Git、uv 與一些舊版重複工具，所以此數據支持「需要操作餘裕」，不能當成
+所有乾淨安裝的 benchmark；後續測試用的暫存環境已清除。
+
 ## 各開關的估算
 
 | 開關 | 主要吃空間的項目 | 估計（安裝後） | `workstation` 預設開 |

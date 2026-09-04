@@ -34,6 +34,13 @@ $script:Failures = [System.Collections.Generic.List[string]]::new()
 
 # UTF-8 console so winget's localized output isn't mojibake on zh-* Windows.
 try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch { $null = $_ }
+
+# A direct `chezmoi apply` runs this script under pwsh -NoProfile. Normalize the
+# inherited process PATH before any command lookup so persisted User tools beat
+# stale Machine installs while CI/portable process-only entries remain first.
+{{ include "scripts/windows-path-precedence.ps1" }}
+Set-WindowsPathPrecedence
+
 # Package registries: company-approved pull-through feeds on managed machines,
 # otherwise optional China/GFW mirrors. Shared with profile.d so apply-time and
 # interactive commands cannot drift apart.
@@ -84,6 +91,9 @@ function Ensure-Scoop {
             & $installer
         }
     }
+    # Scoop persists shims during installation, but this no-profile process began
+    # with an older PATH snapshot. Refresh before resolving `scoop` below.
+    Set-WindowsPathPrecedence
     foreach ($b in 'main', 'extras', 'versions', 'nerd-fonts') {
         scoop bucket add $b *> $null
     }
@@ -103,12 +113,61 @@ function Scoop-Install([string[]]$apps) {
     if (-not $missing) { Info 'scoop: all requested tools already present'; return }
     Info "scoop install: $($missing -join ', ')"
     try { scoop install @missing } catch { Write-Warning "scoop batch error: $_" }
+    # Manifests may persist direct app directories in addition to Scoop shims.
+    # Refresh before later npm/go/etc. lookups in this same no-profile process.
+    Set-WindowsPathPrecedence
     # Anything still absent after the batch = failed (scoop keeps going past a bad one).
     $after = Get-ScoopInstalled
     foreach ($app in $missing) {
         $name = ($app -split '/')[-1]
         if ($name -notin $after) { Register-Failure "scoop:$name" }
     }
+}
+
+function Show-UnmanagedPueueShadows {
+    [CmdletBinding()]
+    param(
+        [string[]]$LegacyRoots = @(
+            (Join-Path $HOME 'bin'),
+            (Join-Path $HOME '.local\bin')
+        )
+    )
+
+    # Pueue entered this repository through Scoop in 2026. Binaries in these
+    # older PATH locations are unmanaged: inspect exact paths only, and never
+    # execute, replace, or delete them (including during an elevated apply).
+    $shadows = [System.Collections.Generic.List[string]]::new()
+    foreach ($root in $LegacyRoots) {
+        foreach ($name in @('pueue.exe', 'pueued.exe')) {
+            $candidate = Join-Path $root $name
+            if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+                $shadows.Add($candidate)
+            }
+        }
+    }
+    if ($shadows.Count -eq 0) { return @() }
+
+    try {
+        $scoopClient = Resolve-PueueCommand -Name pueue -ScoopOnly
+        $scoopDaemon = Resolve-PueueCommand -Name pueued -ScoopOnly
+    } catch {
+        $scoopClient = $null
+        $scoopDaemon = $null
+    }
+    $samePrefix = $scoopClient -and $scoopDaemon -and
+        [string]::Equals(
+            (Split-Path -Parent $scoopClient),
+            (Split-Path -Parent $scoopDaemon),
+            [StringComparison]::OrdinalIgnoreCase
+        )
+    $shadowList = $shadows -join ', '
+    if ($samePrefix) {
+        $scoopPrefix = Split-Path -Parent $scoopClient
+        Write-Warning "Unmanaged Pueue PATH shadow(s) preserved: $shadowList. This repo will use the coherent Scoop current pair from '$scoopPrefix' internally; inspect the unmanaged files before removing them manually."
+    } else {
+        Write-Warning "Unmanaged Pueue PATH shadow(s) preserved: $shadowList. A coherent Scoop current pair is unavailable; the unmanaged files were not executed or changed."
+    }
+    return @($shadows)
 }
 
 # --- winget ----------------------------------------------------------------
@@ -343,6 +402,12 @@ Scoop-Install @(
     # the Windows clipboard. (Leaner gcc alt: scoop `mingw` = niXman MinGW-w64 UCRT.)
     'gcc', 'tree-sitter', 'win32yank'
 )
+
+# Binaries in older PATH locations predate this repo's Scoop install and are not
+# repo-owned. Preserve and only report them; the bootstrap below resolves Scoop's
+# coherent current pair directly, so PATH shadows cannot select an old version.
+try { $null = Show-UnmanagedPueueShadows }
+catch { Write-Warning "Pueue shadow inspection failed (nonfatal): $_" }
 
 # Make the newly installed client immediately usable. Elevated applies install
 # Pueue 4's built-in Windows service (autostart at login); non-elevated applies

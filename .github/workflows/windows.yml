@@ -51,6 +51,56 @@ jobs:
         shell: pwsh
         run: Invoke-Pester -CI -Path ./tests/InitPrompts.Tests.ps1 -Output Detailed
 
+      # This is a config/render contract, not a package-install E2E. It proves
+      # `--promptDefaults` plus the three identity/role overrides stays a true
+      # minimal profile, in state isolated from the feature-rich render below.
+      - name: chezmoi minimal defaults contract (files only)
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'minimal-contract'
+          $config = Join-Path $root 'config\chezmoi.toml'
+          $state = Join-Path $root 'state.db'
+          $dest = Join-Path $root 'home'
+          New-Item -ItemType Directory -Force -Path (Split-Path $config), $dest | Out-Null
+
+          # bootstrap.ps1 is dot-source safe; reuse its exact unattended argv so
+          # prompt text and required defaults have one owner.
+          . (Join-Path $PWD 'bootstrap.ps1')
+          $minimalFlags = @(Get-UnattendedChezmoiArguments -Role minimal `
+            -Name 'CI Minimal' -Email 'ci-minimal@example.com')
+          chezmoi init --source $PWD --config $config --persistent-state $state `
+            --destination $dest @minimalFlags
+          if ($LASTEXITCODE -ne 0) { throw "minimal chezmoi init failed (exit $LASTEXITCODE)" }
+
+          $dataJson = chezmoi data --source $PWD --config $config `
+            --persistent-state $state --format json
+          if ($LASTEXITCODE -ne 0) { throw "minimal chezmoi data failed (exit $LASTEXITCODE)" }
+          $data = $dataJson | ConvertFrom-Json
+          if ($data.role -ne 'minimal') { throw "expected role=minimal, got $($data.role)" }
+          foreach ($property in @($data.PSObject.Properties | Where-Object Name -Like 'install*')) {
+            if ($property.Value -ne $false) {
+              throw "minimal default unexpectedly enables $($property.Name)=$($property.Value)"
+            }
+          }
+          $expectations = [ordered]@{
+            agentSounds = 'none'
+            backupMode = 'smart'
+            enableVimMode = $true
+            useChineseMirror = $false
+            managedMachine = $false
+            allowPublicPackageFallback = $false
+          }
+          foreach ($name in $expectations.Keys) {
+            $actual = $data.$name
+            if ($actual -ne $expectations[$name]) {
+              throw "minimal default mismatch: $name=$actual"
+            }
+          }
+
+          chezmoi apply --source $PWD --config $config --persistent-state $state `
+            --destination $dest --exclude scripts,externals --no-tty --verbose
+          if ($LASTEXITCODE -ne 0) { throw "minimal files-only apply failed (exit $LASTEXITCODE)" }
+
       - name: chezmoi init (writes config from prompt answers)
         shell: pwsh
         run: |
