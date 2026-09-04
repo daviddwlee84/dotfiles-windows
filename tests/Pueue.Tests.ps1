@@ -310,11 +310,10 @@ Describe 'Package installer regressions' {
         $package | Should -Match 'just upgrade-npm-agents'
     }
 
-    It 'fetches SpecStory into a remote ref before detached checkout' {
+    It 'uses official SpecStory releases for apply and the compatibility command' {
         foreach ($source in @($package, $specstory)) {
-            $source | Should -Match 'refs/remotes/origin/pr-'
-            $source | Should -Match 'checkout --detach --force'
-            $source | Should -Not -Match 'pull/191/head:pr-191'
+            $source | Should -Match 'Install-WindowsCliRelease -Name specstory'
+            $source | Should -Not -Match 'pull/191/head'
         }
     }
 }

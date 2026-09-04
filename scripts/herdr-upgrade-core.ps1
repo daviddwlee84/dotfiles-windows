@@ -10,8 +10,25 @@ function Invoke-HerdrInstallerProcess {
         [Parameter(Mandatory)][string]$Channel
     )
 
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $InstallerPath -Channel $Channel 2>&1 | Out-Host
-    return $LASTEXITCODE
+    # The upstream curl download does not retry interrupted connections. Retry
+    # once on its explicit transport errors, using the same verified installer
+    # and source; authentication, TLS, digest and activation failures stay fatal.
+    for ($attempt = 1; $attempt -le 2; $attempt++) {
+        $result = Invoke-WithWindowsSystemProxy {
+            # pwsh avoids Windows PowerShell treating curl stderr as a terminating
+            # exception before the installer can check curl's native exit code.
+            $output = @(& pwsh -NoProfile -File $InstallerPath -Channel $Channel 2>&1)
+            [pscustomobject]@{ Output = $output; ExitCode = $LASTEXITCODE }
+        }
+        $output = $result.Output
+        $exitCode = $result.ExitCode
+        $output | Out-Host
+        if ($exitCode -eq 0 -or $attempt -eq 2 -or
+            ($output -join "`n") -notmatch 'curl exit code (6|7|18|28|52|55|56)\)') {
+            return $exitCode
+        }
+        Write-Warning 'Herdr download was interrupted; retrying the official installer once.'
+    }
 }
 
 function Invoke-HerdrOfficialInstaller {
@@ -23,7 +40,7 @@ function Invoke-HerdrOfficialInstaller {
 
     $installer = Join-Path ([IO.Path]::GetTempPath()) ('herdr-install-' + [guid]::NewGuid().ToString('N') + '.ps1')
     try {
-        Invoke-WebRequest -UseBasicParsing $InstallerUri -OutFile $installer -ErrorAction Stop
+        Invoke-WebRequest -UseBasicParsing $InstallerUri -OutFile $installer -TimeoutSec 60 -ErrorAction Stop
         $actual = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash
         if ($actual -ne $ExpectedSha256) {
             throw "Herdr installer changed; expected $ExpectedSha256, got $actual. Stop and re-audit it."

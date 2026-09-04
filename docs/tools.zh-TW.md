@@ -207,9 +207,16 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
   的 `~/.config/apprise/custom.yaml`。移植自上游 repo 的 `notify.sh` + `apprise.yaml`。
 
 官方 **ChatGPT** 桌面程式透過 Microsoft Store 安裝（見 GUI 應用程式）；**Codex**
-是上面的 `@openai/codex` npm CLI，不是 Store app。SpecStory 沒有原生 Windows CLI
-套件，故此處略過 —— 從尚未合併的 PR #191 建置的實驗性版本可透過 **SpecStory build**
-初始化提問（`installSpecstoryBuild`）或 `just specstory-build` 選用啟用（需 git + go）。
+是上面的 `@openai/codex` npm CLI，不是 Store app。SpecStory
+已有官方 Windows CLI，隨 coding-agent bundle 安裝。安裝器選取最新穩定 release，
+驗證官方 SHA-256 並測試 binary 後放入 `~/.local/bin`，不再需要 Go 編譯。
+舊的 `installSpecstoryBuild` key 保留為獨立安裝開關；以 `just upgrade-specstory`
+升級，`just specstory-build` 則保留為相容指令。
+
+
+Herdr 與 herdr-plus 在沒有明確 proxy 環境變數時，會暫時沿用 Windows 已啟用的
+靜態系統代理，讓原生 curl/Go 與 PowerShell 下載走相同連線；不會修改套件來源、
+持久環境變數或 public fallback 政策。
 
 ## PowerShell 模組（PSGallery）
 
@@ -227,7 +234,7 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
 | Tunnel tools | ngrok、cloudflared（scoop） |
 | IaC tools | Terraform、OpenTofu（scoop）+ Azure CLI 與 `azure-devops` 擴充（`az devops`/`az repos`,winget） |
 | OpenSSH server | Microsoft OpenSSH Server（sshd）：保留既有 Microsoft MSI 安裝，否則安裝 Windows capability；驗證 service／listener／firewall，並把真實 pwsh executable 設為整台機器的預設 shell。需系統管理員；見下方檢查清單。 |
-| herdr multiplexer | herdr，原生 Windows 終端多工器（**preview beta**）。沒有 scoop/winget manifest —— 透過 herdr.dev 的 `irm \| iex` 腳本安裝；設定受管於 `~/.config/herdr/config.toml`（以 pwsh 為預設 shell）。此套件也會從官方 Go target 安裝 [`dev`](https://github.com/daviddwlee84/dev-cli) v0.1.0 到 `~\.local\bin`，並以 `dev-cli` 名稱提供，讓 Microsoft DevTool 保留 `dev`（`prefix+d` dashboard + PowerShell completion）；另安裝 herdr-plus（`prefix+y` Quick Actions / `prefix+O` Projects）。即使 Extra runtimes 關閉，dev build 也會自行安裝 Go；同一份 Go 接著用來編譯 herdr-plus。六個低頻 pane/workspace copy 操作集中在 `prefix+y`，互動式 path picker 保留在 `prefix+p`。`prefix+alt+e` 會直接編輯既有且非空的 `HERDR_CONFIG_PATH` target；未設定時則編輯 `~/.config/herdr/config.toml`。它驗證同一個檔案，再透過繼承的 socket reload 目前 server，整個流程絕不呼叫 chezmoi。開啟 editor 前會在同一目錄建立唯一且保留 metadata 的備份。editor 或驗證失敗時，拒絕的內容會以權限受限的 `config.toml.invalid-*` sibling 保留，並原子式還原先前有效的 target；若只有 reload 失敗，則保留有效的新 target 與備份。`$env:EDITOR` 必須只指定一個會阻塞的 executable 或 wrapper；`code --wait` 之類的參數應放進 wrapper，不可塞入變數。未設定時，helper 依序 fallback 到 nvim，以及明確等待結束的 Notepad。日後執行 `chezmoi apply` 仍可重新套用 canonical `[theme]`、`[ui]`、`[terminal]` 與 `[keys]` tables。若要永久保存 runtime 改動，必須另外手動、選擇性地編輯 `.chezmoitemplates/herdr/config.toml`；此 target 使用 `modify_` merger，禁止對它執行 `chezmoi add` 或 `chezmoi re-add`，以免取代／繞過 merger 並匯入 runtime-owned state。每次 apply 也會把目前 Herdr binary 的官方 skill 寫入兩個 agent skill root。見 [rationale](rationale.zh-TW.md#wezterm-herdr-beta)。 |
+| herdr multiplexer | herdr，原生 Windows 終端多工器（**preview beta**）。沒有 scoop/winget manifest —— 透過驗證過雜湊的 herdr.dev 官方安裝器安裝；設定受管於 `~/.config/herdr/config.toml`（以 pwsh 為預設 shell）。此套件也會從官方最新 Windows release 安裝 [`dev`](https://github.com/daviddwlee84/dev-cli)，驗證 SHA-256 後放到 `~\.local\bin`，並以 `dev-cli` 名稱提供，讓 Microsoft DevTool 保留 `dev`（`prefix+d` dashboard + PowerShell completion）；另安裝 herdr-plus（`prefix+y` Quick Actions / `prefix+O` Projects）。即使 Extra runtimes 關閉，仍會為 herdr-plus 安裝 Scoop Go。Apply 只安裝缺少的 dev-cli；`just upgrade-dev` 才會升級到最新 release。六個低頻 pane/workspace copy 操作集中在 `prefix+y`，互動式 path picker 保留在 `prefix+p`。`prefix+alt+e` 會直接編輯既有且非空的 `HERDR_CONFIG_PATH` target；未設定時則編輯 `~/.config/herdr/config.toml`。它驗證同一個檔案，再透過繼承的 socket reload 目前 server，整個流程絕不呼叫 chezmoi。開啟 editor 前會在同一目錄建立唯一且保留 metadata 的備份。editor 或驗證失敗時，拒絕的內容會以權限受限的 `config.toml.invalid-*` sibling 保留，並原子式還原先前有效的 target；若只有 reload 失敗，則保留有效的新 target 與備份。`$env:EDITOR` 必須只指定一個會阻塞的 executable 或 wrapper；`code --wait` 之類的參數應放進 wrapper，不可塞入變數。未設定時，helper 依序 fallback 到 nvim，以及明確等待結束的 Notepad。日後執行 `chezmoi apply` 仍可重新套用 canonical `[theme]`、`[ui]`、`[terminal]` 與 `[keys]` tables。若要永久保存 runtime 改動，必須另外手動、選擇性地編輯 `.chezmoitemplates/herdr/config.toml`；此 target 使用 `modify_` merger，禁止對它執行 `chezmoi add` 或 `chezmoi re-add`，以免取代／繞過 merger 並匯入 runtime-owned state。每次 apply 也會把目前 Herdr binary 的官方 skill 寫入兩個 agent skill root。見 [rationale](rationale.zh-TW.md#wezterm-herdr-beta)。 |
 | Clink (cmd.exe) | [Clink](https://chrisant996.github.io/clink/)（scoop `main`）—— cmd.exe 的 Bash 風格行編輯，讓 **starship** + **zoxide** + **fzf** 也能用在 DOS 提示字元。沿用共用的 `starship.toml`；註冊使用者層級 cmd AutoRun、部署我們的 `starship.lua`，並把社群的 `clink-zoxide` / `clink-fzf` 橋接抓進 `%LocalAppData%\clink`。pwsh 仍是預設 —— 這是選用的次要 shell，只有 prompt + 導覽對等。見 [rationale](rationale.zh-TW.md#powershell-7-cmdexe-clink) 與 [Shell](shell.zh-TW.md#cmdexe-via-clink)。 |
 | try（暫時性 workspace） | [`try`](https://github.com/tobi/try)，透過 `gem install try-cli` 安裝（若無 ruby 會一併裝）。建立以日期命名的 `~/src/tries/YYYY-MM-DD-name` 試驗目錄 + 模糊選擇器；`tri <git-url>` 會 clone 進其中一個。pwsh 指令是 **`tri`**（`try` 是保留字 —— 裸打 `try` 無法 parse；`& try` 可用）。見 [Shell](shell.zh-TW.md#try)。 |
 | translate（workstation 預設開） | [`translate`](https://github.com/daviddwlee84/translate) —— 終端機翻譯工具（CLI + TUI），走 copilot-proxy / Ollama / Google，另有離線的 CC-CEDICT + ECDICT 辭典。它沒有 scoop/winget manifest，也沒有預先編譯的 Windows release，所以用 `go install` 從原始碼編進 `~\.local\bin`（go 由該區塊自己裝，不必開「Extra runtimes」）；**第一次編譯要好幾分鐘**。附帶 pwsh tab 補全與 `translate` tv channel。見 [translate](translate.zh-TW.md)。 |

@@ -58,10 +58,10 @@ upgrade-pia:
 # Deliberately not part of `just upgrade`: live executables may be locked.
 upgrade-agents: upgrade-npm-agents upgrade-omp upgrade-pia
 
-# Upgrade the Go-installed dev CLI (installed with the optional Herdr stack).
+# Upgrade the official Windows dev CLI (installed with the optional Herdr stack).
 # Deliberately not in `just upgrade`: on a host without Herdr this would install it.
 upgrade-dev:
-    $env:GOBIN = Join-Path $HOME '.local\bin'; $env:GOPATH = Join-Path $HOME '.local\share\go'; $env:GOTOOLCHAIN = 'auto'; go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
+    pwsh -NoProfile -File ./scripts/upgrade-windows-cli.ps1 -Name dev-cli
 
 # upgrade everything
 upgrade: upgrade-scoop upgrade-winget
@@ -78,9 +78,11 @@ upgrade-translate:
 upgrade-herdr:
     pwsh -NoProfile -File ./scripts/upgrade-herdr.ps1
 
-# EXPERIMENTAL: build the SpecStory Windows CLI from the unmerged PR #191
-# (needs git + go) -> ~/.local/bin/specstory.exe. See
-# backlog/specstory-windows-native-cli.md. Run from the chezmoi source dir.
+# Upgrade the official native Windows SpecStory release.
+upgrade-specstory:
+    pwsh -NoProfile -File ./scripts/upgrade-windows-cli.ps1 -Name specstory
+
+# Compatibility alias for the former PR #191 build command.
 specstory-build:
     pwsh -NoProfile -File ./scripts/build-specstory.ps1
 

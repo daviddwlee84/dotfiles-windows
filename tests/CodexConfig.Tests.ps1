@@ -119,6 +119,16 @@ BeforeAll {
 }
 
 Describe 'Codex config byte-safe overlay' {
+    It 'merges a full-size desktop config with many plugin and project tables' {
+        $tables = 1..60 | ForEach-Object {
+            "[projects.'C:\Users\Example\repo$_']`ntrust_level = `"trusted`"`n"
+        }
+        $liveBytes = $Utf8.GetBytes(($tables -join "`n") + "`n[tui]`nstatus_line = [`"old`"]`n")
+        $result = Invoke-CodexModifier -LiveBytes $liveBytes
+        Assert-SuccessfulMerge -Result $result
+        (ConvertFrom-StrictUtf8 -Bytes $result.StdoutBytes) | Should -Match 'repo60'
+    }
+
     It 'creates the managed status line from zero input bytes' {
         $result = Invoke-CodexModifier -LiveBytes ([byte[]]::new(0))
 

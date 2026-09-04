@@ -19,18 +19,14 @@ Describe 'dev-cli Windows install and Herdr alignment' {
         $script:just = Get-Content -Raw -LiteralPath $Justfile
     }
 
-    It 'installs the pinned official Go target only with the Herdr stack' {
-        $package | Should -Match '\$devVersion\s*=\s*''v0\.1\.0'''
-        $package | Should -Match 'github\.com/daviddwlee84/dev-cli/cmd/dev@\$devVersion'
-        $package | Should -Match '\$env:GOBIN = Join-Path \$HOME ''\.local\\bin'''
-        $package | Should -Match '\$env:GOPATH = Join-Path \$HOME ''\.local\\share\\go'''
+    It 'installs official Windows releases and retains Go for Herdr Plus' {
+        $package | Should -Match 'Install-WindowsCliRelease -Name dev-cli'
+        $package | Should -Not -Match 'go install.*dev-cli'
         $package | Should -Match '(?s)\{\{ if \.installHerdr -\}\}.*Scoop-Install @\(''go''\)\s*Install-DevCli\s*Install-Herdr\s*Install-HerdrPlus'
     }
 
-    It 'keeps apply install-only and exposes an explicit upgrade recipe' {
-        $package | Should -Match 'if \(Test-Path -LiteralPath \$devBin\)'
-        $package | Should -Not -Match '\(Have dev\).+\$devBin'
-        $just | Should -Match 'upgrade-dev:\s*\r?\n\s*\$env:GOBIN.+go install github\.com/daviddwlee84/dev-cli/cmd/dev@latest'
+    It 'exposes the explicit binary-release upgrade recipe' {
+        $just | Should -Match 'upgrade-dev:\s*\r?\n\s*pwsh -NoProfile -File ./scripts/upgrade-windows-cli.ps1 -Name dev-cli'
     }
 
     It 'exposes the owned binary as dev-cli and completes that name' {

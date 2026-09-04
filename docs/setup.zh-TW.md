@@ -100,7 +100,7 @@ shell 的開發 baseline，**不是**極小安裝：它仍會安裝核心 CLI／
 | Role | `workstation` | `workstation` = 完整桌面；`minimal` = 只有 shell |
 | `Install coding agents (Claude Code, OpenCode, Codex, Copilot CLI, Pi, pia, OMP, SpecStory)` | 開（workstation） | 原生與 npm agents，加上 Git 管理的 `pia` combo checkout；credentials 與可變 sessions 都不進 chezmoi |
 | Agent 完成回饋 | `notify`（workstation）/`none`（minimal） | coding agent 跑完時做什麼：`none`／`notify`（Windows 通知）／`peon`（遊戲語音）／`both` —— 見 [Agent 完成音效](agent-sounds.zh-TW.md) |
-| SpecStory build | 關 | 從尚未合併的 PR #191 建置實驗性的 Windows SpecStory CLI（需 git + go） |
+| `Install standalone SpecStory CLI (also included with coding agents)` | 關 | 不啟用完整 agent bundle 時獨立安裝官方 Windows release；相容保留 `installSpecstoryBuild` data key |
 | Windows GUI apps | 開（workstation） | VSCode、Cursor、Notepad++、Terminal、Alacritty、PowerToys、Raycast、Docker Desktop、Discord |
 | WSL2 backend | 開（workstation） | Docker Desktop 後端所需的 WSL2；自動提權（一次 UAC），需重開機 |
 | WSL2 Ubuntu | 關 | 安裝 WSL2 Ubuntu 發行版並在其中安裝跨平台 dotfiles（需先開 `installWsl`） |

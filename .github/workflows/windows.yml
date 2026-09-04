@@ -118,9 +118,9 @@ jobs:
             # covers BOTH hook-building branches of run_onchange_after_25.
             '--promptChoice','Agent completion feedback (none|notify|peon|both)=both',
             # true (unlike the other install toggles) so the render+parse step
-            # below exercises the specstory build block; `chezmoi apply --exclude
-            # scripts` means it never actually builds in CI.
-            '--promptBool','Build the experimental SpecStory CLI for Windows from the unmerged PR #191 (needs git + go)=true',
+            # below exercises the SpecStory release block; `chezmoi apply --exclude
+            # scripts` means it never actually installs in CI.
+            '--promptBool','Install standalone SpecStory CLI (also included with coding agents)=true',
             '--promptBool','Install GUI apps via winget (VSCode, Cursor, Notepad++, Terminal, Alacritty, PowerToys, Raycast)=false',
             '--promptBool','Install WSL2 (Docker Desktop backend; needs admin + reboot)=false',
             '--promptBool','Install a WSL2 Ubuntu distro and bootstrap cross-platform dotfiles inside it (needs admin; requires WSL2 platform)=false',

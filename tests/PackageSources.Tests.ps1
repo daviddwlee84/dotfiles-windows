@@ -161,7 +161,7 @@ Describe 'package installer source policy' {
         $script | Should -Match 'Invoke-PackageSourceCommand -Manager npm'
         $script | Should -Match 'Invoke-PackageSourceCommand -Manager uv'
         $script | Should -Match 'uv python install --default --preview'
-        $script | Should -Match 'go install "github\.com/daviddwlee84/dev-cli/cmd/dev@\$devVersion"'
+        $script | Should -Match 'Install-WindowsCliRelease -Name dev-cli'
         $script | Should -Not -Match 'Invoke-PackageSourceCommand -Manager go'
     }
 

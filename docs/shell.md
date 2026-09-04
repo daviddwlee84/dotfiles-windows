@@ -260,7 +260,7 @@ from **inside** they just focus it. `--no-attach` builds in the background;
 Differences from the Unix original: no `jq` (native `ConvertFrom-Json`); each
 pane's on-exit wrapper is a pwsh script passed as `pwsh -EncodedCommand …` rather
 than a bash `trap`; and SpecStory auto-wrapping only engages if a `specstory` CLI
-is on PATH (no Windows build yet, so agents run raw).
+is on PATH (the coding-agent bundle installs the official Windows release).
 
 !!! warning "herdr is preview/beta"
     herdr is opt-in (`installHerdr`), and this machine intentionally follows its

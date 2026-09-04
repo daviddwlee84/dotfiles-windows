@@ -125,7 +125,14 @@ if (-not $legalBlank -and [string]::IsNullOrWhiteSpace($liveText)) {
     return
 }
 
-$bun = Get-Command bun -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+$bunCommands = @(Get-Command bun -CommandType Application -All -ErrorAction SilentlyContinue)
+# Match the profile's Scoop-first policy even under chezmoi's -NoProfile child.
+# Old `bun upgrade` copies in scoop/persist/bun/bin can shadow the current shim;
+# Bun 1.0.36 silently parses a sufficiently large valid TOML document as {}.
+$scoopRoot = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $HOME 'scoop' }
+$scoopBun = Join-Path $scoopRoot 'shims\bun.exe'
+$bun = $bunCommands | Where-Object { $_.Source -eq $scoopBun } | Select-Object -First 1
+if (-not $bun) { $bun = $bunCommands | Select-Object -First 1 }
 if (-not $bun) {
     Write-PreservedInput -Message 'bun was not found; the offline TOML parser is unavailable' -Bytes $originalBytes
     return

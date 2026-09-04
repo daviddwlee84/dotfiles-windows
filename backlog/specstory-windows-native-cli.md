@@ -1,8 +1,17 @@
 # SpecStory Windows-native CLI (track PR #191)
 
-**Status**: P? — blocked on upstream (experimental build available)
+**Status**: shipped (2026-09-04)
 **Effort**: M
 **Related**: `TODO.md` · `scripts/build-specstory.ps1` · `justfile` (`specstory-build`) · `.chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl` (npm block) · `dot_config/powershell/modules/Copilot/`
+
+## Shipped update — 2026-09-04
+
+PR #191 is merged. The official v2.10.0 release includes Windows x86_64 and
+arm64 archives plus SHA-256 checksums. The coding-agent bundle now installs
+that official CLI with `scripts/windows-cli-release.ps1`; the existing
+`installSpecstoryBuild` key remains a standalone opt-in. `just upgrade-specstory`
+and the compatibility `just specstory-build` use the same verified release path.
+No Go build or PR checkout is needed. Historical investigation follows.
 
 ## Context
 

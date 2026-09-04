@@ -40,6 +40,11 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   company PyPI/npm pull-through registries; otherwise the China-mirror toggle
   selects GFW mirrors. Managed policy wins. An independent, default-off public
   fallback retries only eligible repo-owned npm/uv commands once.
+- SpecStory uses the official Windows release with SHA-256 verification; it is
+  included with coding agents. The legacy `installSpecstoryBuild` key is a
+  standalone opt-in, and `just specstory-build` aliases the release upgrade.
+- Herdr and herdr-plus temporarily inherit an enabled Windows system proxy when
+  no explicit proxy environment exists; registry/source policy is unchanged.
 - Install ≠ upgrade: `chezmoi apply` only installs what's missing; upgrade the
   Pi/pia/OMP stack with `just upgrade-agents`, or use the component recipes
   `upgrade-npm-agents` / `upgrade-omp` / `upgrade-pia`.
@@ -82,14 +87,14 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 
 ## What's enabled on THIS machine
 - role: **{{ .role }}**
-- Coding agents (Pi/pia/OMP included): {{ .installCodingAgents }} · Agent sounds: {{ .agentSounds }} · SpecStory build (PR #191): {{ .installSpecstoryBuild }} · GUI apps: {{ .installWindowsApps }} · WSL2 (Docker backend): {{ .installWsl }} · WSL Ubuntu: {{ .installWslUbuntu }} · Utility apps: {{ .installUtilityApps }} · Gaming: {{ .installGamingApps }}
+- Coding agents (Pi/pia/OMP included): {{ .installCodingAgents }} · Agent sounds: {{ .agentSounds }} · Standalone SpecStory (also bundled with coding agents): {{ .installSpecstoryBuild }} · GUI apps: {{ .installWindowsApps }} · WSL2 (Docker backend): {{ .installWsl }} · WSL Ubuntu: {{ .installWslUbuntu }} · Utility apps: {{ .installUtilityApps }} · Gaming: {{ .installGamingApps }}
 - Extra runtimes: {{ .installExtraRuntimes }} · Media: {{ .installMediaTools }} · LLM: {{ .installLlmTools }} · summarize: {{ .installSummarize }} · Tunnel: {{ .installTunnelTools }} · IaC: {{ .installIacTools }} · OpenSSH: {{ .installSshServer }} · herdr: {{ .installHerdr }} · Clink(cmd): {{ .installClink }} · try: {{ .installTry }} · translate: {{ .installTranslate }} · Rime/Weasel: {{ .installInputMethod }}
 - China mirrors: {{ .useChineseMirror }} · Managed machine: {{ .managedMachine }} · Public package fallback: {{ get . "allowPublicPackageFallback" | default false }} · Backup mode: {{ .backupMode }} · Vim mode: {{ .enableVimMode }}
 
 ## just recipes
 `just --list`: `apply`/`diff`/`update`, `upgrade-scoop`/`upgrade-winget`,
 `upgrade-npm-agents`/`upgrade-omp`/`upgrade-pia`/`upgrade-agents`,
-`upgrade-dev`/`upgrade-translate`/`upgrade-summarize`, `lint`/`test`,
+`upgrade-dev`/`upgrade-specstory`/`upgrade-translate`/`upgrade-summarize`, `lint`/`test`,
 `docs-serve`/`docs-build`, `enable-sshd` (opt-in OpenSSH server, elevated),
 `enable-wsl` (WSL2 for Docker Desktop; self-elevating UAC prompt, reboot after),
 `enable-wsl-ubuntu` (WSL2 Ubuntu distro + cross-platform dotfiles; needs enable-wsl first),
@@ -117,10 +122,10 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 - tmux / zellij are Unix-only and intentionally absent; **WezTerm** (installed) is
   the stable native tmux-like multiplexer, or use Windows Terminal panes. **herdr**
   is an opt-in (`installHerdr`) native-Windows multiplexer in preview beta —
-  installed via herdr.dev's `irm|iex` script, config at `~/.config/herdr/config.toml`,
+  installed via the hash-verified official herdr.dev installer, config at `~/.config/herdr/config.toml`,
   with its official global skill exported from the installed binary on each apply.
-  The same toggle installs Go + `dev` v0.1.0 (`prefix+d`) and uses that Go for
-  herdr-plus (`prefix+y` holds six copy helpers; `prefix+p` stays interactive),
+  The same toggle installs the latest verified Windows `dev` release (`prefix+d`)
+  and Scoop Go for herdr-plus (`prefix+y` holds six copy helpers; `prefix+p` stays interactive),
   while `prefix+Y` opens Yazi in a temporary pane at the focused pane cwd.
   `prefix+alt+e` edits the existing `HERDR_CONFIG_PATH` target (default
   `~/.config/herdr/config.toml`) directly, validates that exact file, then reloads

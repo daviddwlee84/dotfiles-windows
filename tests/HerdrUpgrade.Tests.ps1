@@ -1,6 +1,7 @@
 BeforeAll {
     $RepoRoot = Split-Path $PSScriptRoot -Parent
     . (Join-Path $RepoRoot 'scripts' 'herdr-skill-sync.ps1')
+    . (Join-Path $RepoRoot 'scripts' 'windows-system-proxy.ps1')
     . (Join-Path $RepoRoot 'scripts' 'herdr-upgrade-core.ps1')
 }
 
@@ -142,5 +143,29 @@ Describe 'Herdr verified upgrade orchestration' {
         $entry = Get-Content -Raw (Join-Path $RepoRoot 'scripts' 'upgrade-herdr.ps1')
         $entry | Should -Not -Match 'update\s+--handoff'
         $entry | Should -Match 'Invoke-HerdrUpgrade -Channel preview'
+    }
+
+    It 'retries one interrupted curl download without changing its source' {
+        Mock Invoke-WithWindowsSystemProxy { & $Command }
+        $script:attempts = 0
+        Mock pwsh {
+            $script:attempts++
+            if ($script:attempts -eq 1) {
+                $global:LASTEXITCODE = 1
+                'Failed to download https://herdr.dev/preview.json (curl exit code 56).'
+            } else { $global:LASTEXITCODE = 0 }
+        }
+        Invoke-HerdrInstallerProcess -InstallerPath 'verified.ps1' -Channel preview | Should -Be 0
+        Should -Invoke pwsh -Times 2 -Exactly
+    }
+
+    It 'does not retry a TLS verification failure' {
+        Mock Invoke-WithWindowsSystemProxy { & $Command }
+        Mock pwsh {
+            $global:LASTEXITCODE = 1
+            'Failed to download https://herdr.dev/preview.json (curl exit code 60).'
+        }
+        Invoke-HerdrInstallerProcess -InstallerPath 'verified.ps1' -Channel preview | Should -Be 1
+        Should -Invoke pwsh -Times 1 -Exactly
     }
 }

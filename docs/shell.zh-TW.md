@@ -235,8 +235,7 @@ pane 在其指令結束後的行為；`--session NAME` 指向執行中的 `herdr
 
 與 Unix 原版的差異：不用 `jq`（改用原生 `ConvertFrom-Json`）；每個 pane 的 on-exit
 包裝是一段 pwsh 腳本，以 `pwsh -EncodedCommand …` 傳入，而非 bash 的 `trap`；且
-SpecStory 自動包裝只有在 PATH 上真的有 `specstory` CLI 時才啟用（Windows 目前尚無
-原生版，所以 agent 直接原樣執行）。
+SpecStory 自動包裝只有在 PATH 上真的有 `specstory` CLI 時才啟用（coding-agent bundle 會安裝官方 Windows 版本）。
 
 !!! warning "herdr 仍是 preview/beta"
     herdr 的 Windows 版本是可選的（`installHerdr`）且僅 preview；這些輔助指令驅動它的

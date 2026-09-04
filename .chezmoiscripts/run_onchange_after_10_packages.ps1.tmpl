@@ -56,6 +56,9 @@ $allowPublicPackageFallback = {{ if (get . "allowPublicPackageFallback") }}$true
 # them makes helper changes part of this run_onchange script's rendered hash.
 {{ include "scripts/pi-package-core.ps1" }}
 {{ include "scripts/omp-install-core.ps1" }}
+{{ include "scripts/windows-cli-release.ps1" }}
+{{ include "scripts/windows-system-proxy.ps1" }}
+{{ include "scripts/herdr-upgrade-core.ps1" }}
 
 function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 function Have($n) { [bool](Get-Command $n -ErrorAction SilentlyContinue) }
@@ -249,55 +252,31 @@ function Install-PiCodingAgent {
 }
 
 # --- herdr (native Windows terminal multiplexer, preview beta) --------------
-# No scoop/winget/npm manifest — installs via herdr.dev's irm|iex bootstrap
-# (same shape as Ensure-Scoop). This repo selects the preview channel; the bin
-# junction is %LOCALAPPDATA%\Programs\Herdr\bin (added to PATH in profile.d/00_env.ps1).
+# First install and explicit upgrades share the audited official installer.
 function Install-Herdr {
     $herdrBin = Join-Path $env:LOCALAPPDATA 'Programs\Herdr\bin\herdr.exe'
-    if ((Have herdr) -or (Test-Path -LiteralPath $herdrBin)) { Info 'herdr already installed'; return }
-    Info 'installing herdr (preview) via herdr.dev/install.ps1'
     try {
-        $env:HERDR_CHANNEL = 'preview'   # Windows builds are preview-only
-        $installer = [scriptblock]::Create((Invoke-RestMethod https://herdr.dev/install.ps1))
-        & $installer
-        if (-not (Test-Path -LiteralPath $herdrBin)) { Register-Failure 'herdr' }
+        if (Test-Path -LiteralPath $herdrBin -PathType Leaf) {
+            Info "herdr already installed: $(Get-HerdrVersion -HerdrPath $herdrBin)"
+        } else {
+            Info 'installing herdr (preview) with verified official installer'
+            Invoke-HerdrOfficialInstaller -Channel preview
+            Info "herdr verified: $(Get-HerdrVersion -HerdrPath $herdrBin)"
+        }
+        Set-WindowsPathPrecedence
     } catch {
         Write-Warning "herdr install error: $_"
         Register-Failure 'herdr'
     }
 }
 
-# dev-cli — repository/task/worktree command center, and the interactive TUI
-# behind Herdr prefix+d. The v0.1.0 release has no Windows binary asset or Scoop
-# manifest, so build the official Go install target into ~/.local/bin. Keep this
-# inside installHerdr: it is currently the only managed Windows entry point, and
-# hosts that leave Herdr disabled should not gain a Go toolchain just for it.
-#
-# The build is pure Go and was cross-compiled from macOS for windows/amd64 and
-# windows/arm64. GOTOOLCHAIN=auto lets Scoop Go fetch the go 1.26.4 toolchain
-# required by dev's go.mod when necessary. Apply stays install-only; upgrades use
-# `just upgrade-dev`.
+# Keep the owned ~/.local/bin/dev.exe path: Microsoft's unrelated DevTool may
+# also be named dev.exe. The profile exposes this executable as dev-cli.
 function Install-DevCli {
-    $devBin = Join-Path $HOME '.local\bin\dev.exe'
-    # Do not use `Have dev`: Microsoft-managed machines may already expose the
-    # unrelated DevTool as dev.exe. Only this owned install path proves that our
-    # dev-cli is present; the PowerShell profile exposes it as `dev-cli`.
-    if (Test-Path -LiteralPath $devBin) { Info 'dev-cli already installed'; return }
-
-    $devVersion = 'v0.1.0'
-    if (-not (Have go)) {
-        Register-Failure 'dev-cli (needs go; scoop install go)'
-        return
-    }
-
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $devBin) | Out-Null
-    $env:GOBIN = Join-Path $HOME '.local\bin'
-    $env:GOPATH = Join-Path $HOME '.local\share\go'
-    $env:GOTOOLCHAIN = 'auto'
-    Info "go install dev-cli@$devVersion (first build may take several minutes)"
-    go install "github.com/daviddwlee84/dev-cli/cmd/dev@$devVersion" 2>&1 | Out-Host
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $devBin)) {
-        Register-Failure "go:dev-cli@$devVersion"
+    try { Install-WindowsCliRelease -Name dev-cli }
+    catch {
+        Write-Warning "dev-cli install error: $_"
+        Register-Failure 'dev-cli'
     }
 }
 
@@ -308,8 +287,8 @@ function Install-DevCli {
 # hence installing it here rather than leaving it to the user.
 #
 # Requires go: the plugin's Windows build command is `go build -o bin/herdr-plus.exe .`
-# (its sh-based build is skipped on Windows). Install-DevCli runs first and makes
-# Go self-contained for this stack; keep the guard for a failed Scoop install or
+# (its sh-based build is skipped on Windows). The Herdr stack installs Go;
+# keep the guard for a failed Scoop install or
 # a user removing Go between the two steps.
 # `--yes` accepts the interactive "Install this plugin? [y/N]" prompt. Keep it
 # after the repository argument: the Windows preview parses options in that order.
@@ -322,13 +301,16 @@ function Install-HerdrPlus {
     try { $installed = ((herdr plugin list 2>&1) -join "`n") -match 'cloudmanic\.herdr-plus' } catch { $installed = $false }
     if ($installed) { Info 'herdr-plus plugin already installed'; return }
     if (-not (Have go)) {
-        Info 'herdr-plus: skipped — needs go to build on Windows (scoop install go)'
+        Register-Failure 'herdr-plus (needs go to build on Windows; scoop install go)'
         return
     }
     Info 'herdr plugin install cloudmanic/herdr-plus (backs prefix+y / prefix+O)'
     try {
-        herdr plugin install cloudmanic/herdr-plus --yes 2>&1 | Out-Host
-        if ($LASTEXITCODE -ne 0) { Register-Failure 'herdr-plus' }
+        $pluginExit = Invoke-WithWindowsSystemProxy {
+            herdr plugin install cloudmanic/herdr-plus --yes 2>&1 | Out-Host
+            return $LASTEXITCODE
+        }
+        if ($pluginExit -ne 0) { Register-Failure 'herdr-plus' }
     } catch {
         Write-Warning "herdr-plus install error: $_"
         Register-Failure 'herdr-plus'
@@ -501,13 +483,6 @@ Npm-InstallGlobal @(
 )
 Install-PiCodingAgent
 if (-not (Install-OmpBinary)) { Register-Failure 'omp' }
-# NOTE: SpecStory ships no native-Windows CLI (macOS: brew; Linux/WSL: GitHub
-# release binaries only), so it is intentionally omitted -- `npm i -g
-# @specstory/cli` 404s. The Copilot module already no-ops when `specstory` is
-# absent. An experimental Windows build from the unmerged PR #191 is opt-in via
-# the installSpecstoryBuild toggle (block below) or `just specstory-build`
-# (see backlog/specstory-windows-native-cli.md).
-
 # OpenCode Desktop (GUI companion to the opencode-ai CLI) plus gitleaks, which
 # `pia handoff` uses as its final local secret scan.
 Scoop-Install @('extras/opencode-desktop', 'gitleaks')
@@ -582,45 +557,13 @@ if (-not (Test-Path $peonHook)) {
 }
 {{ end -}}
 
-{{ if .installSpecstoryBuild -}}
-# EXPERIMENTAL SpecStory Windows CLI. There is no native-Windows release yet;
-# Windows/WSL support lives in the unmerged getspecstory PR #191. Build it from
-# source (opt-in) and drop specstory.exe in ~/.local/bin so the Copilot module's
-# session auto-save (claude-copilot) can pick it up. Needs git (core) + go (enable
-# Extra runtimes, or `scoop install go`). Treat as experimental — may break until
-# the PR lands. Tracking + revisit criteria: backlog/specstory-windows-native-cli.md.
-if ((Have git) -and (Have go)) {
-    try {
-        $ssCache = Join-Path $HOME '.cache\specstory-build'
-        $ssRepo  = Join-Path $ssCache 'getspecstory'
-        $ssBin   = Join-Path $HOME '.local\bin'
-        New-Item -ItemType Directory -Force -Path $ssCache, $ssBin | Out-Null
-        if (-not (Test-Path (Join-Path $ssRepo '.git'))) {
-            Info 'specstory: cloning specstoryai/getspecstory'
-            git clone --filter=blob:none https://github.com/specstoryai/getspecstory.git $ssRepo
-        }
-        Push-Location $ssRepo
-        try {
-            Info 'specstory: fetching PR #191'
-            $ssRemoteRef = 'refs/remotes/origin/pr-191'
-            git fetch origin "pull/191/head:$ssRemoteRef" --force
-            if ($LASTEXITCODE -ne 0) { throw 'git fetch of SpecStory PR #191 failed' }
-            # Detached checkout leaves no local branch checked out, so the next
-            # apply can safely force-refresh the remote-tracking ref above.
-            git checkout --detach --force $ssRemoteRef
-            if ($LASTEXITCODE -ne 0) { throw 'git checkout of SpecStory PR #191 failed' }
-            $ssOut = Join-Path $ssBin 'specstory.exe'
-            Push-Location (Join-Path $ssRepo 'specstory-cli')
-            try { Info "specstory: go build -> $ssOut"; go build -o $ssOut . } finally { Pop-Location }
-            if (Test-Path $ssOut) { Info "specstory: built $ssOut" }
-            else { Register-Failure 'specstory-build (go build produced no binary)' }
-        } finally { Pop-Location }
-    } catch {
-        Write-Warning "specstory-build error: $_"
-        Register-Failure 'specstory-build'
-    }
-} else {
-    Register-Failure 'specstory-build (needs git + go; enable Extra runtimes or run: scoop install go)'
+{{ if or .installCodingAgents .installSpecstoryBuild -}}
+# PR #191 has merged and official Windows releases are available. Keep the old
+# data key as a standalone opt-in for hosts without the full coding-agent bundle.
+try { Install-WindowsCliRelease -Name specstory }
+catch {
+    Write-Warning "SpecStory install error: $_"
+    Register-Failure 'specstory'
 }
 {{ end -}}
 
@@ -727,9 +670,8 @@ if (Have az) {
 {{ end -}}
 
 {{ if .installHerdr -}}
-# Both dev-cli and herdr-plus build from source on Windows. Make Go a dependency
-# of the stack itself rather than relying on installExtraRuntimes or on dev being
-# absent (an externally installed dev would otherwise skip Install-DevCli early).
+# Herdr-plus still builds from source on Windows, so the stack owns its Go
+# dependency even though dev-cli now uses a prebuilt release.
 Scoop-Install @('go')
 Install-DevCli
 Install-Herdr
@@ -793,9 +735,8 @@ if (Have gem) {
 # artifact existed, so a fresh box spent several minutes compiling (embedded
 # swagger-ui + sqlite) and needed a whole Go toolchain for one CLI. That is also
 # why this block used to `Scoop-Install @('go')` unconditionally; it no longer
-# does. The optional Herdr stack still source-builds dev-cli + herdr-plus and
-# therefore installs Go itself; the experimental SpecStory build skips cleanly
-# when Go is absent unless Extra runtimes is enabled.
+# does. The optional Herdr stack still source-builds herdr-plus and
+# therefore installs Go itself; dev-cli and SpecStory use official binaries.
 #
 # Upgrades are `scoop update translate` (see `just upgrade-translate`); there is
 # no version pin to bump here any more.
@@ -831,7 +772,7 @@ if ($script:Failures.Count -gt 0) {
     Write-Warning ("package install: {0} item(s) failed and were skipped:" -f $script:Failures.Count)
     $script:Failures | ForEach-Object { Write-Warning "  - $_" }
     Write-Warning "This is a run_onchange script; an unchanged apply will not retry it."
-    Write-Warning "Retry only this installer with: chezmoi state delete --bucket=entryState --key='C:/Users/{{ .chezmoi.username }}/.chezmoiscripts/10_packages.ps1'; chezmoi apply"
+    Write-Warning "Retry only this installer with: chezmoi state delete --bucket=entryState --key='{{ .chezmoi.homeDir }}/.chezmoiscripts/10_packages.ps1'; chezmoi apply"
 } else {
     Info 'package install complete — no failures'
 }

@@ -106,13 +106,13 @@ and detach/attach. It has no scoop/winget manifest — it installs via herdr.dev
 official installer, and this machine intentionally follows the preview channel.
 Its config is managed at `~/.config/herdr/config.toml` (pwsh as the default shell).
 It stays off by default while the Windows build is beta.
-Enabling the stack also source-builds `dev` v0.1.0 into `~\.local\bin` and
+Enabling the stack also installs the latest verified Windows `dev` release into `~\.local\bin` and
 exposes it as `dev-cli`, avoiding Microsoft DevTool's same-named `dev.exe`:
 Herdr `prefix+d` opens its task/worktree dashboard, `prefix+Y` opens Yazi in a
 temporary pane at the focused cwd (the Windows preview still lacks popups), while the low-frequency clipboard
 helpers live in the `prefix+y` herdr-plus list (the interactive path picker keeps
-`prefix+p`). The required Scoop Go toolchain is therefore self-contained and is
-reused to build herdr-plus. Windows Terminal stays installed for its panes/tabs; Alacritty
+`prefix+p`). The stack still installs Scoop Go
+to build herdr-plus; dev-cli itself needs no Go toolchain. Windows Terminal stays installed for its panes/tabs; Alacritty
 stays as the fast minimal option.
 
 ## starship, not oh-my-posh
