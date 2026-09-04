@@ -26,16 +26,32 @@ Describe 'Yazi Git status integration' {
 
     It 'uses fail-soft setup and a guarded file/directory fetcher pair' {
         $init = Get-Content -Raw -LiteralPath $InitPath
-        $config = Get-Content -Raw -LiteralPath $ConfigPath
+        $configLines = @(Get-Content -LiteralPath $ConfigPath)
         $guard = Get-Content -Raw -LiteralPath $GuardPath
 
         $init | Should -Match 'pcall\(function\(\)'
         $init | Should -Match 'require\("git"\):setup\(\{ order = 1500 \}\)'
-        ([regex]::Matches($config, '(?m)^id = "git"$')).Count | Should -Be 2
-        ([regex]::Matches($config, '(?m)^group = "git"$')).Count | Should -Be 2
-        ([regex]::Matches($config, '(?m)^run = "git-guard"$')).Count | Should -Be 2
+        @($configLines | Where-Object { $_ -ceq 'id = "git"' }).Count | Should -Be 2
+        @($configLines | Where-Object { $_ -ceq 'group = "git"' }).Count | Should -Be 2
+        @($configLines | Where-Object { $_ -ceq 'run = "git-guard"' }).Count | Should -Be 2
         $guard | Should -Match 'pcall\(require, "git"\)'
         $guard | Should -Match 'require\("noop"\):fetch\(job\)'
+    }
+
+    It 'counts fetcher fields in <LineEnding> checkouts' -TestCases @(
+        @{ LineEnding = 'LF'; Newline = "`n" }
+        @{ LineEnding = 'CRLF'; Newline = "`r`n" }
+    ) {
+        param($LineEnding, $Newline)
+        $null = $LineEnding
+        $fixture = Join-Path $TestDrive 'yazi.toml'
+        $content = (Get-Content -Raw -LiteralPath $ConfigPath) -replace "`r?`n", $Newline
+        [IO.File]::WriteAllText($fixture, $content, [Text.UTF8Encoding]::new($false))
+        $lines = @(Get-Content -LiteralPath $fixture)
+
+        @($lines | Where-Object { $_ -ceq 'id = "git"' }).Count | Should -Be 2
+        @($lines | Where-Object { $_ -ceq 'group = "git"' }).Count | Should -Be 2
+        @($lines | Where-Object { $_ -ceq 'run = "git-guard"' }).Count | Should -Be 2
     }
 
     It 'derives plugin directory names from monorepo and standalone lock entries' {
