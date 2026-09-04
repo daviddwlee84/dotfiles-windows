@@ -46,18 +46,19 @@ unattended 重跑不能安全地把已儲存的 workstation 切成 minimal。如
 會又醜又易錯，而且這份 dotfiles 本來就是 PowerShell，一台完全沒有 PowerShell 的機器
 本來就用不了這個 repo。
 
-!!! warning "Defender 可能把 cmd 的 irm|iex 一行版當成 ClickFix"
-    把 cradle 包成 cmd 命令列 ——
-    `powershell -ExecutionPolicy Bypass -Command "irm <url> | iex"` —— 可能觸發
-    Defender 的 **`Trojan:Win32/ClickFix.*!ml`** 機器學習啟發式偵測。這是對**命令列
-    「形狀」的誤判**，不是我們的腳本有問題（內容掃描是乾淨的）：一個 `powershell`
-    行程的命令列是遠端 download-cradle（`irm|iex`）再加上 `-ExecutionPolicy Bypass` /
-    `-NoProfile`，正是
+!!! warning "Defender 可能把命令列 irm|iex 當成 ClickFix 或 Commando"
+    透過 cmd、SSH、WinRM、排程器或其他 process launcher執行時，`irm <url> | iex`
+    會直接出現在 `powershell -Command`／`pwsh -c` 命令列。即使抓下來的腳本本身乾淨，
+    Defender仍可能依形狀擋成 **`Trojan:Win32/ClickFix.*!ml`** 或
+    **`Trojan:Win32/Commando.A!ml`**；這正是
     [ClickFix](https://www.microsoft.com/en-us/security/blog/2025/08/21/think-before-you-clickfix-analyzing-the-clickfix-social-engineering-technique/)
-    假 CAPTCHA 攻擊用的形狀。上面兩種寫法都能避開 —— cradle 不會落在行程命令列上，或
-    改成執行檔案 —— 而在**已經開著的 PowerShell 裡**跑那行是沒問題的。更重要的教訓：
-    **絕對不要貼上任何網頁或「驗證你是真人」提示塞給你的 `powershell -c "irm|iex"`
-    —— 那個要求本身就是攻擊。**
+    假 CAPTCHA攻擊使用的 download-execute pattern。
+
+    上方第一種寫法只適用於**已開啟的互動式 PowerShell**；不要原樣送成
+    `ssh host 'irm ... | iex'`。遠端自動化應先傳輸或下載檔案、檢閱／驗證 hash，再以
+    獨立的 `pwsh -File` process執行。不要為被擋的命令列新增 Defender exclusion或按
+    Allow。維護者記錄見
+    `pitfalls/clickfix-defender-flags-cmd-irm-iex.md`。
 
 `bootstrap.ps1` 會依序（且可重複執行）完成：
 

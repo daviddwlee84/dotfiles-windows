@@ -50,20 +50,22 @@ bootstrap logic lives once, in PowerShell (`bootstrap.ps1`): cmd is a poor
 language for the elevation / `PATH` / `chezmoi` steps, and these dotfiles are
 PowerShell anyway, so a machine with *no* PowerShell couldn't use the repo.
 
-!!! warning "Defender may flag the cmd irm|iex one-liner as ClickFix"
-    Wrapping the cradle on a cmd command line —
-    `powershell -ExecutionPolicy Bypass -Command "irm <url> | iex"` — can trip
-    Defender's **`Trojan:Win32/ClickFix.*!ml`** machine-learning heuristic. It's a
-    **false positive on the command-line _shape_**, not our script (a content scan
-    is clean): a `powershell` process whose command line is a remote
-    download-cradle (`irm|iex`) plus `-ExecutionPolicy Bypass` / `-NoProfile` is
-    exactly the shape the
+!!! warning "Defender may flag command-line irm|iex as ClickFix or Commando"
+    Wrapping the cradle in cmd, SSH, WinRM, a scheduler, or another process
+    launcher puts `irm <url> | iex` directly on a `powershell -Command` / `pwsh -c`
+    command line. Defender can block that shape as
+    **`Trojan:Win32/ClickFix.*!ml`** or **`Trojan:Win32/Commando.A!ml`**, even when
+    the fetched script itself is clean. This is the same download-execute pattern
+    used by
     [ClickFix](https://www.microsoft.com/en-us/security/blog/2025/08/21/think-before-you-clickfix-analyzing-the-clickfix-social-engineering-technique/)
-    fake-CAPTCHA campaigns use. The two forms above avoid it — the cradle never
-    lands on a process command line, or you run a file instead — and inside an
-    already-open PowerShell the one-liner is fine. Bigger lesson: **never paste a
-    `powershell -c "irm|iex"` handed to you by a web page or a "verify you're
-    human" prompt — that request _is_ the attack.**
+    fake-CAPTCHA campaigns.
+
+    The first form above is for an **already-open interactive PowerShell**; do not
+    send it verbatim as `ssh host 'irm ... | iex'`. For remote automation, transfer
+    or download the file first, inspect/verify its hash, then launch a separate
+    `pwsh -File` process. Do **not** add a Defender exclusion or click Allow for the
+    blocked command line. Maintainer details live in
+    `pitfalls/clickfix-defender-flags-cmd-irm-iex.md`.
 
 `bootstrap.ps1` does the following, idempotently:
 
