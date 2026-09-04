@@ -41,7 +41,7 @@ powershell.exe -ExecutionPolicy Bypass -File "$env:TEMP\bootstrap.ps1" `
 `-NonInteractive` deliberately supports only `minimal`; it rejects a missing
 role/name/email **or any existing chezmoi config/source** before changing execution
 policy or installing anything. Existing `prompt*Once` data must be changed with
-interactive `chezmoi init` or by editing the config—an unattended rerun cannot
+`chezmoi init --prompt` or by editing the config—an unattended rerun cannot
 safely turn a stored workstation profile into minimal. This prevents automation
 from silently selecting or retaining the full `workstation` bundle.
 
@@ -137,7 +137,7 @@ Scoop download cache and temporary staging. See [Disk space](disk-space.md).
 | Backup mode | `smart` | snapshot existing files before the first apply (`smart`/`full`/`off`) |
 | PSReadLine vi mode | on | vi editing in the shell |
 
-Re-run the prompts later with `chezmoi init` again, or edit
+Re-run every prompt later with `chezmoi init --prompt`, or edit
 `%USERPROFILE%\.config\chezmoi\chezmoi.toml`.
 
 ## Day-to-day

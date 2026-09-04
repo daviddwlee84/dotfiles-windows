@@ -14,7 +14,7 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 - Source dir: `chezmoi source-path` — edit there (`cd "$(chezmoi source-path)"`).
 - Preview / apply: `chezmoi diff` / `chezmoi apply` (or `just diff` / `just apply`).
 - Source of a target: `chezmoi source-path <path>`; render without applying: `chezmoi cat <path>`.
-- Re-run init prompts: `chezmoi init` (answers persist in `~/.config/chezmoi/chezmoi.toml`).
+- Re-run every init prompt: `chezmoi init --prompt` (answers persist in `~/.config/chezmoi/chezmoi.toml`; bare `chezmoi init` reuses them).
 - `docs/**`, `editors/**`, `scripts/**` are chezmoi-ignored (not deployed).
 
 ## Shell layout (pwsh)

@@ -37,7 +37,7 @@ powershell.exe -ExecutionPolicy Bypass -File "$env:TEMP\bootstrap.ps1" `
 
 `-NonInteractive` 刻意只支援 `minimal`；role／name／email 任一缺少，或已存在
 chezmoi config／source，都會在修改 execution policy 或安裝任何東西前拒絕執行。
-既有 `prompt*Once` 資料必須用互動式 `chezmoi init` 或直接編輯 config 修改；
+既有 `prompt*Once` 資料必須用 `chezmoi init --prompt` 或直接編輯 config 修改；
 unattended 重跑不能安全地把已儲存的 workstation 切成 minimal。如此可避免自動化
 意外選到或沿用完整的 `workstation` 套件組。
 
@@ -125,7 +125,7 @@ shell 的開發 baseline，**不是**極小安裝：它仍會安裝核心 CLI／
 | Backup mode | `smart` | 首次 apply 前備份既有檔案（`smart`/`full`/`off`） |
 | PSReadLine vi mode | 開 | shell 的 vi 編輯模式 |
 
-之後可再次執行 `chezmoi init` 重新提問，或直接編輯
+之後可執行 `chezmoi init --prompt` 強制重新詢問每一題，或直接編輯
 `%USERPROFILE%\.config\chezmoi\chezmoi.toml`。
 
 ## 日常操作
