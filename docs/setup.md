@@ -164,6 +164,9 @@ never managed by chezmoi.
 
 ## Git configuration
 
+For GitHub sign-in, Clash proxy settings, or the CredentialHelperSelector
+popup, see [GitHub authentication and proxies](github-auth.md).
+
 `~/.gitconfig` is managed by a `modify_` overlay (`modify_dot_gitconfig.ps1.tmpl`).
 `chezmoi apply` keeps a fixed set of keys in sync: `user.name` / `user.email`
 from the init prompts, `core.autocrlf = input`, `init.defaultBranch`,

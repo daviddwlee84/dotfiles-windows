@@ -37,6 +37,7 @@ plugins:
           nav_translations:
             Home: 首頁
             Setup: 安裝
+            GitHub authentication and proxies: GitHub 登入與代理
             Tools: 工具索引
             LazyGit branch insights: LazyGit branch 洞察
             Disk space: 磁碟空間
@@ -65,6 +66,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Setup: setup.md
+  - GitHub authentication and proxies: github-auth.md
   - Tools: tools.md
   - LazyGit branch insights: lazygit.md
   - Disk space: disk-space.md

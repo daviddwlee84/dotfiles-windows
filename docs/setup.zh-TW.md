@@ -151,6 +151,9 @@ dotfiles」建議一律用 `cau` —— `--init` 表示落後於新增 init prom
 
 ## Git 設定
 
+GitHub 登入、Clash 代理設定與 CredentialHelperSelector 彈窗的處理方式，
+見 [GitHub 登入與代理](github-auth.zh-TW.md)。
+
 `~/.gitconfig` 由 `modify_` 疊加腳本（`modify_dot_gitconfig.ps1.tmpl`）管理。
 `chezmoi apply` 會同步一組固定的設定：來自初始化提問的 `user.name` /
 `user.email`、`core.autocrlf = input`、`init.defaultBranch`、`pull.rebase`、
