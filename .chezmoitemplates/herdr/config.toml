@@ -133,7 +133,7 @@ description = "dev-cli repository/task dashboard (popup pane)"
 [[keys.command]]
 key = "prefix+G"
 type = "pane"
-command = "lazygit"
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/lazygit.ps1"'
 description = "lazygit (popup pane)"
 
 # Match the Unix prefix+Y launcher while respecting the Windows preview's lack

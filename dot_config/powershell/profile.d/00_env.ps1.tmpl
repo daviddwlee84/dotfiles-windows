@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # 00_env.ps1 — environment variables & PATH. Sourced first by $PROFILE.
 
 # UTF-8 console I/O. Without this, native tools that emit UTF-8 (git, winget's
@@ -78,7 +80,7 @@ $ProfilePaths = @(
 ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } |
     ForEach-Object { [System.IO.Path]::GetFullPath($_) }
 
-{{ include "scripts/windows-path-precedence.ps1" }}
+{{ include "scripts/windows-path-precedence.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 Set-WindowsPathPrecedence -ManagedPaths $ProfilePaths
 
 {{ if .installCodingAgents -}}

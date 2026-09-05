@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # run_onchange_after_40_openssh_server.ps1.tmpl — install + enable the OpenSSH
 # server (sshd) during `chezmoi apply` when the installSshServer toggle is on.
 # No-op otherwise. The setup logic lives once in scripts/enable-sshd.ps1 (also run
@@ -7,5 +8,5 @@
 # once when needed and otherwise prints one local recovery command; every failure
 # stays non-fatal to the apply. See docs/tools.md and scripts/enable-sshd.ps1.
 {{ if .installSshServer -}}
-{{ include "scripts/enable-sshd.ps1" }}
+{{ include "scripts/enable-sshd.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 {{ end -}}

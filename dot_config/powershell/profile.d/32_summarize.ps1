@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # 32_summarize.ps1 — summarize CLI helpers.
 #
 # Native PowerShell port of the cross-platform dot_config/shell/32_summarize.sh; the

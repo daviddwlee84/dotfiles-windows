@@ -6,6 +6,11 @@ How a PowerShell session is assembled — what loads, how to reload, and how
 
 ## Profile loading
 
+Managed scripts require PowerShell 7.4+ Core. See the
+[PowerShell maintenance notes](powershell-maintenance.md) for version guards,
+reload/completion scope, quoting, and the deliberately deferred audit findings.
+Use [`appsrc`](appsrc.md) to inspect conflicting executable installations.
+
 `$PROFILE` (`~/Documents/PowerShell/Microsoft.PowerShell_profile.ps1`) is a thin
 loader. It dot-sources every fragment under `~/.config/powershell/profile.d/*.ps1`
 in sorted (numeric-prefix) order, then your untracked `local.ps1` last. All the
@@ -256,6 +261,16 @@ try's own shell integration — try-cli emits POSIX shell that pwsh can't `eval`
 its output into native pwsh in the live session (so the `cd` moves this shell).
 
 ## herdr workspace helpers (`hvibe` / `hcode` / …)
+
+`prefix+G` launches LazyGit through a dedicated `pwsh -NoProfile -File` helper.
+Herdr's Windows custom commands otherwise use `cmd /d /c`, independently of
+`terminal.default_shell = "pwsh"`, and inherit the long-lived server's PATH.
+The helper loads only the managed environment fragment, resolves LazyGit and Git
+after the normal PATH policy, and uses the focused pane's cwd. It does not run
+the full profile. Success closes the pane; failure prints cwd, executable paths
+and exit code, then waits for Enter. `HERDR_RUN_HOLD=always|never|fail` overrides
+the default `fail` policy (redirected input never waits).
+No server restart or removal of Chocolatey is required for this launcher change.
 
 When the opt-in **herdr** multiplexer is installed, `profile.d/25_herdr.ps1` adds
 PowerShell analogs of the macOS/Linux dotfiles' `24_herdr.sh` helpers — the same

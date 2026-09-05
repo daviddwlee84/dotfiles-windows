@@ -40,7 +40,7 @@ then applies the dotfiles.
 
 ## What you get
 
-- **Shell**: PowerShell 7 with a modular `$PROFILE` (`~/.config/powershell/profile.d/*.ps1`).
+- **Shell**: PowerShell 7.4+ Core with a modular `$PROFILE` (`~/.config/powershell/profile.d/*.ps1`); bootstrap alone supports Windows PowerShell 5.1. See [maintenance notes](docs/powershell-maintenance.md).
 - **Prompt**: [starship](https://starship.rs) (shared config with the macOS/Linux dotfiles).
 - **CLI tools** (scoop): git, neovim, lazygit (delta + read-only `I` branch containment/PR insights), zoxide, fzf, bat, eza, ripgrep, fd, gh, delta, jq, yazi (with guarded Git status signs), btop, mise, uv, node, bun.
 - **AI agents**: Claude Code, OpenCode, Codex, GitHub Copilot CLI, Pi, Oh My Pi,

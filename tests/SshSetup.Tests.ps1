@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Pester tests for the SSH setup fragment (profile.d/96_ssh_setup.ps1).
 #
 # Native pwsh counterpart of the Unix repo's tests/unit/ssh_setup.bats. Two

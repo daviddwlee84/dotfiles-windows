@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # enable-sshd.ps1 — verify or safely enable Microsoft OpenSSH Server.
 #
 # This file is both a standalone recovery command (`just enable-sshd`) and the

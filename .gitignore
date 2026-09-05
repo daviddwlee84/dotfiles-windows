@@ -19,6 +19,9 @@ docker/windows/storage/
 # ephemeral EnterWorktree checkouts; never commit
 .claude/worktrees/
 # .specstory/
+# SpecStory machine-local identity and generated statistics are not review history.
+/.specstory/.project.json
+/.specstory/statistics.json
 
 # local, untracked user overrides that may get copied here by accident
 *.local.ps1

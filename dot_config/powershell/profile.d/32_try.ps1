@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # 32_try.ps1 — try (tobi/try, gem `try-cli`): ephemeral dated workspaces, for pwsh.
 #
 # The bareword command is **`tri`**, not `try`: `try` is a PowerShell keyword

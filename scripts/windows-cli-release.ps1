@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Shared official Windows release installer for dev-cli and SpecStory.
 # Apply installs missing tools only; explicit upgrade recipes request replacement.
 function Get-WindowsCliRelease {

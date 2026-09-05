@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Behavioral contracts for the native PowerShell Lazygit branch-insights helper.
 
 BeforeAll {

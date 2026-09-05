@@ -25,6 +25,8 @@ Likely next batch — items you'd reach for if you sat down to work today.
 
 ## P2
 
+- [ ] **[M] Define safe run-for native/script/batch execution contracts** — preserve argv, define exit codes and process-tree timeout behavior before replacing Start-Process serialization; intentionally deferred from the PowerShell 7.4 audit. → [research](backlog/run-for-argument-and-timeout-contract.md)
+
 Worth doing, no rush.
 
 - [ ] **[M] Example medium item** — link to research if non-trivial. → [research](backlog/example-medium.md)

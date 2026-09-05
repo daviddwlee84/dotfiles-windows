@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 
 $scoopRoot = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $HOME 'scoop' }
 $node = Join-Path $scoopRoot 'apps\nodejs-lts\current\node.exe'

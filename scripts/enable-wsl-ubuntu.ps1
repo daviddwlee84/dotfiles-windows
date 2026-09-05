@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # enable-wsl-ubuntu.ps1 — register a WSL2 Ubuntu distro unattended (no OOBE) and
 # bootstrap the cross-platform dotfiles (github.com/daviddwlee84/dotfiles) inside it.
 #

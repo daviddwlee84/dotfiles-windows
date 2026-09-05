@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Pester tests for the herdr keybind helpers' shared library
 # (dot_config/herdr/_common.ps1).
 #

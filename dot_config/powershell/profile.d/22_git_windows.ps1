@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # 22_git_windows.ps1 — diagnose Windows-hosted Git checkouts and safely repair
 # tracked symlinks that Git materialized as one-line placeholder files.
 

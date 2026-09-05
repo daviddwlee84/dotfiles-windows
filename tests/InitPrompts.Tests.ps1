@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Guards hard invariant #1 (AGENTS.md): every init prompt in .chezmoi.toml.tmpl
 # must have a matching non-interactive flag in .github/workflows/windows.yml.
 #

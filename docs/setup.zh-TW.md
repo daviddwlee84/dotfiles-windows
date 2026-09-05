@@ -1,5 +1,10 @@
 # 安裝
 
+受管環境需要 **PowerShell 7.4+ Core**；只有最初的 `bootstrap.ps1` 相容
+Windows PowerShell 5.1，並會在執行 chezmoi 前檢查解析到的 `pwsh`。
+已存在的舊版 pwsh 不會被默默升級，請透過原管理器升級後重試。
+詳見 [執行環境與維護筆記](powershell-maintenance.md)。
+
 ## 一行安裝
 
 在全新的 Windows PowerShell（或 PowerShell 7）視窗執行：

@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # run_onchange_after_30_windows_terminal.ps1 — set Windows Terminal's shared
 # profile defaults (font, color, opacity) without touching individual profiles.
 # No-op if WT isn't installed / hasn't created its settings.json yet.

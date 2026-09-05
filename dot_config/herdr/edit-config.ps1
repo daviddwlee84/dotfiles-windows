@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # ~/.config/herdr/edit-config.ps1
 # Source: dot_config/herdr/edit-config.ps1 (managed by chezmoi)
 #

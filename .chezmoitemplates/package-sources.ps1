@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+# Template-only fragment: the enclosing script owns the Core edition requirement.
 # Package-source policy shared by apply-time installers and interactive pwsh.
 # Known endpoint values from earlier versions are treated as repo-owned so an
 # additive profile reload converges; every other value survives. Managed policy

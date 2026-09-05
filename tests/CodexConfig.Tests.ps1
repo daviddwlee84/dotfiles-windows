@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 BeforeAll {
     $RepoRoot = Split-Path -Parent $PSScriptRoot
     $TemplatePath = Join-Path $RepoRoot 'dot_codex/modify_config.toml.ps1.tmpl'

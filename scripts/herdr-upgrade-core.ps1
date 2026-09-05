@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Verified Herdr upgrade orchestration. The caller provides Resolve-HerdrExecutable
 # and Sync-HerdrSkill from herdr-skill-sync.ps1.
 

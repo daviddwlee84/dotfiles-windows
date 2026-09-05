@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Pester tests for the translate install path.
 #
 # translate moved from a version-pinned `go install` to the author's own scoop

@@ -1,4 +1,6 @@
 #!/usr/bin/env pwsh
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # chezmoi modify_ script: deep-merge a managed overlay into ~/.summarize/config.json.
 # Runs under [interpreters.ps1] in .chezmoi.toml.tmpl; chezmoi pipes the CURRENT target
 # file in on stdin and takes the new contents from stdout, and strips the `.ps1`

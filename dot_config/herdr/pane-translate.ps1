@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # ~/.config/herdr/pane-translate.ps1
 # Source: dot_config/herdr/pane-translate.ps1 (managed by chezmoi)
 #

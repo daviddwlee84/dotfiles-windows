@@ -6,7 +6,8 @@ agents when working with code in this repository. `CLAUDE.md` is a symlink to th
 ## What this is
 
 Standalone, **Windows-only** dotfiles managed by [chezmoi](https://chezmoi.io),
-targeting **PowerShell 7 (pwsh)**. It is a companion to the cross-platform
+targeting **PowerShell 7.4+ Core (pwsh)**. Only `bootstrap.ps1` supports the in-box
+Windows PowerShell 5.1 host. It is a companion to the cross-platform
 macOS/Linux repo `daviddwlee84/dotfiles` — the PowerShell layer is written
 natively, **not** ported from that repo's POSIX shell config. No ansible;
 packages install via **scoop** (CLI) + **winget** (GUI). Published at
@@ -76,6 +77,31 @@ chezmoi execute-template --config="$TMPD/c.toml" --source="$PWD" < some.ps1.tmpl
    links, and unmerged entries are report-only. EOL, case, executable-bit,
    filename, path-length, and LFS findings are never auto-fixed; in particular,
    do not add automatic `git add --renormalize .` behavior.
+
+10. **PowerShell runtime contract: bootstrap 5.1, managed runtime 7.4+ Core.**
+    New first-party `.ps1` / `.psm1` and rendered script entry points declare
+    `#Requires -Version 7.4` and `#Requires -PSEdition Core`; module manifests use
+    `PowerShellVersion = '7.4'` and `CompatiblePSEditions = @('Core')`. Keep
+    `bootstrap.ps1` 5.1-parseable and validate the resolved pwsh's full version
+    before handing off. `#Requires` does not switch interpreters or guarantee a
+    friendly error before newer syntax is parsed. Do not bulk-replace external
+    hooks' intentional `powershell.exe` commands. Template-only snippets inherit
+    the caller's edition guard. When inlining a guarded script with `include`,
+    strip its **edition** directive from the embedded text (see existing
+    `include | replace` examples): duplicate `-PSEdition` directives are a parse
+    error. Keep guards on standalone sources and scripts embedded as string data.
+    Run `PowerShellRuntime.Tests.ps1`, render/parse the affected templates, and
+    keep the 7.4 minimum-runtime CI lane green. See
+    [PowerShell maintenance notes](docs/powershell-maintenance.md).
+11. **Initialization scope and diagnostics are explicit.** Public profile helpers
+    and their dependencies must survive `reload` / `cas` / `cau`'s function scope;
+    test invocation after the loader returns, not just source text or env changes.
+    Generated completion helpers with script state use retained named modules;
+    never regex-rewrite upstream function declarations to `global:`. `appsrc`
+    remains lazy, local and read-only: no executing candidate binaries, package
+    scripts or uninstall commands, no automatic removals/PATH edits. Distinguish
+    source evidence from inference and persisted PATH simulation from live state.
+    Preserve non-fatal run-script behavior; do not add global StrictMode/Stop.
 
 ### Cross-file mirrors (same commit)
 

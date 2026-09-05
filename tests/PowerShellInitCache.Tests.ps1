@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 
 BeforeAll {
     $RepoRoot = Split-Path -Parent $PSScriptRoot
@@ -95,5 +96,40 @@ Describe 'Import-CachedInit revision stamp' {
 
         $env:PIA_CACHED_INIT_PROBE | Should -BeExactly '1'
         Get-Content -LiteralPath $counterFile -Raw | Should -BeExactly '1'
+    }
+}
+
+Describe 'retained completion initialization scope' {
+    BeforeEach {
+        $script:PreviousCacheHome = $env:XDG_CACHE_HOME
+        $env:XDG_CACHE_HOME = Join-Path $TestDrive 'scoped-init'
+    }
+    AfterEach {
+        Get-Module DotfilesInit_scope_test | Remove-Module -Force
+        $env:XDG_CACHE_HOME = $script:PreviousCacheHome
+    }
+
+    It 'retains plain helpers and script state after the loader returns, including reload' {
+        $exe = (Get-Process -Id $PID).Path
+        $generate = {
+            @'
+$script:CompletionState = 'retained'
+function Get-DotfilesFixtureCompletion { $script:CompletionState }
+Register-ArgumentCompleter -Native -CommandName pwsh -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
+    [System.Management.Automation.CompletionResult]::new((Get-DotfilesFixtureCompletion))
+}
+'@
+        }
+        function Invoke-FixtureProfileReload {
+            Import-CachedInit -Name scope-test -Exe $exe -Generate $generate -RetainScope
+        }
+        Invoke-FixtureProfileReload
+        Get-DotfilesFixtureCompletion | Should -Be 'retained'
+        $completion = [Management.Automation.CommandCompletion]::CompleteInput('pwsh ', 5, $null)
+        $completion.CompletionMatches.CompletionText | Should -Contain 'retained'
+        Invoke-FixtureProfileReload
+        @(Get-Module DotfilesInit_scope_test) | Should -HaveCount 1
+        Get-DotfilesFixtureCompletion | Should -Be 'retained'
     }
 }

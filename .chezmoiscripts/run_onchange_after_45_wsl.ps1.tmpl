@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # run_onchange_after_45_wsl.ps1.tmpl — install WSL2 (the Docker Desktop backend)
 # during `chezmoi apply` when the installWsl toggle is on. No-op otherwise. The
 # logic lives once in scripts/enable-wsl.ps1 (also run by `just enable-wsl`) and
@@ -7,5 +8,5 @@
 # UAC prompt when the apply isn't elevated, and never aborts the apply. See
 # docs/tools.md and scripts/enable-wsl.ps1.
 {{ if .installWsl -}}
-{{ include "scripts/enable-wsl.ps1" }}
+{{ include "scripts/enable-wsl.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 {{ end -}}

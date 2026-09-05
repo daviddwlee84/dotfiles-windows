@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Pester tests for dot_config/herdr/pane-translate.ps1 — the text pipeline behind
 # prefix+t and the "Translate pane" Quick Actions.
 #

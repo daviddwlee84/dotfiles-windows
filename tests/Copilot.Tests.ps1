@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Pester tests for the Copilot module. Runtime behaviour (proxy start, live
 # HTTP) can't be exercised without Windows + copilot-api, so these cover the
 # pure logic: package-flavor detection, model resolution/normalisation, served-

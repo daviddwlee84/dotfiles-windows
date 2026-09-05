@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 
 BeforeAll {
     $RepoRoot = Split-Path $PSScriptRoot -Parent
@@ -380,9 +381,17 @@ exit 0
         { Get-PwshRuntime -Path 'C:\broken\pwsh.exe' } | Should -Throw '*exited with code 23*'
     }
 
-    It 'rejects PowerShell Core older than version 7' {
-        Mock Invoke-PwshProbeProcess { New-PwshProbeResult -Edition Core -Major 6 -Version '6.2.7' }
-        { Get-PwshRuntime -Path 'C:\old\pwsh.exe' } | Should -Throw '*version 7 or newer*'
+    It 'rejects unsupported Core <Version>' -ForEach @(
+        @{ Version = '6.2.7' }, @{ Version = '7.0.0' }, @{ Version = '7.1.0' },
+        @{ Version = '7.2.24' }, @{ Version = '7.3.12' }
+    ) {
+        Mock Invoke-PwshProbeProcess { New-PwshProbeResult -Edition Core -Major 7 -Version $Version }
+        { Get-PwshRuntime -Path 'C:\old\pwsh.exe' } | Should -Throw '*version 7.4 or newer*'
+    }
+
+    It 'accepts the exact supported floor' {
+        Mock Invoke-PwshProbeProcess { New-PwshProbeResult -Edition Core -Major 7 -Version '7.4.0' }
+        (Get-PwshRuntime -Path 'C:\pwsh.exe').Version | Should -Be '7.4.0'
     }
 
     It 'rejects Windows PowerShell Desktop edition' {

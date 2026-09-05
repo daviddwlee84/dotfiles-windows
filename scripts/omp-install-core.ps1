@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Shared Oh My Pi binary installer. The apply-time installer includes this file
 # verbatim; scripts/upgrade-omp.ps1 dot-sources it for explicit upgrades.
 

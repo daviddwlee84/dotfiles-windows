@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # run_once_before_00_migrate_skill_junction.ps1 — one-time migration.
 #
 # An earlier version linked the agent skill with a Windows JUNCTION:

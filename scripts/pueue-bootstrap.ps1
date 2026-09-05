@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # pueue-bootstrap.ps1 — make the pueue client usable without a manual daemon
 # terminal. Included into both the package installer and the PowerShell profile.
 

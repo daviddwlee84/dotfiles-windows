@@ -6,6 +6,9 @@ GUI 應用程式。
 
 ## CLI 工具（scoop）
 
+本 repo 另提供原生 PowerShell 輔助指令 [`appsrc`](appsrc.md)，唯讀檢查 CLI
+來源、重複安裝與遮蔽，不需要另外安裝套件。
+
 | 工具 | 用途 |
 |---|---|
 | git、gh、glab | 版本控制 + GitHub / GitLab CLI |

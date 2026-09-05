@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Native curl/Go do not read Windows Internet Settings, unlike Invoke-WebRequest.
 # Bridge the user's existing static proxy for a bounded child command only.
 function Get-WindowsSystemProxyVariables {

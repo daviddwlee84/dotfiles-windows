@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Pester tests for the git-alias fragment (profile.d/21_git.ps1).
 #
 # The functions are thin `git …` wrappers, so we assert the *generated

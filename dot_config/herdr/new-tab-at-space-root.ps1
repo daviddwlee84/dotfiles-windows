@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # ~/.config/herdr/new-tab-at-space-root.ps1
 # Source: dot_config/herdr/new-tab-at-space-root.ps1 (managed by chezmoi)
 #

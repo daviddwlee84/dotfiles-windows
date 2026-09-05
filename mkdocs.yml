@@ -43,6 +43,8 @@ plugins:
             LazyGit branch insights: LazyGit branch 洞察
             Disk space: 磁碟空間
             Shell: Shell 環境
+            CLI sources and conflicts: CLI 來源與衝突
+            PowerShell maintenance notes: PowerShell 維護筆記
             Yazi: Yazi 檔案管理員
             Rationale: 設計取捨
             copilot-proxy: copilot-proxy
@@ -73,6 +75,8 @@ nav:
   - LazyGit branch insights: lazygit.md
   - Disk space: disk-space.md
   - Shell: shell.md
+  - CLI sources and conflicts: appsrc.md
+  - PowerShell maintenance notes: powershell-maintenance.md
   - Yazi: yazi.md
   - Rationale: rationale.md
   - copilot-proxy: copilot-proxy.md

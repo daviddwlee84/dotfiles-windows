@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # run_onchange_after_10_packages.ps1 — install the toolset with scoop (CLI) +
 # winget (GUI). Idempotent: only missing packages are installed. This script is
 # the SINGLE SOURCE OF TRUTH for what gets installed; re-runs whenever the
@@ -38,7 +39,7 @@ try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catc
 # A direct `chezmoi apply` runs this script under pwsh -NoProfile. Normalize the
 # inherited process PATH before any command lookup so persisted User tools beat
 # stale Machine installs while CI/portable process-only entries remain first.
-{{ include "scripts/windows-path-precedence.ps1" }}
+{{ include "scripts/windows-path-precedence.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 Set-WindowsPathPrecedence
 
 # Package registries: company-approved pull-through feeds on managed machines,
@@ -50,15 +51,15 @@ $allowPublicPackageFallback = {{ if (get . "allowPublicPackageFallback") }}$true
 
 # Command-scoped corporate-first runner for the npm/PyPI operations backed by
 # company feeds. Other ecosystems retain their existing source behavior.
-{{ include "scripts/package-source-runner.ps1" }}
+{{ include "scripts/package-source-runner.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 
 # Shared lifecycle helpers used here and by explicit upgrade recipes. Including
 # them makes helper changes part of this run_onchange script's rendered hash.
-{{ include "scripts/pi-package-core.ps1" }}
-{{ include "scripts/omp-install-core.ps1" }}
-{{ include "scripts/windows-cli-release.ps1" }}
-{{ include "scripts/windows-system-proxy.ps1" }}
-{{ include "scripts/herdr-upgrade-core.ps1" }}
+{{ include "scripts/pi-package-core.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
+{{ include "scripts/omp-install-core.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
+{{ include "scripts/windows-cli-release.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
+{{ include "scripts/windows-system-proxy.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
+{{ include "scripts/herdr-upgrade-core.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 
 function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 function Have($n) { [bool](Get-Command $n -ErrorAction SilentlyContinue) }
@@ -66,7 +67,7 @@ function Register-Failure($what) { $script:Failures.Add($what); Write-Warning "F
 
 # Shared with profile.d/12_pueue.ps1: install-time service setup plus the
 # no-admin detached-daemon fallback use the same readiness checks.
-{{ include "scripts/pueue-bootstrap.ps1" }}
+{{ include "scripts/pueue-bootstrap.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 
 # --- scoop -----------------------------------------------------------------
 function Test-Admin {

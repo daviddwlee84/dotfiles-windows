@@ -1,17 +1,19 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # 20_aliases.ps1 — aliases and small helper functions. Modern-CLI replacements
 # are guarded so they only shadow the builtin when the tool is installed.
 
 # --- modern replacements ---
 if (Get-Command eza -ErrorAction SilentlyContinue) {
-    function ll { eza -l  --icons --git @args }
-    function la { eza -la --icons --git @args }
-    function lt { eza --tree --level=2 --icons @args }
+    function global:ll { eza -l  --icons --git @args }
+    function global:la { eza -la --icons --git @args }
+    function global:lt { eza --tree --level=2 --icons @args }
     Remove-Item Alias:ls -ErrorAction SilentlyContinue
-    function ls { eza --icons @args }
+    function global:ls { eza --icons @args }
 }
 if (Get-Command bat -ErrorAction SilentlyContinue) {
     Remove-Item Alias:cat -ErrorAction SilentlyContinue
-    function cat { bat @args }
+    function global:cat { bat @args }
     if (-not $env:BAT_THEME) { $env:BAT_THEME = 'ansi' }
 }
 if (Get-Command nvim -ErrorAction SilentlyContinue) {
@@ -34,7 +36,7 @@ if (Test-Path -LiteralPath $devCliExe) {
 # `which foo` — resolve a command like the unix tool. pwsh's native equivalent
 # is Get-Command (alias gcm); this prints just the path for executables and a
 # short description for aliases / functions / cmdlets.
-function which {
+function global:which {
     param([Parameter(Mandatory, ValueFromRemainingArguments)][string[]]$Name)
     foreach ($n in $Name) {
         $c = Get-Command $n -ErrorAction SilentlyContinue
@@ -48,12 +50,12 @@ function which {
 }
 
 # unix / mac command names → Windows equivalents (muscle memory)
-function ifconfig { ipconfig @args }
-function open { Invoke-Item @args }          # open a file/dir in its default app
-function pbcopy { $input | Set-Clipboard }   # pipe into it: some-cmd | pbcopy
-function pbpaste { Get-Clipboard }
-function reboot { Restart-Computer @args }   # unix `reboot`; add -Force to skip prompts
-function touch {
+function global:ifconfig { ipconfig @args }
+function global:open { Invoke-Item @args }          # open a file/dir in its default app
+function global:pbcopy { $input | Set-Clipboard }   # pipe into it: some-cmd | pbcopy
+function global:pbpaste { Get-Clipboard }
+function global:reboot { Restart-Computer @args }   # unix `reboot`; add -Force to skip prompts
+function global:touch {
     param([Parameter(Mandatory, ValueFromRemainingArguments)][string[]]$Path)
     foreach ($p in $Path) {
         if (Test-Path -LiteralPath $p) { (Get-Item -LiteralPath $p).LastWriteTime = Get-Date }
@@ -65,16 +67,16 @@ function touch {
 
 # --- shell / dotfiles management ---
 # reload the current session's profile
-function reload { . $PROFILE }
+function global:reload { . $PROFILE }
 # jump to the chezmoi source dir
-function chezmoi-cd { Set-Location (chezmoi source-path) }
+function global:chezmoi-cd { Set-Location (chezmoi source-path) }
 # chezmoi apply / update, then reload (twins of the unix `cas` / `cau`)
 # cau uses --init so newly-added prompts get asked on pull (noop if none added).
-function cas { chezmoi apply @args; . $PROFILE }
-function cau { chezmoi update --init @args; . $PROFILE }
+function global:cas { chezmoi apply @args; . $PROFILE }
+function global:cau { chezmoi update --init @args; . $PROFILE }
 
 # --- run-for: time-box an external command (e.g. `run-for 5 ping example.com`) ---
-function run-for {
+function global:run-for {
     param(
         [Parameter(Mandatory)][int]$Seconds,
         [Parameter(Mandatory, ValueFromRemainingArguments)][string[]]$Command

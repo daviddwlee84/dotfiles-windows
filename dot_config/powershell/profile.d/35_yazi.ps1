@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # 35_yazi.ps1 — `y` launches yazi and cd's to wherever you quit (mirrors the
 # unix y() wrapper). No-op if yazi isn't installed.
 if (Get-Command yazi -ErrorAction SilentlyContinue) {

@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Fully isolated regression tests for dot_config/herdr/edit-config.ps1.
 # Editors and Herdr are stubbed; every config/artifact lives under TestDrive.
 

@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # ~/.config/herdr/_common.ps1
 # Source: dot_config/herdr/_common.ps1 (managed by chezmoi)
 #

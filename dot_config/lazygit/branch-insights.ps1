@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Read-only branch containment report for Lazygit. This intentionally does not
 # fetch: the report describes the remote-tracking refs currently on disk.
 [CmdletBinding()]

@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # install-fonts-machine-wide.ps1 — install the Hack Nerd Fonts machine-wide via
 # scoop global (needs admin).
 #

@@ -1,5 +1,10 @@
 # Setup
 
+The managed environment requires **PowerShell 7.4+ Core**. Only the initial
+`bootstrap.ps1` supports Windows PowerShell 5.1; it checks the resolved `pwsh`
+before running chezmoi. An existing older pwsh is not silently upgraded—upgrade
+its owning installation and retry. See [runtime and maintenance notes](powershell-maintenance.md).
+
 ## One-line install
 
 From a fresh Windows PowerShell (or PowerShell 7) session:

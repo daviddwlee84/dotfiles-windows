@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Shared Herdr agent-skill synchronizer.
 #
 # The installed binary is the version authority. `herdr --skill` emits the

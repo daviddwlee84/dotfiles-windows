@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # enable-wsl.ps1 — install WSL2, the Docker Desktop backend.
 #
 # Single source of truth, run in two contexts:
@@ -14,7 +15,7 @@
 # If the WSL app can't be downloaded (proxy / corporate firewall / GFW resets
 # the connection), we fall back to enabling the WSL2 platform features OFFLINE
 # via DISM and point at the kernel MSI. Never aborts the apply (invariant #2).
-param([switch]$Elevated)
+param([switch]$Elevated, [switch]$Unattended)
 
 $ErrorActionPreference = 'Continue'
 if (Test-Path variable:PSNativeCommandUseErrorActionPreference) { $PSNativeCommandUseErrorActionPreference = $false }
@@ -53,6 +54,14 @@ function Enable-WslFeatures {
     return $ok
 }
 
+function Invoke-WslElevation {
+    param([Parameter(Mandatory)][string]$ScriptPath)
+    # Start-Process serializes ArgumentList. Quotes are required even though the
+    # caller supplied an array before. Windows filenames cannot contain quotes.
+    Start-Process -FilePath (Join-Path $PSHOME 'pwsh.exe') -Verb RunAs -Wait -WindowStyle Hidden `
+        -ArgumentList "-NoProfile -NoLogo -NonInteractive -File `"$ScriptPath`" -Elevated -Unattended"
+}
+
 $reboot = 'WSL: a RESTART is required before Docker Desktop can use the WSL2 backend. Reboot, then start Docker Desktop.'
 $KernelMsi = 'https://wslstorestorage.blob.core.windows.net/wslblob/wsl_update_x64.msi'
 
@@ -73,7 +82,7 @@ try {
         }
         if ($LASTEXITCODE -eq 0) {
             Write-Warning $reboot
-            if ($Elevated) { $null = Read-Host 'Press Enter to close this window' }
+            if ($Elevated -and -not $Unattended) { $null = Read-Host 'Press Enter to close this window' }
             return
         }
 
@@ -95,7 +104,7 @@ try {
         }
         # Pause only in the elevated child window we spawned, so its guidance
         # stays readable; an already-elevated apply is -NonInteractive.
-        if ($Elevated) { $null = Read-Host 'Press Enter to close this window' }
+        if ($Elevated -and -not $Unattended) { $null = Read-Host 'Press Enter to close this window' }
         return
     }
 
@@ -108,13 +117,12 @@ try {
     }
     Info 'WSL needs admin — requesting elevation (approve the UAC prompt).'
     try {
-        Start-Process pwsh -Verb RunAs -Wait `
-            -ArgumentList '-NoProfile', '-NoLogo', '-File', $self, '-Elevated'
+        Invoke-WslElevation -ScriptPath $self
     } catch {
         Write-Warning "WSL install: elevation was declined or cancelled. Run 'just enable-wsl' and approve the UAC prompt (or run 'wsl --install' in an elevated pwsh). A reboot is required afterward."
         return
     }
-    Write-Warning 'WSL setup ran in the elevated window — follow the reboot / next-step guidance it printed there.'
+    Write-Warning 'WSL setup ran elevated in the background. Check wsl --status; a restart may be required before Docker Desktop can use WSL2. If setup failed, retry just enable-wsl from an admin pwsh.'
 } catch {
     Write-Warning "WSL setup failed (non-fatal): $_"
 }

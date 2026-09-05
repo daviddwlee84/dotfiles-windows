@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # 10_tools.ps1 — activate CLI tools. Each block no-ops if the tool is absent,
 # so a partial install (or the minimal role) never errors the prompt.
 #
@@ -14,7 +16,8 @@ function Import-CachedInit {
         [Parameter(Mandatory)][string]$Name,
         [Parameter(Mandatory)][string]$Exe,
         [Parameter(Mandatory)][scriptblock]$Generate,
-        [string]$RevisionStamp = ''
+        [string]$RevisionStamp = '',
+        [switch]$RetainScope
     )
     $cmd = Get-Command $Exe -ErrorAction SilentlyContinue
     if (-not $cmd) { return }
@@ -34,7 +37,27 @@ function Import-CachedInit {
             Set-Content -LiteralPath $stampFile -Value $stamp -Encoding utf8
         } catch { return }
     }
-    try { . $cacheFile } catch { Write-Warning "profile: cached init '$Name' failed: $_" }
+    try {
+        if ($RetainScope) {
+            # Completions often reference plain functions and $script: state.
+            # Dot-sourcing inside this helper discards those on return. Keep a
+            # module session state instead, including for function-scoped reload.
+            # Only remove our own module; never rewrite generated init source.
+            $moduleName = 'DotfilesInit_' + ($Name -replace '[^a-zA-Z0-9_]', '_')
+            Get-Module -Name $moduleName | Where-Object Description -EQ 'Managed dotfiles init cache' |
+                Remove-Module -Force
+            $module = New-Module -Name $moduleName -ArgumentList $cacheFile -ScriptBlock {
+                param($InitPath)
+                . $InitPath
+                Export-ModuleMember -Function * -Alias *
+            }
+            $module.Description = 'Managed dotfiles init cache'
+            Import-Module $module -Global -Force -DisableNameChecking
+        } else {
+            # Prompt integrations (e.g. zoxide) explicitly manage global hooks.
+            . $cacheFile
+        }
+    } catch { Write-Warning "profile: cached init '$Name' failed: $_" }
 }
 
 # starship prompt
@@ -70,7 +93,7 @@ Import-CachedInit -Name 'direnv' -Exe 'direnv' -Generate { direnv hook pwsh }
 # value `powershell` -> `power-shell`; older builds used `powershell`. Try the
 # new spelling first, fall back, and only cache non-empty output so a version
 # mismatch never errors the prompt.
-Import-CachedInit -Name 'tv' -Exe 'tv' -Generate {
+Import-CachedInit -Name 'tv' -Exe 'tv' -RetainScope -Generate {
     $o = tv init power-shell 2>$null | Out-String
     if (-not $o.Trim()) { $o = tv init powershell 2>$null | Out-String }
     $o
@@ -81,14 +104,14 @@ Import-CachedInit -Name 'tv' -Exe 'tv' -Generate {
 # generated completer is retargeted to the collision-free `dev-cli` alias from
 # 20_aliases.ps1.
 $devCliExe = Join-Path $HOME '.local\bin\dev.exe'
-Import-CachedInit -Name 'dev-cli' -Exe $devCliExe -Generate {
+Import-CachedInit -Name 'dev-cli' -Exe $devCliExe -RetainScope -Generate {
     (& $devCliExe completion powershell) -replace "-CommandName 'dev'", "-CommandName 'dev-cli'"
 }
 
 # translate — cobra tab-completion for the terminal translator (opt-in
 # installTranslate; built by run_onchange_after_10_packages). The pwsh
 # counterpart of the parent repo's scripts/generate_completions.sh entry.
-Import-CachedInit -Name 'translate' -Exe 'translate' -Generate { translate completion powershell }
+Import-CachedInit -Name 'translate' -Exe 'translate' -RetainScope -Generate { translate completion powershell }
 
 # pia — PowerShell completion for commands, flags, and Git-managed combo IDs.
 # The launcher itself rarely changes, so include the checkout commit in the
@@ -116,6 +139,6 @@ $piaRevisionStamp = try {
         }
     }
 } catch { '' }
-Import-CachedInit -Name 'pia' -Exe $piaExe -RevisionStamp $piaRevisionStamp -Generate {
+Import-CachedInit -Name 'pia' -Exe $piaExe -RevisionStamp $piaRevisionStamp -RetainScope -Generate {
     & $piaExe completion powershell
 }

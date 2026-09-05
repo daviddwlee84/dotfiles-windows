@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Shared process-only PATH precedence for profile and no-profile package runs.
 # This file reads persisted PATH values but never writes them; its only mutation
 # is the current process's $env:PATH.

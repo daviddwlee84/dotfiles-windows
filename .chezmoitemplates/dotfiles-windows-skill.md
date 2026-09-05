@@ -6,7 +6,8 @@ description: Operate and navigate THIS Windows machine's chezmoi-managed dotfile
 # dotfiles-windows
 
 This machine's `$HOME` is managed by a **chezmoi** dotfiles repo targeting **native
-Windows + PowerShell 7**. Packages install via **scoop** (CLI) + **winget** (GUI) —
+Windows + PowerShell 7.4+ Core** (only bootstrap supports Windows PowerShell 5.1).
+Packages install via **scoop** (CLI) + **winget** (GUI) —
 there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-windows>.
 (macOS/Linux/WSL are handled by the separate `daviddwlee84/dotfiles` repo.)
 
@@ -24,6 +25,7 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 - Fragments: `00_env` (PATH/XDG/env), `10_tools` (starship, zoxide, atuin,
   fzf, direnv, tv, dev/translate completions), `20_aliases` (`ll`/`gs`/`reload`/`cas`/`cau`/`chezmoi-cd`/`run-for`),
   `22_git_windows` (`git-windows-doctor` / `gwinfix` cross-platform checkout diagnostics and safe symlink repair),
+  `24_appsrc` (lazy, read-only CLI source/duplicate inspection: `appsrc lazygit`, `appsrc scan -Conflicts`, `-Json`),
   `25_herdr` (`hvibe`/`hcode`/`hhere`/`hroot`/`hmark` workspace helpers, gated on herdr),
   `30_apps` (`applaunch`/`appquit`/`apprestart`/`sysvol`/`sysmute`/`x`), `35_yazi` (`y`),
   `40_copilot` (imports the Copilot module), `90_psreadline` (vi-mode gated on `enableVimMode`).
@@ -105,6 +107,15 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 (the x86-Linux+KVM Windows-in-Docker test harness — see `docker/windows/`).
 
 ## Gotchas
+- PowerShell version guards, retained completion scope, and native argument rules
+  are documented in `docs/powershell-maintenance.md` and enforced by
+  `tests/PowerShellRuntime.Tests.ps1`. Do not make the modern runtime 5.1-compatible.
+- `appsrc` never uninstalls or invokes inspected binaries. Persisted PATH is only
+  a simulation, not the environment of a running GUI/Herdr server. See `docs/appsrc.md`.
+- Herdr `prefix+G` uses a dedicated no-profile pwsh launcher that loads the
+  managed environment and holds errors with LazyGit/Git path diagnostics. It
+  avoids the custom command's inherited Chocolatey-first PATH without restarting
+  the server. `HERDR_RUN_HOLD=fail` is the default; `always`/`never` are supported.
 - Windows-only repo — no `{{ "{{" }} if eq .chezmoi.os {{ "}}" }}` branching needed.
 - Editor settings use a `run_onchange` pwsh merger (not `modify_`) on Windows.
 - **Pi / pia / OMP ownership**: Pi is the canonical

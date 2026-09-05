@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Copilot.psm1 — GitHub Copilot agent gateway for Claude Code and Codex, native
 # PowerShell port of the POSIX 43_copilot_proxy.sh / 44_copilot_embed.sh.
 #

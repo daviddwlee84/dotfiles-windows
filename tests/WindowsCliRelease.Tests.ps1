@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 BeforeAll {
     . (Join-Path $PSScriptRoot '../scripts/windows-cli-release.ps1')
 }

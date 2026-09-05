@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Microsoft.PowerShell_profile.ps1 — managed by chezmoi (Windows dotfiles).
 #
 # Thin loader: dot-sources every fragment in ~/.config/powershell/profile.d in

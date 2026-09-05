@@ -1,4 +1,6 @@
 #!/usr/bin/env pwsh
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # ~/.gitconfig overlay.
 #
 # chezmoi pipes the CURRENT target file into stdin and takes the new contents
@@ -19,7 +21,7 @@ $ErrorActionPreference = 'Stop'
 
 # The merge engine, inlined at render time. scripts/ is chezmoi-ignored, so this
 # is source-only -- same pattern as the editors/ overlay sources.
-{{ include "scripts/gitconfig-merge.ps1" }}
+{{ include "scripts/gitconfig-merge.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 
 $baseline = @'
 {{ template "git/gitconfig" . }}

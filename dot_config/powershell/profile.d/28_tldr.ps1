@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # 28_tldr.ps1 — tldr language-preference helper.
 #
 # Native PowerShell port of the cross-platform dot_config/shell/28_tldr.sh.

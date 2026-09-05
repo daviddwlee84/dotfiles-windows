@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # 21_git.ps1 — the oh-my-zsh `git` plugin, ported to native PowerShell functions.
 #
 # Mirrors ~/.oh-my-zsh/plugins/git (the same alias set the companion macOS/Linux
@@ -25,12 +27,12 @@
 # explicitly further down.
 
 # --- branch helpers (ports of omz git_current_branch / _main_branch / _develop_branch) ---
-function git_current_branch {
+function global:git_current_branch {
     $ref = git symbolic-ref --quiet --short HEAD 2>$null
     if ($LASTEXITCODE -ne 0) { $ref = git rev-parse --short HEAD 2>$null }
     $ref
 }
-function git_main_branch {
+function global:git_main_branch {
     git rev-parse --git-dir *> $null
     if ($LASTEXITCODE -ne 0) { return }
     foreach ($loc in 'refs/heads', 'refs/remotes/origin', 'refs/remotes/upstream') {
@@ -41,7 +43,7 @@ function git_main_branch {
     }
     'master'
 }
-function git_develop_branch {
+function global:git_develop_branch {
     git rev-parse --git-dir *> $null
     if ($LASTEXITCODE -ne 0) { return }
     foreach ($name in 'dev', 'devel', 'development') {
@@ -213,83 +215,83 @@ foreach ($name in $GitAliases.Keys) {
 }
 
 # --- dynamic: literal `@{upstream}` (must be quoted so pwsh doesn't parse a hashtable) ---
-function gdup { git diff '@{upstream}' @args }
+function global:gdup { git diff '@{upstream}' @args }
 
 # --- dynamic: pretty-format graph logs (single-quoted format; --all/--stat/date variants) ---
-function glol  { git log --graph --pretty='%Cred%h%Creset -%C(auto)%d%Creset %s %Cgreen(%ar) %C(bold blue)<%an>%Creset' @args }
-function glola { glol --all @args }
-function glols { glol --stat @args }
-function glod  { git log --graph --pretty='%Cred%h%Creset -%C(auto)%d%Creset %s %Cgreen(%ad) %C(bold blue)<%an>%Creset' @args }
-function glods { glod --date=short @args }
-function glp   { param([string]$Format) if ($Format) { git log --pretty=$Format } }
+function global:glol  { git log --graph --pretty='%Cred%h%Creset -%C(auto)%d%Creset %s %Cgreen(%ar) %C(bold blue)<%an>%Creset' @args }
+function global:glola { glol --all @args }
+function global:glols { glol --stat @args }
+function global:glod  { git log --graph --pretty='%Cred%h%Creset -%C(auto)%d%Creset %s %Cgreen(%ad) %C(bold blue)<%an>%Creset' @args }
+function global:glods { glod --date=short @args }
+function global:glp   { param([string]$Format) if ($Format) { git log --pretty=$Format } }
 
 # --- dynamic: operate on the main / develop / current branch ---
-function gcd   { git checkout (git_develop_branch) @args }
-function gswd  { git switch (git_develop_branch) @args }
-function gswm  { git switch (git_main_branch) @args }
-function grbd  { git rebase (git_develop_branch) @args }
-function grbm  { git rebase (git_main_branch) @args }
-function grbom { git rebase "origin/$(git_main_branch)" @args }
-function grbum { git rebase "upstream/$(git_main_branch)" @args }
-function gmom  { git merge "origin/$(git_main_branch)" @args }
-function gmum  { git merge "upstream/$(git_main_branch)" @args }
-function gprom  { git pull --rebase origin (git_main_branch) @args }
-function gpromi { git pull --rebase=interactive origin (git_main_branch) @args }
-function gprum  { git pull --rebase upstream (git_main_branch) @args }
-function gprumi { git pull --rebase=interactive upstream (git_main_branch) @args }
-function gluc  { git pull upstream (git_current_branch) @args }
-function glum  { git pull upstream (git_main_branch) @args }
-function ggsup { git branch --set-upstream-to="origin/$(git_current_branch)" @args }
-function gpsup { git push --set-upstream origin (git_current_branch) @args }
-function groh  { git reset "origin/$(git_current_branch)" --hard @args }
+function global:gcd   { git checkout (git_develop_branch) @args }
+function global:gswd  { git switch (git_develop_branch) @args }
+function global:gswm  { git switch (git_main_branch) @args }
+function global:grbd  { git rebase (git_develop_branch) @args }
+function global:grbm  { git rebase (git_main_branch) @args }
+function global:grbom { git rebase "origin/$(git_main_branch)" @args }
+function global:grbum { git rebase "upstream/$(git_main_branch)" @args }
+function global:gmom  { git merge "origin/$(git_main_branch)" @args }
+function global:gmum  { git merge "upstream/$(git_main_branch)" @args }
+function global:gprom  { git pull --rebase origin (git_main_branch) @args }
+function global:gpromi { git pull --rebase=interactive origin (git_main_branch) @args }
+function global:gprum  { git pull --rebase upstream (git_main_branch) @args }
+function global:gprumi { git pull --rebase=interactive upstream (git_main_branch) @args }
+function global:gluc  { git pull upstream (git_current_branch) @args }
+function global:glum  { git pull upstream (git_main_branch) @args }
+function global:ggsup { git branch --set-upstream-to="origin/$(git_current_branch)" @args }
+function global:gpsup { git push --set-upstream origin (git_current_branch) @args }
+function global:groh  { git reset "origin/$(git_current_branch)" --hard @args }
 
 # --- dynamic: push/pull to a branch (defaults to the current branch, omz ggX family) ---
-function ggl { $b = if ($args.Count) { $args[0] } else { git_current_branch }; git pull origin $b }
-function ggp { $b = if ($args.Count) { $args[0] } else { git_current_branch }; git push origin $b }
-function ggf { $b = if ($args.Count) { $args[0] } else { git_current_branch }; git push --force origin $b }
-function ggfl { $b = if ($args.Count) { $args[0] } else { git_current_branch }; git push --force-with-lease origin $b }
-function ggu { $b = if ($args.Count) { $args[0] } else { git_current_branch }; git pull --rebase origin $b }
-function ggpnp { ggl @args; if ($LASTEXITCODE -eq 0) { ggp @args } }
+function global:ggl { $b = if ($args.Count) { $args[0] } else { git_current_branch }; git pull origin $b }
+function global:ggp { $b = if ($args.Count) { $args[0] } else { git_current_branch }; git push origin $b }
+function global:ggf { $b = if ($args.Count) { $args[0] } else { git_current_branch }; git push --force origin $b }
+function global:ggfl { $b = if ($args.Count) { $args[0] } else { git_current_branch }; git push --force-with-lease origin $b }
+function global:ggu { $b = if ($args.Count) { $args[0] } else { git_current_branch }; git pull --rebase origin $b }
+function global:ggpnp { ggl @args; if ($LASTEXITCODE -eq 0) { ggp @args } }
 Set-Alias -Name ggpur -Value ggu -Scope Global
-function ggpull { git pull origin (git_current_branch) @args }
-function ggpush { git push origin (git_current_branch) @args }
+function global:ggpull { git pull origin (git_current_branch) @args }
+function global:ggpush { git push origin (git_current_branch) @args }
 
 # --- dynamic: multi-step / `&&` chains ---
-function gpristine { git reset --hard && git clean --force -dfx }
-function gwipe     { git reset --hard && git clean --force -df }
-function gpoat     { git push origin --all && git push origin --tags }
-function grt {
+function global:gpristine { git reset --hard && git clean --force -dfx }
+function global:gwipe     { git reset --hard && git clean --force -df }
+function global:gpoat     { git push origin --all && git push origin --tags }
+function global:grt {
     $top = git rev-parse --show-toplevel 2>$null
     if ($top) { Set-Location $top } else { Set-Location . }
 }
-function gdct { git describe --tags (git rev-list --tags --max-count=1) @args }
-function gtv  { git tag --sort=version:refname @args }   # omz `git tag | sort -V`
-function gtl  { param([string]$Prefix) git tag --sort=-v:refname -n --list "$Prefix*" }
-function gdnolock { git diff @args ':(exclude)package-lock.json' ':(exclude)*.lock' }
-function gfg { git ls-files | Select-String @args }
-function gignored { git ls-files -v | Select-String -CaseSensitive '^[a-z]' }
+function global:gdct { git describe --tags (git rev-list --tags --max-count=1) @args }
+function global:gtv  { git tag --sort=version:refname @args }   # omz `git tag | sort -V`
+function global:gtl  { param([string]$Prefix) git tag --sort=-v:refname -n --list "$Prefix*" }
+function global:gdnolock { git diff @args ':(exclude)package-lock.json' ':(exclude)*.lock' }
+function global:gfg { git ls-files | Select-String @args }
+function global:gignored { git ls-files -v | Select-String -CaseSensitive '^[a-z]' }
 
 # --- dynamic: work-in-progress stash helpers ---
-function gwip {
+function global:gwip {
     git add -A
     $deleted = git ls-files --deleted
     if ($deleted) { git rm -- $deleted 2>$null }
     git commit --no-verify --no-gpg-sign --message '--wip-- [skip ci]'
 }
-function gunwip {
+function global:gunwip {
     $subject = git rev-list --max-count=1 --format='%s' HEAD 2>$null
     if ($subject -match '--wip--') { git reset HEAD~1 }
 }
 
 # --- dynamic: branch housekeeping ---
-function gbg { git branch -vv | Select-String ': gone]' }
-function gbgd {
+function global:gbg { git branch -vv | Select-String ': gone]' }
+function global:gbgd {
     git branch --no-color -vv | Select-String ': gone]' | ForEach-Object {
         $name = ($_.Line.Trim() -split '\s+')[0]
         if ($name -and $name -ne '*') { git branch -d $name }
     }
 }
-function gbda {
+function global:gbda {
     $main = git_main_branch
     $dev = git_develop_branch
     git branch --no-color --merged |
@@ -297,14 +299,14 @@ function gbda {
         Where-Object { $_ -and $_ -notmatch '^[+*]' -and $_ -ne $main -and $_ -ne $dev } |
         ForEach-Object { git branch --delete $_ 2>$null }
 }
-function grename {
+function global:grename {
     param([string]$Old, [string]$New)
     if (-not $Old -or -not $New) { Write-Host 'Usage: grename <old_branch> <new_branch>'; return }
     git branch -m $Old $New
     git push origin :$Old
     if ($LASTEXITCODE -eq 0) { git push --set-upstream origin $New }
 }
-function gccd {
+function global:gccd {
     git clone --recurse-submodules @args
     if ($LASTEXITCODE -ne 0) { return }
     $target = ($args[-1] -replace '\.git/?$', '') -replace '.*[/:]', ''
@@ -312,8 +314,8 @@ function gccd {
 }
 
 # --- dynamic: gitk launchers (GUI; no-op if gitk isn't installed) ---
-function gk  { Start-Process gitk -ArgumentList '--all', '--branches' }
-function gke {
+function global:gk  { Start-Process gitk -ArgumentList '--all', '--branches' }
+function global:gke {
     $revs = git log --walk-reflogs --pretty=%h
     Start-Process gitk -ArgumentList (@('--all') + $revs)
 }

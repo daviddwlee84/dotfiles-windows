@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # 96_ssh_setup.ps1 — interactive SSH key setup for remote machines.
 #
 # Native pwsh counterpart of the Unix repo's dot_config/shell/96_ssh_setup.sh,

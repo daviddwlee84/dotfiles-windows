@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # run_onchange_after_03_xdg_env.ps1 — persist the XDG base-dir env vars to the
 # User environment so ~/.config is authoritative for XDG-aware tools (Neovim,
 # lazygit, starship, yazi, atuin, zoxide) even when launched OUTSIDE a pwsh

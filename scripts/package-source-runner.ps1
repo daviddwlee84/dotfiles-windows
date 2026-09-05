@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Corporate-first package command runner. Public fallback is explicit, bounded,
 # source-isolated, and limited to transient failures; it never changes the parent
 # process environment or persistent npm/uv configuration.

@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Pester coverage for the testable OpenSSH Server bootstrap.
 
 BeforeAll {

@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # ~/.config/herdr/run-command.ps1
 # Source: dot_config/herdr/run-command.ps1 (managed by chezmoi)
 #

@@ -395,8 +395,15 @@ function Get-PwshRuntime {
     if ([string]$data.PSEdition -ne 'Core') {
         throw "PowerShell candidate '$Path' is PSEdition '$($data.PSEdition)'; Core is required."
     }
-    if ($major -lt 7) {
-        throw "PowerShell candidate '$Path' is version '$($data.Version)'; version 7 or newer is required."
+    $runtimeVersion = $null
+    # Compare the full version, not just Major: modern scripts depend on the
+    # .NET 8 / native-argument baseline. This probe itself remains 5.1-compatible.
+    $numericVersion = ([string]$data.Version -split '[-+]', 2)[0]
+    if (-not [version]::TryParse($numericVersion, [ref]$runtimeVersion)) {
+        throw "PowerShell candidate '$Path' returned an invalid version '$($data.Version)'."
+    }
+    if ($runtimeVersion -lt [version]'7.4') {
+        throw "PowerShell candidate '$Path' is version '$($data.Version)'; version 7.4 or newer is required. Upgrade the owning installation (for Scoop: scoop update pwsh), open a new terminal, then retry bootstrap."
     }
 
     [pscustomobject]@{

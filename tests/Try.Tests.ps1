@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Pester tests for the try fragment (profile.d/32_try.ps1).
 #
 # The translator (`_Try-ParsePosixArgs` / `_Try-InvokeEmitted`) is defined

@@ -5,6 +5,10 @@
 
 ## Profile 載入
 
+受管腳本需要 PowerShell 7.4+ Core。[PowerShell 維護筆記](powershell-maintenance.md)
+記錄版本 guard、reload／補全 scope、參數引號與本次暫緩的檢查項目。
+執行檔版本衝突可以用 [`appsrc`](appsrc.md) 檢查。
+
 `$PROFILE`（`~/Documents/PowerShell/Microsoft.PowerShell_profile.ps1`）是一個
 很薄的 loader。它依排序（數字前綴）dot-source `~/.config/powershell/profile.d/*.ps1`
 底下每個片段,最後再載入你未被追蹤的 `local.ps1`。邏輯全放在片段裡,loader
@@ -232,6 +236,15 @@ cmdlet 時請用完整名稱。
 執行（讓 `cd` 真的移動這個 shell）。
 
 ## herdr workspace 輔助指令（`hvibe` / `hcode` / …）
+
+`prefix+G` 透過專用的 `pwsh -NoProfile -File` helper 開啟 LazyGit。
+Herdr 的 Windows custom command 原本使用 `cmd /d /c`，不受
+`terminal.default_shell = "pwsh"` 控制，且會繼承長期運行 server 的 PATH。
+helper 只載入受管環境片段，在套用既有 PATH 政策後解析 LazyGit／Git，
+並使用焦點 pane 的 cwd，不載入完整 profile。成功退出就關閉 pane；失敗時
+顯示 cwd、執行檔路徑及退出碼，等待 Enter。預設 `HERDR_RUN_HOLD=fail`，
+也可選 `always` 或 `never`；stdin 被重導向時不等待。
+這項 launcher 修改不需要重啟 server，也不需要先移除 Chocolatey。
 
 安裝了可選的 **herdr** 多工器後，`profile.d/25_herdr.ps1` 會加入 macOS/Linux
 dotfiles 那份 `24_herdr.sh` 輔助指令的 PowerShell 對應版本 —— 同樣的手感，用來快速

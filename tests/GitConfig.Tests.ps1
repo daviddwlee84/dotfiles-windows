@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Tests for the ~/.gitconfig overlay merge engine.
 #
 # The engine lives in scripts/gitconfig-merge.ps1 as a real .ps1 precisely so it

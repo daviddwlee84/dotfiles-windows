@@ -7,6 +7,44 @@ on:
   workflow_dispatch:
 
 jobs:
+  minimum-pwsh:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch verified PowerShell 7.4 maintenance runtime
+        shell: pwsh
+        run: |
+          $version = '7.4.19'
+          $archive = "PowerShell-$version-win-x64.zip"
+          $base = "https://github.com/PowerShell/PowerShell/releases/download/v$version"
+          $zip = Join-Path $env:RUNNER_TEMP $archive
+          $runtime = Join-Path $env:RUNNER_TEMP 'pwsh74'
+          Invoke-WebRequest "$base/$archive" -OutFile $zip -TimeoutSec 120
+          $checksumFile = Join-Path $env:RUNNER_TEMP 'pwsh74-hashes.sha256'
+          Invoke-WebRequest "$base/hashes.sha256" -OutFile $checksumFile -TimeoutSec 45
+          # Official 7.4 checksums are UTF-16LE with BOM, not UTF-8.
+          $hashes = [IO.File]::ReadAllText($checksumFile)
+          $line = @($hashes -split "`n" | Where-Object { $_ -match ([regex]::Escape($archive) + '\s*$') })
+          if ($line.Count -ne 1 -or $line[0] -notmatch '^([0-9a-fA-F]{64})\s+') { throw 'Missing or ambiguous archive checksum' }
+          if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne $Matches[1]) { throw 'PowerShell archive checksum mismatch' }
+          Expand-Archive -LiteralPath $zip -DestinationPath $runtime
+          $runtime >> $env:GITHUB_PATH
+          "DOTFILES_MINIMUM_PWSH=$runtime/pwsh.exe" >> $env:GITHUB_ENV
+      - name: Minimum runtime contracts and focused regressions
+        shell: pwsh
+        run: |
+          & $env:DOTFILES_MINIMUM_PWSH -NoProfile -NonInteractive -Command {
+            if ($PSVersionTable.PSVersion.Major -ne 7 -or $PSVersionTable.PSVersion.Minor -ne 4) { throw 'Wrong minimum runtime' }
+            Install-Module Pester -Force -Scope CurrentUser -SkipPublisherCheck
+            $result = Invoke-Pester -PassThru -Output Detailed -Path @(
+              './tests/AppSource.Tests.ps1', './tests/PowerShellRuntime.Tests.ps1',
+              './tests/PowerShellInitCache.Tests.ps1', './tests/Bootstrap.Tests.ps1',
+              './tests/GitAliases.Tests.ps1', './tests/HerdrLazyGit.Tests.ps1'
+            )
+            if ($result.FailedCount -or $result.FailedContainersCount) { exit 1 }
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'PowerShell 7.4 regressions failed' }
+
   validate:
     runs-on: windows-latest
     steps:

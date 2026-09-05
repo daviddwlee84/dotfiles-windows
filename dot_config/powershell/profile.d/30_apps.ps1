@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # 30_apps.ps1 — app control, system audio, and clipboard helpers. Native
 # PowerShell equivalents of the macOS/Linux app*/sys*/x helpers, same verb names.
 

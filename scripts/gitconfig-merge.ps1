@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Merge engine for the managed ~/.gitconfig overlay.
 #
 # Dot-source it in tests; it is also embedded verbatim into

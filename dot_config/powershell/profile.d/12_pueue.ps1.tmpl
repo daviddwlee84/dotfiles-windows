@@ -1,8 +1,10 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # 12_pueue.ps1 — silently ensure the per-user command queue daemon is ready.
 # Elevated package applies install Pueue's built-in Windows service; this is the
 # no-admin fallback and also recovers from a daemon that exited unexpectedly.
 
-{{ include "scripts/pueue-bootstrap.ps1" }}
+{{ include "scripts/pueue-bootstrap.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 
 $pueuePreviousNativeExitCode = $global:LASTEXITCODE
 try {

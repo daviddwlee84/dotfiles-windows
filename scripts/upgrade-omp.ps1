@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'omp-install-core.ps1')

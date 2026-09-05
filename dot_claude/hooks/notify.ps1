@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # notify.ps1 — Claude Code notification hook -> Windows toast via apprise.
 #
 # Native-pwsh port of the parent (macOS/Linux) repo's dot_claude/hooks/notify.sh.

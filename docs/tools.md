@@ -6,6 +6,9 @@ tools; **winget** handles GUI apps.
 
 ## CLI tools (scoop)
 
+The repo also provides [`appsrc`](appsrc.md), a native PowerShell helper for
+read-only CLI provenance and duplicate-installation checks. It requires no extra package.
+
 | Tool | Purpose |
 |---|---|
 | git, gh, glab | version control + GitHub / GitLab CLIs |

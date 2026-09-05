@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # bootstrap-wsl-dotfiles.ps1 — run the cross-platform dotfiles bootstrap
 # (github.com/daviddwlee84/dotfiles) inside an EXISTING WSL distro, headless.
 #

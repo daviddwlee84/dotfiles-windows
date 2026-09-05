@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Shared Pi npm package lifecycle. The apply-time installer includes this file
 # verbatim; the explicit upgrade command dot-sources it.
 

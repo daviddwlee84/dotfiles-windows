@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # 25_herdr.ps1 — herdr workspace layout helpers (PowerShell port of the POSIX
 # repo's dot_config/shell/24_herdr.sh). herdr's model is Workspace -> Tab -> Pane
 # and its CLI (`herdr workspace|tab|pane|session …`) is the scripting surface that

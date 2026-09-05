@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 BeforeAll {
     $RepoRoot = Split-Path -Parent $PSScriptRoot
     $TemplatePath = Join-Path $RepoRoot '.chezmoiscripts/run_onchange_after_25_claude_settings.ps1.tmpl'

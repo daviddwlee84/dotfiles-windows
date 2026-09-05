@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # run_onchange_after_46_wsl_ubuntu.ps1.tmpl — register a WSL2 Ubuntu distro and
 # bootstrap the cross-platform dotfiles during `chezmoi apply` when the
 # installWslUbuntu toggle is on. No-op otherwise. The logic lives once in
@@ -13,5 +14,5 @@ $WslName   = {{ .name | quote }}
 $WslEmail  = {{ .email | quote }}
 $WslMirror = "{{ .useChineseMirror }}"
 $WslMode   = {{ .wslUbuntuBootstrap | quote }}
-{{ include "scripts/enable-wsl-ubuntu.ps1" }}
+{{ include "scripts/enable-wsl-ubuntu.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 {{ end -}}

@@ -1,4 +1,6 @@
 #!/usr/bin/env pwsh
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # chezmoi modify_ script: overlay a managed herdr config onto ~/.config/herdr/config.toml.
 #
 # Runs under pwsh via [interpreters.ps1] in .chezmoi.toml.tmpl. chezmoi pipes the
@@ -45,7 +47,7 @@ $ErrorActionPreference = 'Stop'
 {{ template "package-sources.ps1" . }}
 $managedMachine = {{ if .managedMachine }}$true{{ else }}$false{{ end }}
 $allowPublicPackageFallback = {{ if (get . "allowPublicPackageFallback") }}$true{{ else }}$false{{ end }}
-{{ include "scripts/package-source-runner.ps1" }}
+{{ include "scripts/package-source-runner.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 
 # Emit bytes verbatim so nothing re-encodes the config's ⭐ / box-drawing glyphs
 # and no BOM or trailing CRLF churn creeps into chezmoi's diff.

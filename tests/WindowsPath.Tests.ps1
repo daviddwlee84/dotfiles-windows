@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 
 BeforeAll {
     $RepoRoot = Split-Path -Parent $PSScriptRoot
@@ -100,7 +101,7 @@ Describe 'Windows PATH entry normalization' {
 Describe 'profile and no-profile package integration' {
     It 'includes and calls the shared helper before profile command resolution' {
         $source = Get-Content -Raw -LiteralPath $ProfileTemplate
-        $include = $source.IndexOf('{{ include "scripts/windows-path-precedence.ps1" }}')
+        $include = $source.IndexOf('{{ include "scripts/windows-path-precedence.ps1" | replace ')
         $call = $source.IndexOf('Set-WindowsPathPrecedence -ManagedPaths $ProfilePaths')
         $commandLookup = $source.IndexOf('Get-Command nvim')
         $profilePaths = $source.IndexOf('$ProfilePaths = @(')
@@ -118,7 +119,7 @@ Describe 'profile and no-profile package integration' {
 
     It 'normalizes a direct no-profile package run before command lookup and after Scoop writes PATH' {
         $source = Get-Content -Raw -LiteralPath $PackagesTemplate
-        $include = $source.IndexOf('{{ include "scripts/windows-path-precedence.ps1" }}')
+        $include = $source.IndexOf('{{ include "scripts/windows-path-precedence.ps1" | replace ')
         $firstCall = $source.IndexOf('Set-WindowsPathPrecedence')
         $have = $source.IndexOf('function Have')
 
