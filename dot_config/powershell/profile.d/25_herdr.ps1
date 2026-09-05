@@ -31,10 +31,15 @@
 # Skip entirely if herdr isn't installed (opt-in tool, not on every host).
 if (-not (Get-Command herdr -ErrorAction SilentlyContinue)) { return }
 
+# These functions are deliberately global. `reload`, `cas`, and `cau` dot-source
+# $PROFILE from inside their own function scope; without an explicit global scope
+# the functions below disappear when that wrapper returns, while the global aliases
+# at the end survive and point at missing commands (for example hhere -> herdr-here).
+
 # ── Internal helpers ────────────────────────────────────────────────────────
 
 # Parse herdr JSON output; return $null on empty/invalid instead of throwing.
-function _herdr_json {
+function global:_herdr_json {
     param([string]$Text)
     if (-not $Text) { return $null }
     try { $Text | ConvertFrom-Json -ErrorAction Stop } catch { $null }
@@ -42,7 +47,7 @@ function _herdr_json {
 
 # git top-level (forward-slash path even on Windows); empty outside a repo.
 # $Target, if given, resolves the root as seen from that directory.
-function _herdr_git_root {
+function global:_herdr_git_root {
     param([string]$Target)
     if ($Target) { git -C $Target rev-parse --show-toplevel 2>$null }
     else         { git rev-parse --show-toplevel 2>$null }
@@ -50,7 +55,7 @@ function _herdr_git_root {
 
 # Workspace-label sanitizer: herdr/tmux forbid '.' and ':'; whitespace too.
 # '/' is kept (labels like vibe/<repo> use it). Mirrors _sesh_sanitize.
-function _herdr_sanitize {
+function global:_herdr_sanitize {
     param([string]$Text)
     $Text -replace '[.:\s]', '-'
 }
@@ -59,7 +64,7 @@ function _herdr_sanitize {
 # fall back to raw. $Mode is auto|never (--no-specstory sets never). On Windows
 # there is no specstory CLI, so unless it's actually installed we always return
 # the raw agent — future-proofed for `just specstory-build`.
-function _herdr_wrap_agent {
+function global:_herdr_wrap_agent {
     param([string]$Agent, [string]$Mode = 'auto')
     if ($Mode -eq 'never' -or -not (Get-Command specstory -ErrorAction SilentlyContinue)) {
         if ($Agent) { return $Agent } else { return 'claude' }
@@ -73,7 +78,7 @@ function _herdr_wrap_agent {
 }
 
 # UTF-16LE base64 for `pwsh -EncodedCommand` (no spaces/quotes to escape).
-function _herdr_encode {
+function global:_herdr_encode {
     param([string]$Script)
     [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($Script))
 }
@@ -82,7 +87,7 @@ function _herdr_encode {
 # command string. shell = run once then drop to an interactive prompt (pane
 # stays); restart = respawn loop; kill = run raw (pane closes on exit). The
 # try/finally is the pwsh analog of the Unix `trap '' INT`.
-function _herdr_on_exit_wrap {
+function global:_herdr_on_exit_wrap {
     param([string]$Inner, [string]$Mode, [string]$Label = 'agent')
     switch ($Mode) {
         'kill' { return $Inner }
@@ -100,7 +105,7 @@ function _herdr_on_exit_wrap {
 }
 
 # specstory-wrap + on-exit-wrap for one agent pane (label = agent name).
-function _herdr_agent_cmd {
+function global:_herdr_agent_cmd {
     param([string]$Agent, [string]$Mode, [string]$OnExit)
     $inner = _herdr_wrap_agent -Agent $Agent -Mode $Mode
     $label = if ($Agent) { $Agent } else { 'agent' }
@@ -108,7 +113,7 @@ function _herdr_agent_cmd {
 }
 
 # workspace_id of an existing workspace labeled $Label (else $null). Idempotency.
-function _herdr_ws_by_label {
+function global:_herdr_ws_by_label {
     param([string]$Label)
     $json = _herdr_json -Text ((herdr workspace list 2>$null) | Out-String)
     if (-not $json) { return $null }
@@ -117,7 +122,7 @@ function _herdr_ws_by_label {
 
 # Create a labeled tab in workspace $Ws (cwd $Cwd) and run $Command in its root
 # pane. `tab create` returns the new pane id at .result.root_pane.pane_id.
-function _herdr_tool_tab {
+function global:_herdr_tool_tab {
     param([string]$Ws, [string]$Cwd, [string]$Label, [string]$Command)
     $json = _herdr_json -Text ((herdr tab create --workspace $Ws --cwd $Cwd --label $Label --no-focus 2>$null) | Out-String)
     $pane = if ($json) { $json.result.root_pane.pane_id }
@@ -128,7 +133,7 @@ function _herdr_tool_tab {
 # running (validated via `herdr session list --json`); the caller scopes
 # $env:HERDR_SESSION around its herdr calls. No arg -> ambient session inside
 # herdr, else "default". Returns $null (after printing) on a bad explicit name.
-function _herdr_resolve_session {
+function global:_herdr_resolve_session {
     param([string]$Want)
     if ($Want) {
         $json = _herdr_json -Text ((herdr session list --json 2>$null) | Out-String)
@@ -148,14 +153,14 @@ function _herdr_resolve_session {
 # Bring up a client attached to the session when run from OUTSIDE herdr, so the
 # just-created workspace is visible. Inside herdr ($env:HERDR_ENV set) the focus
 # calls already moved the live client, so this is a no-op.
-function _herdr_attach_if_outside {
+function global:_herdr_attach_if_outside {
     param([string]$Session = 'default')
     if ($env:HERDR_ENV) { return }
     if ($Session -eq 'default') { herdr } else { herdr session attach $Session }
 }
 
 # ── hvibe: parametric multi-agent pack ──────────────────────────────────────
-function herdr-vibe {
+function global:herdr-vibe {
     $target = ''; $noAttach = $false; $onExit = 'shell'; $specstory = 'auto'; $sessionArg = ''
     $nAgents = 0; $nAgentsSet = $false; $agentCli = 'claude'; $agentsCsv = ''; $tabPerAgent = $false
     $minWidth = if ($env:HVIBE_MIN_WIDTH) { $env:HVIBE_MIN_WIDTH } else { '80' }
@@ -354,7 +359,7 @@ $env:HVIBE_LAUNCH_STAGGER (seconds, default 0.25) delays each pane launch.
 }
 
 # ── hcode: repo-scoped single-agent layout ──────────────────────────────────
-function herdr-code {
+function global:herdr-code {
     $target = ''; $agent = ''; $noAttach = $false; $onExit = 'shell'; $specstory = 'auto'; $sessionArg = ''
 
     $i = 0
@@ -467,7 +472,7 @@ CLI is installed (no Windows build yet), else the agent runs raw.
 }
 
 # ── hhere: plain "open a workspace here + attach" ────────────────────────────
-function herdr-here {
+function global:herdr-here {
     $cmd = ''; $target = ''; $noAttach = $false; $sessionArg = ''
     $rest = @()
 
@@ -545,7 +550,7 @@ Idempotent: re-running in the same dir focuses the existing workspace.
 }
 
 # ── hroot: like hhere but at the git-root ────────────────────────────────────
-function herdr-root {
+function global:herdr-root {
     if ($args.Count -gt 0) {
         if ($args[0] -eq '-h' -or $args[0] -eq '--help') {
             Write-Host @'
@@ -573,7 +578,7 @@ $PWD outside a repo). All flags except -p/--path pass through to hhere.
 # clear it. Inlined here (the Unix version shells out to a review-mark.sh shared
 # with a keybind + tv channel; neither exists in this repo yet). Default pane =
 # ambient $env:HERDR_PANE_ID.
-function herdr-mark {
+function global:herdr-mark {
     if ($args.Count -gt 0 -and ($args[0] -eq '-h' -or $args[0] -eq '--help')) {
         Write-Host "hmark [PANE_ID] — flag a herdr pane as review-pending (⭐). Default: current pane."; return
     }
@@ -583,7 +588,7 @@ function herdr-mark {
     Write-Host "review flag set on $pane"
 }
 
-function herdr-unmark {
+function global:herdr-unmark {
     if ($args.Count -gt 0 -and ($args[0] -eq '-h' -or $args[0] -eq '--help')) {
         Write-Host "hunmark [PANE_ID] — clear a herdr pane's review-pending (⭐) flag. Default: current pane."; return
     }

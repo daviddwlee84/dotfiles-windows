@@ -50,6 +50,40 @@ bootstrap logic lives once, in PowerShell (`bootstrap.ps1`): cmd is a poor
 language for the elevation / `PATH` / `chezmoi` steps, and these dotfiles are
 PowerShell anyway, so a machine with *no* PowerShell couldn't use the repo.
 
+## Windows Git symlinks
+
+The repository intentionally uses a few Git symlinks: `CLAUDE.md → AGENTS.md`
+and shared entries under `.claude/skills/ → .agents/skills/`. Windows can create
+them without elevation when **Developer Mode** is enabled, but Git for Windows
+defaults `core.symlinks` to `false` on many installations. Configure it once for
+the Windows user before cloning future working copies:
+
+```powershell
+git config --global core.symlinks true
+```
+
+This is a per-user Git setting, not a command required for every clone. For an
+existing checkout that contains one-line placeholder files instead of links,
+enable Developer Mode first, then repair the four tracked paths. After the
+first successful apply, the managed `~/.gitconfig` also reasserts
+`core.symlinks = true`; the manual command is needed early enough for the first
+checkout itself.
+
+```powershell
+git config core.symlinks true
+Remove-Item -LiteralPath @(
+  '.claude/skills/agent-history-hygiene',
+  '.claude/skills/mkdocs-site-bootstrap',
+  '.claude/skills/project-knowledge-harness',
+  'CLAUDE.md'
+)
+git restore --worktree -- `
+  .claude/skills/agent-history-hygiene `
+  .claude/skills/mkdocs-site-bootstrap `
+  .claude/skills/project-knowledge-harness `
+  CLAUDE.md
+```
+
 !!! warning "Defender may flag command-line irm|iex as ClickFix or Commando"
     Wrapping the cradle in cmd, SSH, WinRM, a scheduler, or another process
     launcher puts `irm <url> | iex` directly on a `powershell -Command` / `pwsh -c`
@@ -169,7 +203,7 @@ popup, see [GitHub authentication and proxies](github-auth.md).
 
 `~/.gitconfig` is managed by a `modify_` overlay (`modify_dot_gitconfig.ps1.tmpl`).
 `chezmoi apply` keeps a fixed set of keys in sync: `user.name` / `user.email`
-from the init prompts, `core.autocrlf = input`, `init.defaultBranch`,
+from the init prompts, `core.autocrlf = input`, `core.symlinks = true`, `init.defaultBranch`,
 `pull.rebase`, `rebase.autoStash`, the Git-LFS filter and `http.postBuffer`.
 
 Everything the overlay does **not** own is preserved untouched — including the

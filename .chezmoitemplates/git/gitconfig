@@ -18,6 +18,10 @@
 	# bootstrap.ps1 sets this too, because it runs before chezmoi exists; the
 	# two writers agree on purpose.
 	autocrlf = input
+	# Keep repository symlinks intact on Windows (for example CLAUDE.md and the
+	# shared .claude/skills entries). Creating them also requires Windows
+	# Developer Mode or an elevated process.
+	symlinks = true
 	# core.hooksPath is deliberately ABSENT. Git honours it INSTEAD of
 	# .git/hooks/, so setting it globally would silently disarm the per-clone
 	# hook that `pre-commit install` writes -- and unlike the parent repo, this

@@ -23,6 +23,17 @@ From a fresh Windows PowerShell (or pwsh) session:
 irm https://raw.githubusercontent.com/daviddwlee84/dotfiles-windows/main/bootstrap.ps1 | iex
 ```
 
+This repository intentionally contains Git symlinks (`CLAUDE.md` and shared
+`.claude/skills/`). On Windows, enable **Developer Mode** and configure Git once
+for the current user before cloning future working copies:
+
+```powershell
+git config --global core.symlinks true
+```
+
+If this checkout already exists, use the repair commands in the
+[setup guide](docs/setup.md#windows-git-symlinks).
+
 This installs [scoop](https://scoop.sh) (CLI tools) + [winget](https://learn.microsoft.com/windows/package-manager/)
 (GUI apps), PowerShell 7, [chezmoi](https://chezmoi.io) and [uv](https://docs.astral.sh/uv/),
 then applies the dotfiles.

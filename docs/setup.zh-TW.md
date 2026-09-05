@@ -46,6 +46,38 @@ unattended 重跑不能安全地把已儲存的 workstation 切成 minimal。如
 會又醜又易錯，而且這份 dotfiles 本來就是 PowerShell，一台完全沒有 PowerShell 的機器
 本來就用不了這個 repo。
 
+## Windows Git symlink
+
+這個 repo 刻意使用少量 Git symlink：`CLAUDE.md → AGENTS.md`，以及
+`.claude/skills/ → .agents/skills/` 的共用 skill。Windows 開啟 **Developer Mode**
+後即可免系統管理員權限建立 symlink；但許多 Git for Windows 安裝預設會把
+`core.symlinks` 設為 `false`。在 clone 後續 working copies **之前**，為目前 Windows
+使用者設定一次即可：
+
+```powershell
+git config --global core.symlinks true
+```
+
+這是每位使用者一次性的 Git 設定，不是每次 clone 都要執行。若既有 checkout 已把
+symlink 展開成只有一行路徑文字的 placeholder，先開啟 Developer Mode，再修復四個
+tracked paths。第一次成功 apply 後，受管的 `~/.gitconfig` 也會持續重申
+`core.symlinks = true`；手動指令的用途是讓第一次 checkout 就能正確建立連結。
+
+```powershell
+git config core.symlinks true
+Remove-Item -LiteralPath @(
+  '.claude/skills/agent-history-hygiene',
+  '.claude/skills/mkdocs-site-bootstrap',
+  '.claude/skills/project-knowledge-harness',
+  'CLAUDE.md'
+)
+git restore --worktree -- `
+  .claude/skills/agent-history-hygiene `
+  .claude/skills/mkdocs-site-bootstrap `
+  .claude/skills/project-knowledge-harness `
+  CLAUDE.md
+```
+
 !!! warning "Defender 可能把命令列 irm|iex 當成 ClickFix 或 Commando"
     透過 cmd、SSH、WinRM、排程器或其他 process launcher執行時，`irm <url> | iex`
     會直接出現在 `powershell -Command`／`pwsh -c` 命令列。即使抓下來的腳本本身乾淨，
@@ -156,7 +188,7 @@ GitHub 登入、Clash 代理設定與 CredentialHelperSelector 彈窗的處理�
 
 `~/.gitconfig` 由 `modify_` 疊加腳本（`modify_dot_gitconfig.ps1.tmpl`）管理。
 `chezmoi apply` 會同步一組固定的設定：來自初始化提問的 `user.name` /
-`user.email`、`core.autocrlf = input`、`init.defaultBranch`、`pull.rebase`、
+`user.email`、`core.autocrlf = input`、`core.symlinks = true`、`init.defaultBranch`、`pull.rebase`、
 `rebase.autoStash`、Git-LFS filter 與 `http.postBuffer`。
 
 不屬於這組設定的內容都會被原封不動保留 —— 包含 Git Credential Manager 在外部

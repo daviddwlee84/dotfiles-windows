@@ -18,6 +18,7 @@ BeforeAll {
 
 [core]
 	autocrlf = input
+	symlinks = true
 
 [init]
 	defaultBranch = main
@@ -40,6 +41,7 @@ BeforeAll {
 	historyOn = true
 [core]
 	autocrlf = true
+	symlinks = false
 	editor = vim
 [pull]
 	rebase = false
@@ -69,6 +71,7 @@ Describe 'Merge-GitConfig' {
         It 'emits the baseline' {
             $merged = Merge-GitConfig -BaselineText $script:Baseline -LiveText ''
             $merged | Should -Match 'autocrlf = input'
+            $merged | Should -Match 'symlinks = true'
             $merged | Should -Match 'defaultBranch = main'
         }
 
@@ -101,6 +104,8 @@ Describe 'Merge-GitConfig' {
         It 'overrides managed keys rather than carrying the live value' {
             $script:Merged | Should -Match 'autocrlf = input'
             $script:Merged | Should -Not -Match 'autocrlf = true'
+            $script:Merged | Should -Match 'symlinks = true'
+            $script:Merged | Should -Not -Match 'symlinks = false'
             $script:Merged | Should -Not -Match 'rebase = false'
             $script:Merged | Should -Not -Match 'stale-name'
             $script:Merged | Should -Not -Match 'stale@example\.com'
@@ -152,6 +157,10 @@ Describe 'Shipped baseline template' {
 
     It 'sets autocrlf=input -- load-bearing for scoop bucket updates' {
         $script:TemplateText | Should -Match 'autocrlf = input'
+    }
+
+    It 'sets symlinks=true for repo-local links on Windows' {
+        $script:TemplateText | Should -Match 'symlinks = true'
     }
 
     It 'does not set core.hooksPath anywhere, including in a comment-free read' {
