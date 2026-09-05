@@ -1861,8 +1861,29 @@ function copilot-proxy {
         'auth' {
             # One-time device login -> stores a ghu_ token copilot-api can exchange.
             Write-Host "copilot-proxy: launching copilot-api device login ..."
-            if ((Get-CopilotPkgFlavor) -eq 'original') { Invoke-CopilotPkgCommand auth }
-            else { Invoke-CopilotPkgCommand auth login --provider copilot }
+            $savedProxy = @{}
+            foreach ($name in 'HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY', 'NODE_OPTIONS') {
+                $savedProxy[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+            }
+            try {
+                $httpProxy = Resolve-CopilotHttpProxy
+                foreach ($name in 'HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY') {
+                    [Environment]::SetEnvironmentVariable($name, $httpProxy, 'Process')
+                }
+                if ($httpProxy) {
+                    # NODE_OPTIONS treats backslashes as escapes inside quotes.
+                    # Forward slashes work on Windows and preserve paths with spaces.
+                    $preload = (Join-Path $PSScriptRoot 'auth-proxy.cjs').Replace('\', '/')
+                    $env:NODE_OPTIONS = ($savedProxy['NODE_OPTIONS'] + ' --require "' + $preload + '"').Trim()
+                }
+                if ((Get-CopilotPkgFlavor) -eq 'original') { Invoke-CopilotPkgCommand auth }
+                else { Invoke-CopilotPkgCommand auth login --provider copilot }
+            } finally {
+                foreach ($name in $savedProxy.Keys) {
+                    if ($null -eq $savedProxy[$name]) { Remove-Item "env:$name" -ErrorAction SilentlyContinue }
+                    else { [Environment]::SetEnvironmentVariable($name, $savedProxy[$name], 'Process') }
+                }
+            }
         }
         'update' {
             if ($Argv.Count -lt 2) { Write-Error 'usage: copilot-proxy update VERSION'; return }

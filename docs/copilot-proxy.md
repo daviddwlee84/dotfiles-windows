@@ -381,3 +381,12 @@ the pasted `gh auth token` flow is not portable: on the tested EMU account it
 returned `421`/`403`, while the credential stored by `copilot-proxy auth` plus
 the normal short-lived Copilot token exchange worked. The supported launcher
 therefore uses the authenticated local gateway.
+
+### Login proxy troubleshooting
+
+`copilot-proxy auth` applies `COPILOT_HTTP_PROXY` to the login process. The fork
+supports `--proxy-env` only on `start`, so login uses a Node preload with the
+installed package's Undici proxy dispatcher. Environment variables are restored
+on success or failure. `Bad credentials` during token refresh requires a new
+device login; restarting cannot repair a rejected GitHub credential. Inspect
+startup errors with `copilot-proxy logs err`.

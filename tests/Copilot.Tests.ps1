@@ -851,6 +851,25 @@ Describe 'Copilot module' {
     }
 
     Context 'package command authentication' {
+        It 'scopes the proxy and Node preload to login and restores them on failure' {
+            InModuleScope Copilot {
+                $before = $env:NODE_OPTIONS
+                $beforeProxy = $env:HTTPS_PROXY
+                Mock Get-Command { [pscustomobject]@{ Name = 'bun'; Source = 'bun' } } -ParameterFilter { $Name -eq 'bun' }
+                Mock Resolve-CopilotHttpProxy { 'http://127.0.0.1:7891' }
+                Mock Get-CopilotPkgFlavor { 'fork' }
+                Mock Invoke-CopilotPkgCommand {
+                    $env:HTTPS_PROXY | Should -Be 'http://127.0.0.1:7891'
+                    $env:NODE_OPTIONS | Should -Match 'auth-proxy\.cjs'
+                    $env:NODE_OPTIONS | Should -Match '--require "[^"\\]+/auth-proxy\.cjs"'
+                    throw 'login failed'
+                }
+                { copilot-proxy auth } | Should -Throw '*login failed*'
+                $env:NODE_OPTIONS | Should -Be $before
+                $env:HTTPS_PROXY | Should -Be $beforeProxy
+            }
+        }
+
         It 'uses the maintained fork login argv exactly' {
             InModuleScope Copilot {
                 $script:authArgs = @()

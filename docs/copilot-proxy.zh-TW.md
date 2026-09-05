@@ -326,3 +326,11 @@ Direct `model_providers.copilot-enterprise` 範例只記錄在 macOS/Linux 完�
 不會安裝。它不是 localhost proxy 路徑，而且貼文中的 `gh auth token` flow 不具可攜性：
 本次 EMU 帳號實測回 `421`/`403`；`copilot-proxy auth` 保存的 credential 加正常短效
 Copilot token exchange 則可用。因此正式 launcher 使用已認證的本機 gateway。
+
+### 登入代理疑難排解
+
+`copilot-proxy auth` 會將 `COPILOT_HTTP_PROXY` 套用至登入程序。Fork 的
+`--proxy-env` 只支援 `start`，因此登入使用 Node preload 載入已安裝套件的
+Undici proxy dispatcher。登入成功或失敗都會還原環境變數。更新 token 時出現
+`Bad credentials` 需要重新進行裝置登入；重啟無法修復被拒絕的 GitHub 憑證。
+使用 `copilot-proxy logs err` 查看啟動錯誤。
