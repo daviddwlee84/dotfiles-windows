@@ -215,6 +215,24 @@ the shadowing aliases for `gc` (Get-Content), `gcb` (Get-Clipboard), `gcs`
 (Get-PSCallStack), `gl` (Get-Location), `gp` (Get-ItemProperty) and `gpv`
 (Get-ItemPropertyValue). Reach those cmdlets by their full name if you need them.
 
+### Windows checkout doctor
+
+`profile.d/22_git_windows.ps1` adds two commands for repositories shared with
+macOS, Linux, or WSL:
+
+| Command | Behavior |
+|---|---|
+| `git-windows-doctor` | Read-only audit of the current repo. Reports broken Git symlinks, EOL inconsistencies, case-colliding or Windows-invalid paths, long paths, shell-script mode/BOM issues, and missing Git LFS support. |
+| `gwinfix` | Runs the same audit and repairs only proven-safe symlink placeholders: a regular file whose bytes exactly equal the target stored in the Git index, or a missing tracked symlink. |
+| `git-windows-doctor -Root ~/Documents/Program` | Audit multiple repos beneath a directory, without descending into repos, reparse points, or common build/cache directories. |
+| `gwinfix -Root ~/Documents/Program -WhatIf` | Preview multi-repo symlink repair without changing files or Git config. |
+
+The repair preflights unprivileged symlink creation before deleting anything,
+restores from the current index without changing staged content, and refuses real
+files/directories or links with unexpected targets. EOL, case, executable-bit,
+path, and LFS findings are diagnostic only. See
+[Cross-platform Git checkouts](git-cross-platform.md).
+
 ## try
 
 When the opt-in **try** tool is installed (`installTry` → `gem install try-cli`),

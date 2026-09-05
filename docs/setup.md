@@ -69,6 +69,16 @@ first successful apply, the managed `~/.gitconfig` also reasserts
 `core.symlinks = true`; the manual command is needed early enough for the first
 checkout itself.
 
+Once the updated shell profile is installed, the safe shortcut for this repair
+in any existing repository is:
+
+```powershell
+gwinfix
+```
+
+Use `gwinfix -Root ~/Documents/Program -WhatIf` to preview all affected repos
+under a directory, then omit `-WhatIf` to repair them. The manual equivalent is:
+
 ```powershell
 git config core.symlinks true
 Remove-Item -LiteralPath @(

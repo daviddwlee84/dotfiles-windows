@@ -38,6 +38,7 @@ plugins:
             Home: 首頁
             Setup: 安裝
             GitHub authentication and proxies: GitHub 登入與代理
+            Cross-platform Git checkouts: 跨平台 Git checkout
             Tools: 工具索引
             LazyGit branch insights: LazyGit branch 洞察
             Disk space: 磁碟空間
@@ -67,6 +68,7 @@ nav:
   - Home: index.md
   - Setup: setup.md
   - GitHub authentication and proxies: github-auth.md
+  - Cross-platform Git checkouts: git-cross-platform.md
   - Tools: tools.md
   - LazyGit branch insights: lazygit.md
   - Disk space: disk-space.md

@@ -63,6 +63,15 @@ symlink 展開成只有一行路徑文字的 placeholder，先開啟 Developer M
 tracked paths。第一次成功 apply 後，受管的 `~/.gitconfig` 也會持續重申
 `core.symlinks = true`；手動指令的用途是讓第一次 checkout 就能正確建立連結。
 
+更新後的 shell profile 安裝完成後，在任何既有 repo 裡都可用安全捷徑修復：
+
+```powershell
+gwinfix
+```
+
+先以 `gwinfix -Root ~/Documents/Program -WhatIf` 預覽指定目錄下所有受影響的 repo，
+確認後移除 `-WhatIf` 即可修復。等價的手動操作如下：
+
 ```powershell
 git config core.symlinks true
 Remove-Item -LiteralPath @(

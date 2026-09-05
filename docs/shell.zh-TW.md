@@ -194,6 +194,22 @@ PATH 解析，另將 `dev-cli` 直接指向受管的 repository/task CLI：
 （Get-Location）、`gp`（Get-ItemProperty）、`gpv`（Get-ItemPropertyValue）。需要那些
 cmdlet 時請用完整名稱。
 
+### Windows checkout doctor
+
+`profile.d/22_git_windows.ps1` 為與 macOS、Linux 或 WSL 共用的 repository 提供兩個指令：
+
+| 指令 | 行為 |
+|---|---|
+| `git-windows-doctor` | 唯讀檢查目前 repo；報告損壞的 Git symlink、EOL 不一致、只差大小寫或 Windows 不相容的路徑、過長路徑、shell script mode/BOM，以及缺少 Git LFS。 |
+| `gwinfix` | 執行相同檢查，並且只修復可證明安全的 symlink placeholder：普通檔案 bytes 必須與 Git index 儲存的 target 完全一致，或該 tracked symlink 目前不存在。 |
+| `git-windows-doctor -Root ~/Documents/Program` | 檢查指定目錄下的多個 repo，不深入已找到的 repo、reparse point 或常見 build/cache 目錄。 |
+| `gwinfix -Root ~/Documents/Program -WhatIf` | 預覽多 repo symlink 修復，不修改檔案或 Git config。 |
+
+修復會在刪除任何內容前先測試非系統管理員 symlink 能力，並從目前 index restore，
+不改 staged content；若遇到真正檔案／目錄或 target 不符的 link，則拒絕修改。EOL、
+大小寫、executable bit、路徑與 LFS 項目永遠只診斷。詳見
+[跨平台 Git checkout](git-cross-platform.zh-TW.md)。
+
 ## try
 
 安裝了選用的 **try**（`installTry` → `gem install try-cli`）後，`profile.d/32_try.ps1`

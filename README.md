@@ -45,6 +45,9 @@ then applies the dotfiles.
 - **CLI tools** (scoop): git, neovim, lazygit (delta + read-only `I` branch containment/PR insights), zoxide, fzf, bat, eza, ripgrep, fd, gh, delta, jq, yazi (with guarded Git status signs), btop, mise, uv, node, bun.
 - **AI agents**: Claude Code, OpenCode, Codex, GitHub Copilot CLI, Pi, Oh My Pi,
   the Git-managed `pia` combo selector, SpecStory, and Antigravity.
+- **Cross-platform Git doctor**: `git-windows-doctor` audits symlinks, EOL,
+  filename/case/path portability, executable bits, and LFS; `gwinfix` repairs
+  only verified symlink placeholders.
 - **Editors**: VSCode, Cursor, Notepad++ (shared settings/keybindings).
 - **Apps** (winget): Windows Terminal, Alacritty, Raycast, PowerToys, Steam.
 - **Optional Herdr**: native preview multiplexer with `prefix+d` launching the
