@@ -1,3 +1,5 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
 # Shared Weasel installation discovery for package install and Rime redeploy.
 # Probe both registry views explicitly: Weasel is a 32-bit NSIS package on many
 # x64 hosts, so the PowerShell provider's process-default view can miss it.

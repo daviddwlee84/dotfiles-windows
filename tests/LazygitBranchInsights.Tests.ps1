@@ -32,7 +32,11 @@ BeforeAll {
     Invoke-TestGit push -u origin gone
     Invoke-TestGit push origin --delete gone
 
-    Add-Content -Path (Join-Path $script:Repo 'file.txt') -Value 'local-main'
+    [System.IO.File]::AppendAllText(
+        (Join-Path $script:Repo 'file.txt'),
+        "`nlocal-main",
+        [System.Text.UTF8Encoding]::new($false)
+    )
     Invoke-TestGit add file.txt
     Invoke-TestGit commit -m local-main
     Invoke-TestGit branch local-only

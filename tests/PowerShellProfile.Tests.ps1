@@ -1,4 +1,5 @@
-#Requires -Version 7
+#Requires -Version 7.4
+#Requires -PSEdition Core
 
 BeforeAll {
     $RepoRoot = Split-Path -Parent $PSScriptRoot
@@ -7,8 +8,8 @@ BeforeAll {
 
 Describe 'PowerShell profile host compatibility' {
     It 'enables predictions only when console output is interactive' {
-        $profile = Get-Content -Raw -LiteralPath $PsReadLineTemplate
-        $profile | Should -Match '(?s)if \(-not \[Console\]::IsOutputRedirected\) \{.*Set-PSReadLineOption -PredictionSource HistoryAndPlugin.*Set-PSReadLineOption -PredictionViewStyle ListView.*\}'
+        $profileText = Get-Content -Raw -LiteralPath $PsReadLineTemplate
+        $profileText | Should -Match '(?s)if \(-not \[Console\]::IsOutputRedirected\) \{.*Set-PSReadLineOption -PredictionSource HistoryAndPlugin.*Set-PSReadLineOption -PredictionViewStyle ListView.*\}'
     }
 
     It 'does not deploy the root Pester result artifact into HOME' {
