@@ -8,10 +8,17 @@ BeforeAll {
     $Utf8 = [System.Text.UTF8Encoding]::new($false, $true)
     $PwshPath = (Get-Command pwsh -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 
-    $rendered = & chezmoi execute-template --source $RepoRoot --file $TemplatePath
+    & chezmoi execute-template --source $RepoRoot --output $RenderedPath --file $TemplatePath
     if ($LASTEXITCODE -ne 0) { throw 'failed to render Codex modifier' }
-    $renderedText = $rendered -join "`n"
-    [System.IO.File]::WriteAllText($RenderedPath, $renderedText, [System.Text.UTF8Encoding]::new($false))
+    $renderedText = $Utf8.GetString([System.IO.File]::ReadAllBytes($RenderedPath))
+    $expectedDoubleMojibake = -join [char[]] (
+        0x0393, 0x00EA, 0x2310,
+        0x0393, 0x00F2, 0x00F9,
+        0x0393, 0x00F6, 0x00C9
+    )
+    if (-not $renderedText.Contains($expectedDoubleMojibake, [System.StringComparison]::Ordinal)) {
+        throw 'rendered Codex modifier lost its double-mojibake repair signature'
+    }
 
     $brokenOverlayText = $renderedText.Replace("[tui]`n#", "[tui`n#")
     if ($brokenOverlayText -eq $renderedText) { throw 'failed to construct broken Codex overlay fixture' }
@@ -172,6 +179,11 @@ Describe 'Codex config byte-safe overlay' {
         $text | Should -Match 'model = "recovered"'
         $text | Should -Not -Match [regex]::Escape($prefix)
         $text | Should -Match 'model-with-reasoning'
+
+        $second = Invoke-CodexModifier -LiveBytes $result.StdoutBytes
+        $second.ExitCode | Should -Be 0
+        $second.Stderr | Should -BeNullOrEmpty
+        Assert-ExactBytes -Actual $second.StdoutBytes -Expected $result.StdoutBytes
     }
 
     It 'repairs the direct OEM mojibake BOM prefix' {

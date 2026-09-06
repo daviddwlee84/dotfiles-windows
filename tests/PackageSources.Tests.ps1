@@ -61,7 +61,7 @@ BeforeAll {
             installClink = $false; installTry = $true; installTranslate = $true
             installInputMethod = $false; useChineseMirror = $UseChineseMirror
             managedMachine = $ManagedMachine; allowPublicPackageFallback = $AllowFallback
-            chezmoi = @{ username = 'ci' }
+            chezmoi = @{ username = 'DOMAIN\ci'; homeDir = 'D:\Profiles\ci' }
         } | ConvertTo-Json -Depth 5 -Compress
         $path = Join-Path $RepoRoot '.chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl'
         $rendered = & chezmoi execute-template --source $RepoRoot --override-data $data --file $path
@@ -170,5 +170,11 @@ Describe 'package installer source policy' {
         $script = Get-Content -Raw (Join-Path $RepoRoot '.chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl')
         $script | Should -Match 'herdr plugin install cloudmanic/herdr-plus --yes'
         $script | Should -Not -Match 'herdr plugin install -y cloudmanic/herdr-plus'
+    }
+
+    It 'renders the retry state key from homeDir rather than a domain username' {
+        $script = Render-PackageInstaller -ManagedMachine $true -UseChineseMirror $false -AllowFallback $true
+        $script | Should -Match ([regex]::Escape("state delete --bucket=entryState --key='D:/Profiles/ci/.chezmoiscripts/10_packages.ps1'; chezmoi apply"))
+        $script | Should -Not -Match 'DOMAIN\\ci.+\.chezmoiscripts/10_packages\.ps1'
     }
 }

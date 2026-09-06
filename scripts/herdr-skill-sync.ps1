@@ -36,8 +36,8 @@ function Get-HerdrSkillContent {
 
     if ($process.ExitCode -ne 0) {
         $detail = $stderr.Trim()
-        if (-not $detail) { $detail = "exit $($process.ExitCode)" }
-        throw "herdr --skill failed: $detail"
+        if (-not $detail) { $detail = 'no error detail' }
+        throw "herdr --skill failed (exit $($process.ExitCode)): $detail"
     }
     return $stdout
 }
@@ -92,7 +92,12 @@ function Sync-HerdrSkill {
         $content = Get-HerdrSkillContent -HerdrPath $HerdrPath
         return Write-HerdrSkillContent -Content $content -Destinations $Destinations
     } catch {
-        Write-Warning "Could not read the official skill from the installed Herdr binary: $_"
+        $detail = [string] $_
+        if ($detail -match 'herdr --skill failed \(exit 2\):.*unknown option:\s*--skill') {
+            Write-Warning 'Installed Herdr is too old to export its agent skill; keeping existing copies. Run `just upgrade-herdr` outside Herdr, then apply again.'
+        } else {
+            Write-Warning "Could not read the official skill from the installed Herdr binary: $_"
+        }
         return $false
     }
 }

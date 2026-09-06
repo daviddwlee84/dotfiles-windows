@@ -60,6 +60,7 @@ $allowPublicPackageFallback = {{ if (get . "allowPublicPackageFallback") }}$true
 {{ include "scripts/windows-cli-release.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 {{ include "scripts/windows-system-proxy.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 {{ include "scripts/herdr-upgrade-core.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
+{{ include "scripts/weasel-core.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 
 function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 function Have($n) { [bool](Get-Command $n -ErrorAction SilentlyContinue) }
@@ -333,15 +334,14 @@ function Install-HerdrPlus {
 # InstallDir the NSIS installer writes to HKLM instead — which is also how we
 # locate WeaselSetup.exe afterwards.
 function Install-Weasel {
-    $key = 'HKLM:\SOFTWARE\Rime\Weasel'
-    $dir = (Get-ItemProperty -Path $key -Name InstallDir -ErrorAction SilentlyContinue).InstallDir
-    if (-not $dir) {
+    $installation = Resolve-WeaselInstallation
+    if (-not $installation) {
         if (-not (Have winget)) { Register-Failure 'winget:Rime.Weasel (winget unavailable)'; return }
         Info 'winget install Rime.Weasel (machine scope — expect a UAC prompt)'
         winget install --id Rime.Weasel -e --silent --custom '/T' `
             --accept-source-agreements --accept-package-agreements 2>&1 | Out-Host
-        $dir = (Get-ItemProperty -Path $key -Name InstallDir -ErrorAction SilentlyContinue).InstallDir
-        if (-not $dir) { Register-Failure 'winget:Rime.Weasel'; return }
+        $installation = Resolve-WeaselInstallation
+        if (-not $installation) { Register-Failure 'winget:Rime.Weasel (registry metadata or required executables missing)'; return }
     } else {
         Info 'Weasel already installed'
     }
@@ -351,13 +351,8 @@ function Install-Weasel {
     #   /toggleascii -> Ctrl+Space toggles ASCII rather than the whole IME,
     #                   which is what makes global_ascii in weasel.custom.yaml
     #                   behave like a single 中/英 switch.
-    $setup = Join-Path $dir 'WeaselSetup.exe'
-    if (Test-Path -LiteralPath $setup) {
-        & $setup /lt
-        & $setup /toggleascii
-    } else {
-        Register-Failure 'weasel (WeaselSetup.exe not found; UI language + Ctrl+Space unset)'
-    }
+    & $installation.SetupPath /lt
+    & $installation.SetupPath /toggleascii
 }
 
 # ===========================================================================
@@ -773,7 +768,7 @@ if ($script:Failures.Count -gt 0) {
     Write-Warning ("package install: {0} item(s) failed and were skipped:" -f $script:Failures.Count)
     $script:Failures | ForEach-Object { Write-Warning "  - $_" }
     Write-Warning "This is a run_onchange script; an unchanged apply will not retry it."
-    Write-Warning "Retry only this installer with: chezmoi state delete --bucket=entryState --key='{{ .chezmoi.homeDir }}/.chezmoiscripts/10_packages.ps1'; chezmoi apply"
+    Write-Warning "Retry only this installer with: chezmoi state delete --bucket=entryState --key='{{ .chezmoi.homeDir | replace "\\" "/" }}/.chezmoiscripts/10_packages.ps1'; chezmoi apply"
 } else {
     Info 'package install complete — no failures'
 }

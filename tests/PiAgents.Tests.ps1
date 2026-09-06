@@ -366,6 +366,24 @@ Describe 'Pi npm package lifecycle' {
     }
 }
 
+Describe 'Pi canonical entrypoint health probe' {
+    It 'gives a cold canonical entrypoint a bounded 120-second probe budget' {
+        $context = New-TestNpmContext -Root (Join-Path $TestDrive 'node_modules')
+        $entrypoint = Join-Path $TestDrive 'dist\cli.js'
+        Mock Invoke-CapturedPackageProcess {
+            [pscustomobject]@{ ExitCode = 0; TimedOut = $false; LaunchFailed = $false; Stdout = '0.84.2' }
+        }
+
+        Test-PiCanonicalEntrypoint -NpmContext $context -Entrypoint $entrypoint |
+            Should -BeTrue
+        Should -Invoke Invoke-CapturedPackageProcess -Times 1 -Exactly -ParameterFilter {
+            $Executable -eq $context.NodeExecutable -and
+            ($Arguments -join '|') -eq "$entrypoint|--version" -and
+            $TimeoutSeconds -eq 120 -and $OutputMode -eq 'Capture'
+        }
+    }
+}
+
 Describe 'OMP official binary lifecycle' {
     BeforeEach {
         $script:SavedLocalAppData = $env:LOCALAPPDATA
@@ -399,6 +417,42 @@ Describe 'OMP official binary lifecycle' {
         Should -Invoke Invoke-RestMethod -Times 1 -Exactly -ParameterFilter {
             $Uri -eq 'https://omp.sh/install.ps1'
         }
+    }
+
+    It 'falls back to the official latest asset only for the GitHub primary rate limit' {
+        Mock Invoke-RestMethod {
+            'param([switch] $Binary); throw "API rate limit exceeded. https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting"'
+        }
+        Mock Install-OmpFromOfficialLatestAsset
+
+        Invoke-OmpOfficialBinaryInstaller -WarningAction SilentlyContinue
+
+        Should -Invoke Install-OmpFromOfficialLatestAsset -Times 1 -Exactly
+    }
+
+    It 'does not use the direct asset fallback for a generic forbidden response' {
+        Mock Invoke-RestMethod { 'param([switch] $Binary); throw "HTTP 403 forbidden by policy"' }
+        Mock Install-OmpFromOfficialLatestAsset
+
+        { Invoke-OmpOfficialBinaryInstaller -WarningAction SilentlyContinue } | Should -Throw '*403 forbidden*'
+        Should -Invoke Install-OmpFromOfficialLatestAsset -Times 0 -Exactly
+    }
+
+    It 'stages the official asset before replacing the managed binary' {
+        $binary = Get-OmpBinaryPath
+        Mock Invoke-WebRequest {
+            'downloaded' | Set-Content -LiteralPath $OutFile -NoNewline
+        }
+
+        Install-OmpFromOfficialLatestAsset
+
+        (Get-Content -Raw -LiteralPath $binary) | Should -BeExactly 'downloaded'
+        Should -Invoke Invoke-WebRequest -Times 1 -Exactly -ParameterFilter {
+            $Uri -eq 'https://github.com/can1357/oh-my-pi/releases/latest/download/omp-windows-x64.exe' -and
+            $OutFile -like '*.omp.exe.download-*'
+        }
+        @(Get-ChildItem -LiteralPath (Split-Path -Parent $binary) -Filter '.omp.exe.download-*').Count |
+            Should -Be 0
     }
 
     It 'snapshots and restores raw expandable User PATH around the upstream installer' {

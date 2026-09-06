@@ -79,8 +79,9 @@ Rime 只有在**重新部署**時才會吃進 `*.custom.yaml` 的修改。`chezm
 手動的話：
 
 ```powershell
-$dir = (Get-ItemProperty 'HKLM:\SOFTWARE\Rime\Weasel' -Name InstallDir).InstallDir
-& "$dir\WeaselDeployer.exe" /deploy
+$key = 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Rime\Weasel'
+$root = (Get-ItemProperty $key -Name WeaselRoot).WeaselRoot
+& "$root\WeaselDeployer.exe" /deploy
 ```
 
 ……或右鍵托盤圖示 → 重新部署。

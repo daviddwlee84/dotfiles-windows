@@ -146,6 +146,8 @@ function Remove-PiPartialCanonicalInstall {
     }
 }
 
+$script:PiEntrypointProbeTimeoutSeconds = 120
+
 function Test-PiCanonicalEntrypoint {
     [CmdletBinding()]
     param(
@@ -154,7 +156,8 @@ function Test-PiCanonicalEntrypoint {
     )
 
     $probe = Invoke-CapturedPackageProcess -Executable $NpmContext.NodeExecutable `
-        -Arguments @($Entrypoint, '--version') -TimeoutSeconds 30 -OutputMode Capture
+        -Arguments @($Entrypoint, '--version') `
+        -TimeoutSeconds $script:PiEntrypointProbeTimeoutSeconds -OutputMode Capture
     $probe.ExitCode -eq 0 -and -not $probe.TimedOut -and -not $probe.LaunchFailed -and
         -not [string]::IsNullOrWhiteSpace($probe.Stdout)
 }
@@ -349,7 +352,7 @@ function Invoke-PiCodingAgentPackageCommand {
             $failure = if (-not $result.Succeeded) {
                 "canonical package install failed; rollback restored=$restored$recovery"
             } else {
-                "canonical package completed but its manifest/bin entrypoint is invalid; rollback restored=$restored$recovery"
+                "canonical package completed but manifest/bin/runtime health validation failed; rollback restored=$restored$recovery"
             }
             return [pscustomobject]@{
                 Succeeded = $false; ExitCode = $(if ($result.ExitCode) { $result.ExitCode } else { 1 })

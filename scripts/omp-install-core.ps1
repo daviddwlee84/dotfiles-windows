@@ -4,6 +4,7 @@
 # verbatim; scripts/upgrade-omp.ps1 dot-sources it for explicit upgrades.
 
 $script:OmpInstallerUri = 'https://omp.sh/install.ps1'
+$script:OmpLatestWindowsX64AssetUri = 'https://github.com/can1357/oh-my-pi/releases/latest/download/omp-windows-x64.exe'
 
 function Get-OmpBinaryPath {
     if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is unavailable' }
@@ -108,6 +109,35 @@ function Restore-OmpUserPathSnapshot {
     Send-OmpEnvironmentChangeNotification
 }
 
+function Test-OmpGitHubPrimaryRateLimitFailure {
+    param([Parameter(Mandatory)] $Failure)
+
+    $detail = [string] $Failure
+    $detail -match 'API rate limit exceeded' -and
+        $detail -match 'docs\.github\.com/rest/.+rate-limit'
+}
+
+function Install-OmpFromOfficialLatestAsset {
+    [CmdletBinding()]
+    param([string] $AssetUri = $script:OmpLatestWindowsX64AssetUri)
+
+    $binary = Get-OmpBinaryPath
+    $directory = Split-Path -Parent $binary
+    New-Item -ItemType Directory -Force -Path $directory | Out-Null
+    $temporary = Join-Path $directory ('.omp.exe.download-' + [guid]::NewGuid().ToString('N'))
+    try {
+        Invoke-WebRequest -UseBasicParsing -Uri $AssetUri -OutFile $temporary `
+            -TimeoutSec 120 -ErrorAction Stop
+        if (-not (Test-Path -LiteralPath $temporary -PathType Leaf) -or
+            (Get-Item -LiteralPath $temporary).Length -eq 0) {
+            throw 'official OMP release asset download was empty'
+        }
+        Move-Item -LiteralPath $temporary -Destination $binary -Force -ErrorAction Stop
+    } finally {
+        Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Invoke-OmpOfficialBinaryInstaller {
     [CmdletBinding()]
     param([string] $InstallerUri = $script:OmpInstallerUri)
@@ -123,7 +153,13 @@ function Invoke-OmpOfficialBinaryInstaller {
     $pathSnapshot = Get-OmpUserPathSnapshot
     try {
         $env:PI_INSTALL_DIR = $installDirectory
-        & $installer -Binary
+        try {
+            & $installer -Binary
+        } catch {
+            if (-not (Test-OmpGitHubPrimaryRateLimitFailure -Failure $_)) { throw }
+            Write-Warning 'OMP official installer hit the GitHub primary API rate limit; downloading the official latest Windows asset directly.'
+            Install-OmpFromOfficialLatestAsset
+        }
     } finally {
         if ($null -eq $savedInstallDirectory) {
             Remove-Item Env:PI_INSTALL_DIR -ErrorAction SilentlyContinue

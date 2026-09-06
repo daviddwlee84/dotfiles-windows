@@ -16,8 +16,6 @@ $destinations = @(
 )
 if (Sync-HerdrSkill -Destinations $destinations) {
     Write-Output '==> Herdr agent skill is aligned with the installed binary'
-} else {
-    Write-Warning 'Herdr agent skill sync was skipped or failed; the next chezmoi apply will retry'
 }
 {{- end }}
 

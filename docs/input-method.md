@@ -87,8 +87,9 @@ re-fires whenever any managed Rime YAML changes and runs
 By hand:
 
 ```powershell
-$dir = (Get-ItemProperty 'HKLM:\SOFTWARE\Rime\Weasel' -Name InstallDir).InstallDir
-& "$dir\WeaselDeployer.exe" /deploy
+$key = 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Rime\Weasel'
+$root = (Get-ItemProperty $key -Name WeaselRoot).WeaselRoot
+& "$root\WeaselDeployer.exe" /deploy
 ```
 
 …or right-click the tray icon → 重新部署.

@@ -20,9 +20,11 @@ $PSNativeCommandUseErrorActionPreference = $false
 
 function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 
-$dir = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Rime\Weasel' -Name InstallDir -ErrorAction SilentlyContinue).InstallDir
-if (-not $dir) {
-    Write-Warning 'Rime deploy skipped: Weasel is not installed (HKLM\SOFTWARE\Rime\Weasel missing).'
+{{ include "scripts/weasel-core.ps1" }}
+
+$installation = Resolve-WeaselInstallation
+if (-not $installation) {
+    Write-Warning 'Rime deploy skipped: Weasel registry metadata or required executables are missing.'
     Write-Warning "Re-run 'just apply' after the Weasel install completes."
     exit 0
 }
@@ -31,15 +33,9 @@ if (-not $dir) {
 # (WeaselDeployer/WeaselDeployer.cpp). It takes a single argument and compares it
 # with wcscmp, so nothing else may be appended. It also holds an exclusive mutex
 # and returns 1 immediately if another deployer is already running.
-$deployer = Join-Path $dir 'WeaselDeployer.exe'
-if (-not (Test-Path -LiteralPath $deployer)) {
-    Write-Warning "Rime deploy skipped: $deployer not found."
-    exit 0
-}
-
 Info 'redeploying Rime (WeaselDeployer.exe /deploy)'
 try {
-    $p = Start-Process -FilePath $deployer -ArgumentList '/deploy' -Wait -PassThru
+    $p = Start-Process -FilePath $installation.DeployerPath -ArgumentList '/deploy' -Wait -PassThru
     if ($p.ExitCode -ne 0) {
         Write-Warning "WeaselDeployer /deploy exited $($p.ExitCode). If a deploy was already running this is harmless; otherwise redeploy from the tray icon (右鍵 → 重新部署)."
     } else {

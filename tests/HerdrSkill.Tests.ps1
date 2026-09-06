@@ -64,11 +64,32 @@ Describe 'Herdr binary-matched agent skill' {
         }
     }
 
+    It 'keeps existing copies and recommends an explicit upgrade for an old CLI' {
+        $root = New-TestDirectory
+        try {
+            $destination = Join-Path $root '.agents\skills\herdr\SKILL.md'
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+            [IO.File]::WriteAllText($destination, 'previous-good-copy')
+            Mock Get-HerdrSkillContent { throw 'herdr --skill failed (exit 2): unknown option: --skill' }
+            Mock Write-Warning
+
+            Sync-HerdrSkill -HerdrPath 'C:\old\herdr.exe' -Destinations @($destination) | Should -BeFalse
+
+            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
+                $Message -match 'just upgrade-herdr' -and $Message -match 'outside Herdr'
+            }
+            [IO.File]::ReadAllText($destination) | Should -BeExactly 'previous-good-copy'
+        } finally {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
     It 'gates apply-time synchronization on installHerdr without a removal path' {
         $template = Get-Content -Raw (Join-Path $RepoRoot '.chezmoiscripts' 'run_after_15_sync_herdr_skill.ps1.tmpl')
         $template | Should -Match '\{\{ if \.installHerdr'
         $template | Should -Not -Match 'Remove-Item.+\.agents.+herdr'
         $template | Should -Not -Match 'Remove-Item.+\.claude.+herdr'
+        $template | Should -Not -Match 'Herdr agent skill sync was skipped or failed'
     }
 
     It 'renders synchronization only when installHerdr is enabled' {
