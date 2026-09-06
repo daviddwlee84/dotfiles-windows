@@ -20,6 +20,10 @@ if (Get-Module -Name PSReadLine) {
     # vi modal editing (mirrors the shells' enableVimMode on macOS/Linux).
     Set-PSReadLineOption -EditMode Vi
     Set-PSReadLineOption -ViModeIndicator Cursor
+
+    # Unix-style word deletion while typing; keep Command mode and the finer
+    # Ctrl+Backspace word boundaries unchanged. Re-register after each mode reset.
+    Set-PSReadLineKeyHandler -Chord 'Ctrl+w' -ViMode Insert -Function UnixWordRubout
 {{- else }}
 
     Set-PSReadLineOption -EditMode Windows

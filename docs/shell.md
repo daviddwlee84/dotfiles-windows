@@ -28,7 +28,7 @@ logic lives in the fragments; the loader stays boring.
 | `32_try.ps1` | `tri` — try (tobi/try) ephemeral dated workspaces (opt-in; inert without ruby) |
 | `35_yazi.ps1` | `y` — launch Yazi with Git status signs, cd to where you quit |
 | `40_copilot.ps1` | import the `copilot-proxy` PowerShell module |
-| `90_psreadline.ps1` | PSReadLine (vi mode, history) |
+| `90_psreadline.ps1` | PSReadLine (vi mode, word deletion, history) |
 | `96_ssh_setup.ps1` | `ssh-setup-remote` (`Set-RemoteSshKey`) — interactive, ProxyJump-aware SSH key setup wizard |
 
 Modules under `~/.config/powershell/modules` are prepended to
@@ -51,6 +51,25 @@ function cau { chezmoi update @args; . $PROFILE } # git pull + apply, then reloa
     re-apply — but anything a *previous* load defined that this load no longer
     defines is **not** removed. For a guaranteed-clean state, open a new pwsh
     session.
+
+## Command-line word deletion
+
+With `enableVimMode` on, `Ctrl+W` in **Insert mode** deletes backward to the
+start of the current or previous whitespace-delimited word
+(`UnixWordRubout`). At the end of `git checkout feature/login-fix`, one press
+removes `feature/login-fix`. Removed text goes to PSReadLine's kill ring, not
+the Windows clipboard.
+
+`Ctrl+Backspace` keeps its existing, finer `BackwardKillWord` boundaries: in
+that example it removes only `fix` with the default word delimiters. Vi
+**Command mode** (after `Esc`) and Windows mode (`enableVimMode` off) retain
+their default `Ctrl+W` bindings.
+
+The binding is registered after the edit-mode reset, so it survives `reload`,
+`cas`, and `cau`. After applying a change, run `reload` or open a new PowerShell
+session. This config affects the PowerShell prompt, not other interactive
+programs, and the terminal must pass `Ctrl+W` through to the shell. See
+[PSReadLine key handlers](https://learn.microsoft.com/en-us/powershell/module/psreadline/set-psreadlinekeyhandler).
 
 ## PATH: Windows vs Unix
 

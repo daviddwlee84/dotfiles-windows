@@ -26,7 +26,7 @@
 | `32_try.ps1` | `tri` —— try (tobi/try) 暫時性日期命名 workspace（選用；沒 ruby 時 inert） |
 | `35_yazi.ps1` | `y` —— 開啟帶 Git 狀態標記的 Yazi，離開後 cd 到最後目錄 |
 | `40_copilot.ps1` | 匯入 `copilot-proxy` PowerShell 模組 |
-| `90_psreadline.ps1` | PSReadLine（vi 模式、歷史） |
+| `90_psreadline.ps1` | PSReadLine（vi 模式、刪除字詞、歷史） |
 | `96_ssh_setup.ps1` | `ssh-setup-remote`（`Set-RemoteSshKey`）—— 互動式、支援 ProxyJump 的 SSH 金鑰設定精靈 |
 
 `~/.config/powershell/modules` 底下的模組會被 loader 前置到
@@ -47,6 +47,23 @@ function cau { chezmoi update @args; . $PROFILE } # git pull + apply,再 reload
     dot-source 是**就地重跑** profile。PATH 的修改有守門(冪等、不會重複加)、
     `Set-Alias` / `Import-Module` 只是重新套用 —— 但**上一次載入定義、這次不再
     定義**的東西**不會**被移除。要保證乾淨的狀態,請開新的 pwsh session。
+
+## 命令列刪除字詞
+
+啟用 `enableVimMode` 時，**Insert 模式**的 `Ctrl+W` 會往前刪到目前或上一個
+以空白分隔的字詞開頭（`UnixWordRubout`）。例如游標在
+`git checkout feature/login-fix` 最後，按一次就會刪掉 `feature/login-fix`。
+刪掉的文字會存進 PSReadLine 的 kill ring，不會寫入 Windows 剪貼簿。
+
+`Ctrl+Backspace` 保留原本較細的 `BackwardKillWord` 分詞邊界：使用預設分隔符時，
+上述範例只會刪掉 `fix`。Vi **Command 模式**（按 `Esc` 後）與 Windows 模式
+（關閉 `enableVimMode`）的 `Ctrl+W` 都維持各自的預設綁定。
+
+綁定註冊在 edit-mode reset 之後，因此 `reload`、`cas`、`cau` 重載後仍會保留。
+套用變更後，執行 `reload` 或開啟新的 PowerShell session 即可生效。這項設定只影響
+PowerShell 提示字元，不會改變其他互動式程式的操作，且終端機必須把 `Ctrl+W`
+傳給 shell。詳見
+[PSReadLine 按鍵綁定](https://learn.microsoft.com/en-us/powershell/module/psreadline/set-psreadlinekeyhandler)。
 
 ## PATH:Windows vs Unix
 
