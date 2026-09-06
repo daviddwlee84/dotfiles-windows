@@ -4,7 +4,9 @@
 # and Sync-HerdrSkill from herdr-skill-sync.ps1.
 
 $script:HerdrInstallerUri = 'https://herdr.dev/install.ps1'
-$script:HerdrInstallerSha256 = '3415EA0BC562CAD003AFCC70AC9916B81CDE043C4C26087F05255AE7807D1BA7'
+# Reviewed from herdrdev/herdr distribution/install.ps1 at 8162e26509f7b91eb8dcfd47387d43af3f348bbb.
+$script:HerdrInstallerSourceCommit = '8162e26509f7b91eb8dcfd47387d43af3f348bbb'
+$script:HerdrInstallerSha256 = '369E0D2B5A5F976E11B512F3C4B610A2EBA6119732B292A2F587CA8F80FE0BAF'
 
 function Invoke-HerdrInstallerProcess {
     param(

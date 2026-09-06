@@ -8,6 +8,12 @@ BeforeAll {
 }
 
 Describe 'Herdr verified upgrade orchestration' {
+    It 'pins the audited upstream installer bytes and source commit' {
+        $script:HerdrInstallerUri | Should -BeExactly 'https://herdr.dev/install.ps1'
+        $script:HerdrInstallerSourceCommit | Should -BeExactly '8162e26509f7b91eb8dcfd47387d43af3f348bbb'
+        $script:HerdrInstallerSha256 | Should -BeExactly '369E0D2B5A5F976E11B512F3C4B610A2EBA6119732B292A2F587CA8F80FE0BAF'
+    }
+
     BeforeEach {
         $script:SavedHerdrEnv = $env:HERDR_ENV
         $script:SavedPaneId = $env:HERDR_PANE_ID
