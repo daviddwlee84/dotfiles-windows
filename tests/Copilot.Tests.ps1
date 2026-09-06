@@ -391,7 +391,9 @@ Describe 'Copilot module' {
             }
         }
 
-        It 'uses the same future-model vectors for Claude and Codex' {
+        It 'uses the same future-model vectors for Claude and Codex without catalog metadata' {
+            # Offline: no catalog, so no tier information exists and a curated id
+            # deliberately beats a lexical guess about an unknown future one.
             InModuleScope Copilot {
                 $vectors = @(
                     @{ Model = @('gpt-5.7', 'gpt-5.6-luna'); Expected = 'gpt-5.6-luna' },
@@ -405,6 +407,243 @@ Describe 'Copilot module' {
                     Select-CopilotBestModel -Model $vector.Model | Should -BeExactly $vector.Expected
                     Select-CopilotBestCodexModel -Model $vector.Model | Should -BeExactly $vector.Expected
                 }
+            }
+        }
+    }
+
+    Context 'capability-tier ranking' {
+        # `model_picker_category` is the upstream tier taxonomy and lines up with
+        # OpenAI's DURABLE tiers (Sol/Astra powerful, Terra versatile, Luna
+        # lightweight). Generation and tier advance independently - gpt-6-astra is
+        # the gen-6 flagship while Terra and Luna stayed on 5.6 - so ranking on the
+        # version alone would promote a future gpt-6-luna over gpt-5.6-sol.
+        BeforeAll {
+            InModuleScope Copilot {
+                function script:NewTierCatalog {
+                    param([hashtable] $Tier)
+                    $data = foreach ($id in $Tier.Keys) {
+                        [pscustomobject]@{
+                            id = $id
+                            model_picker_category = $Tier[$id]
+                            capabilities = [pscustomobject]@{ type = 'chat' }
+                        }
+                    }
+                    [pscustomobject]@{ data = @($data) }
+                }
+            }
+        }
+
+        It 'promotes a newer flagship before it reaches the allowlist' {
+            InModuleScope Copilot {
+                $cat = NewTierCatalog @{ 'gpt-7-helios' = 'powerful'; 'gpt-6-astra' = 'powerful'
+                                         'gpt-5.6-sol' = 'powerful'; 'gpt-5.6-terra' = 'versatile' }
+                $ids = @('gpt-7-helios', 'gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra')
+                Select-CopilotBestModel -Model $ids -Catalog $cat | Should -BeExactly 'gpt-7-helios'
+                Select-CopilotBestCodexModel -Model $ids -Catalog $cat | Should -BeExactly 'gpt-7-helios'
+            }
+        }
+
+        It 'picks gpt-6-astra over gpt-5.6-sol' {
+            InModuleScope Copilot {
+                $cat = NewTierCatalog @{ 'gpt-6-astra' = 'powerful'; 'gpt-5.6-sol' = 'powerful'
+                                         'gpt-5.6-luna' = 'lightweight' }
+                Select-CopilotBestModel -Model @('gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-luna') -Catalog $cat |
+                    Should -BeExactly 'gpt-6-astra'
+            }
+        }
+
+        It 'never lets a newer lower tier displace a served flagship' {
+            # The regression a version-only pre-pass would cause.
+            InModuleScope Copilot {
+                $cat = NewTierCatalog @{ 'gpt-6-luna' = 'lightweight'; 'gpt-5.6-sol' = 'powerful' }
+                Select-CopilotBestModel -Model @('gpt-6-luna', 'gpt-5.6-sol') -Catalog $cat |
+                    Should -BeExactly 'gpt-5.6-sol'
+
+                $cat = NewTierCatalog @{ 'gpt-6-terra' = 'versatile'; 'gpt-5.6-sol' = 'powerful' }
+                Select-CopilotBestModel -Model @('gpt-6-terra', 'gpt-5.6-sol') -Catalog $cat |
+                    Should -BeExactly 'gpt-5.6-sol'
+            }
+        }
+
+        It 'keeps the curated pick against an unknown same-generation sibling' {
+            InModuleScope Copilot {
+                $cat = NewTierCatalog @{ 'gpt-6-nova' = 'powerful'; 'gpt-6-astra' = 'powerful'
+                                         'gpt-5.6-sol' = 'powerful' }
+                Select-CopilotBestModel -Model @('gpt-6-nova', 'gpt-6-astra', 'gpt-5.6-sol') -Catalog $cat |
+                    Should -BeExactly 'gpt-6-astra'
+            }
+        }
+
+        It 'never selects a -fast sibling as the main model' {
+            # gpt-5.6-sol-fast is picker-enabled AND inherits `powerful`, so only
+            # the explicit -fast exclusion keeps it out.
+            InModuleScope Copilot {
+                $cat = NewTierCatalog @{ 'gpt-5.6-sol-fast' = 'powerful'; 'gpt-5.6-sol' = 'powerful' }
+                Select-CopilotBestModel -Model @('gpt-5.6-sol-fast', 'gpt-5.6-sol') -Catalog $cat |
+                    Should -BeExactly 'gpt-5.6-sol'
+            }
+        }
+
+        It 'keeps Opus when only a newer lower Claude tier appears' {
+            InModuleScope Copilot {
+                $cat = NewTierCatalog @{ 'claude-haiku-6' = 'lightweight'; 'claude-opus-5' = 'powerful' }
+                Select-CopilotBestModel -Model @('claude-haiku-6', 'claude-opus-5') -Catalog $cat |
+                    Should -BeExactly 'claude-opus-5'
+            }
+        }
+
+        It 'keeps o-series reasoning models in the OpenAI arm' {
+            InModuleScope Copilot {
+                $cat = NewTierCatalog @{ 'o4' = 'powerful'; 'gemini-10-pro' = 'powerful' }
+                Select-CopilotBestModel -Model @('o4', 'gemini-10-pro') -Catalog $cat |
+                    Should -BeExactly 'o4'
+                $cat = NewTierCatalog @{ 'o4' = 'powerful'; 'claude-opus-5' = 'powerful' }
+                Select-CopilotBestCodexModel -Model @('o4', 'claude-opus-5') -Catalog $cat |
+                    Should -BeExactly 'o4'
+            }
+        }
+
+        It 'prefers a parsed Grok generation over lexical code names without metadata' {
+            InModuleScope Copilot {
+                $cat = [pscustomobject]@{ data = @(
+                    [pscustomobject]@{ id = 'grok-code-fast-1'; capabilities = [pscustomobject]@{ type = 'chat' } },
+                    [pscustomobject]@{ id = 'grok-4.6'; capabilities = [pscustomobject]@{ type = 'chat' } }
+                ) }
+                Select-CopilotBestModel -Model @('grok-code-fast-1', 'grok-4.6') -Catalog $cat |
+                    Should -BeExactly 'grok-4.6'
+            }
+        }
+
+        It 'selects grok with no allowlist and ranks it between OpenAI and Gemini' {
+            InModuleScope Copilot {
+                $cat = NewTierCatalog @{ 'grok-4.5' = 'versatile'; 'grok-4.6' = 'versatile' }
+                Select-CopilotBestModel -Model @('grok-4.5', 'grok-4.6') -Catalog $cat |
+                    Should -BeExactly 'grok-4.6'
+
+                $cat = NewTierCatalog @{ 'grok-4.6' = 'versatile'; 'gemini-3.8-flash' = 'versatile' }
+                Select-CopilotBestModel -Model @('grok-4.6', 'gemini-3.8-flash') -Catalog $cat |
+                    Should -BeExactly 'grok-4.6'
+
+                $cat = NewTierCatalog @{ 'grok-4.6' = 'versatile'; 'gpt-5.6-sol' = 'powerful' }
+                Select-CopilotBestModel -Model @('grok-4.6', 'gpt-5.6-sol') -Catalog $cat |
+                    Should -BeExactly 'gpt-5.6-sol'
+            }
+        }
+
+        It 'uses catalog tier before version for Gemini and remaining vendors' {
+            InModuleScope Copilot {
+                $cat = NewTierCatalog @{ 'gemini-10-flash' = 'lightweight'; 'gemini-9-pro' = 'powerful' }
+                Select-CopilotBestModel -Model @('gemini-10-flash', 'gemini-9-pro') -Catalog $cat |
+                    Should -BeExactly 'gemini-9-pro'
+
+                $cat = NewTierCatalog @{ 'mai-code-2.0-flash' = 'lightweight'; 'mai-code-1.1' = 'powerful' }
+                Select-CopilotBestModel -Model @('mai-code-2.0-flash', 'mai-code-1.1') -Catalog $cat |
+                    Should -BeExactly 'mai-code-1.1'
+            }
+        }
+
+        It 'rejects a sole -fast id instead of re-entering a lexical fallback' {
+            InModuleScope Copilot {
+                $cat = NewTierCatalog @{ 'gpt-5.6-sol-fast' = 'powerful' }
+                Select-CopilotBestModel -Model @('gpt-5.6-sol-fast') -Catalog $cat | Should -BeNullOrEmpty
+                Select-CopilotBestCodexModel -Model @('gpt-5.6-sol-fast') -Catalog $cat | Should -BeNullOrEmpty
+            }
+        }
+
+        It 'never widens tier rows beyond the supplied candidate ids' {
+            InModuleScope Copilot {
+                $cat = NewTierCatalog @{ 'gpt-7-helios' = 'powerful'; 'gpt-5.6-sol' = 'powerful' }
+                Select-CopilotBestModel -Model @('gpt-5.6-sol') -Catalog $cat |
+                    Should -BeExactly 'gpt-5.6-sol'
+            }
+        }
+
+        It 'ignores only explicit model-looking prompt data' {
+            InModuleScope Copilot {
+                Get-CopilotClaudeModelArgument -Argv @('-p', '--', '--model=gpt-prompt') | Should -BeNullOrEmpty
+                Get-CopilotClaudeModelArgument -Argv @('-p', 'hello', '--model', 'gpt-real') |
+                    Should -BeExactly 'gpt-real'
+                Get-CopilotClaudeModelArgument -Argv @('-p', '--model', 'gpt-option') |
+                    Should -BeExactly 'gpt-option'
+            }
+        }
+
+        It 'pads numeric runs so the version key matches sort -V' {
+            InModuleScope Copilot {
+                $pairs = @(
+                    @('gpt-5.6-terra', 'gpt-6-astra'),
+                    @('gpt-9-x', 'gpt-10-x'),
+                    @('claude-opus-4-8', 'claude-opus-4-10')
+                )
+                foreach ($pair in $pairs) {
+                    $sorted = @($pair | Sort-Object { Get-CopilotVersionSortKey $_ })
+                    $sorted[-1] | Should -BeExactly $pair[1]
+                }
+            }
+        }
+
+        It 'reads only the generation, never the tier codename' {
+            InModuleScope Copilot {
+                Get-CopilotModelGeneration 'gpt-6-astra' | Should -BeExactly '6'
+                Get-CopilotModelGeneration 'gpt-6-nova' | Should -BeExactly '6'
+                Get-CopilotModelGeneration 'gpt-5.6-sol' | Should -BeExactly '5.6'
+                Get-CopilotModelGeneration 'claude-opus-4-8' | Should -BeExactly '4.8'
+                Get-CopilotModelGeneration 'grok-4.6' | Should -BeExactly '4.6'
+            }
+        }
+
+        It 'degrades on partial tier coverage instead of promoting a lower tier' {
+            InModuleScope Copilot {
+                $cat = [pscustomobject]@{ data = @(
+                    [pscustomobject]@{ id = 'gpt-7-luna'; model_picker_category = 'lightweight'; capabilities = [pscustomobject]@{ type = 'chat' } },
+                    [pscustomobject]@{ id = 'gpt-5.6-sol'; capabilities = [pscustomobject]@{ type = 'chat' } }
+                ) }
+                Select-CopilotBestModel -Model @('gpt-7-luna', 'gpt-5.6-sol') -Catalog $cat |
+                    Should -BeExactly 'gpt-5.6-sol'
+            }
+        }
+
+        It 'does not read arbitrary later numbers as a GPT generation' {
+            InModuleScope Copilot {
+                $cat = NewTierCatalog @{ 'gpt-oss-120b' = 'powerful'; 'gpt-6-astra' = 'powerful' }
+                Select-CopilotBestModel -Model @('gpt-oss-120b', 'gpt-6-astra') -Catalog $cat |
+                    Should -BeExactly 'gpt-6-astra'
+                Get-CopilotModelGeneration 'gpt-oss-120b' | Should -BeNullOrEmpty
+            }
+        }
+
+        It 'orders one tier by generation before Claude family spelling' {
+            InModuleScope Copilot {
+                $cat = NewTierCatalog @{ 'claude-fable-6' = 'powerful'; 'claude-opus-5' = 'powerful'; 'claude-fable-5' = 'powerful' }
+                Select-CopilotBestModel -Model @('claude-fable-6', 'claude-opus-5', 'claude-fable-5') -Catalog $cat |
+                    Should -BeExactly 'claude-fable-6'
+            }
+        }
+
+        It 'ignores newer known models from a lower tier in the prepass guard' {
+            InModuleScope Copilot {
+                $cat = NewTierCatalog @{ 'gpt-7-helios' = 'powerful'; 'gpt-5-legacy' = 'powerful'; 'gpt-8-luna' = 'lightweight' }
+                $models = @('gpt-7-helios', 'gpt-5-legacy', 'gpt-8-luna')
+                $rows = Get-CopilotTierRows -Catalog $cat -Model $models
+                Select-CopilotTierPrepass -Prefix '^gpt-' -Row $rows -Model $models `
+                    -Allowlist @('gpt-8-luna', 'gpt-5-legacy') | Should -BeExactly 'gpt-7-helios'
+            }
+        }
+
+        It 'degrades to the allowlist when the catalog has no tier field' {
+            InModuleScope Copilot {
+                $cat = [pscustomobject]@{ data = @(
+                    [pscustomobject]@{ id = 'gpt-6-astra'; capabilities = [pscustomobject]@{ type = 'chat' } },
+                    [pscustomobject]@{ id = 'gpt-5.6-sol'; capabilities = [pscustomobject]@{ type = 'chat' } }) }
+                # gpt-6-astra now heads the allowlist, so it still wins - but via
+                # the allowlist, not the pre-pass.
+                Select-CopilotBestModel -Model @('gpt-6-astra', 'gpt-5.6-sol') -Catalog $cat |
+                    Should -BeExactly 'gpt-6-astra'
+                $cat2 = [pscustomobject]@{ data = @(
+                    [pscustomobject]@{ id = 'gpt-7-helios'; capabilities = [pscustomobject]@{ type = 'chat' } },
+                    [pscustomobject]@{ id = 'gpt-5.6-sol'; capabilities = [pscustomobject]@{ type = 'chat' } }) }
+                Select-CopilotBestModel -Model @('gpt-7-helios', 'gpt-5.6-sol') -Catalog $cat2 |
+                    Should -BeExactly 'gpt-5.6-sol'
             }
         }
     }
@@ -468,6 +707,7 @@ Describe 'Copilot module' {
                 Test-CopilotExplicitCodexModel -Argv @('exec', '-m=gpt-5.6-terra') | Should -BeTrue
                 Test-CopilotExplicitCodexModel -Argv @('exec', '--model', 'gpt-5.5') | Should -BeTrue
                 Test-CopilotExplicitCodexModel -Argv @('exec', '--config', 'model="gpt-5.4"') | Should -BeFalse
+                Test-CopilotExplicitCodexModel -Argv @('exec', '--', '--model=gpt-prompt') | Should -BeFalse
             }
         }
         It 'preserves the project SpecStory codex command' {
@@ -525,6 +765,10 @@ Describe 'Copilot module' {
 
                     $script:capturedCodexLaunch | Should -Contain 'model_providers.copilot_api.requires_openai_auth=false'
                     $script:capturedCodexLaunch | Should -Not -Contain 'model_providers.copilot_api.requires_openai_auth=true'
+                    $script:capturedCodexLaunch | Should -Contain '--ask-for-approval'
+                    $script:capturedCodexLaunch | Should -Contain 'never'
+                    $script:capturedCodexLaunch | Should -Contain '--sandbox'
+                    $script:capturedCodexLaunch | Should -Contain 'danger-full-access'
                 } finally {
                     Remove-Item Function:\codex -Force -ErrorAction SilentlyContinue
                 }
@@ -602,7 +846,7 @@ Describe 'Copilot module' {
         It 'restores the API key without masking a direct Codex failure' {
             InModuleScope Copilot {
                 $savedKey = $env:GITHUB_COPILOT_API_KEY
-                function script:codex { & cmd.exe /d /c 'exit 8' }
+                function script:codex { & (Join-Path $PSHOME 'pwsh') -NoProfile -Command 'exit 8' }
                 try {
                     $env:GITHUB_COPILOT_API_KEY = 'original'
                     Mock Test-CopilotAlive { $true }
@@ -760,6 +1004,20 @@ Describe 'Copilot module' {
             }
         }
 
+        It 'keeps newer served Claude generations over curated old ids' {
+            InModuleScope Copilot {
+                $catalog = [pscustomobject]@{ data = @(
+                    'claude-fable-5', 'claude-fable-6', 'claude-opus-4-9', 'claude-opus-4-10' |
+                        ForEach-Object {
+                            [pscustomobject]@{ id = $_; capabilities = [pscustomobject]@{ type = 'chat' } }
+                        }
+                ) }
+                $modelProfile = Get-CopilotModelProfile -Model 'claude-fable-6' -Catalog $catalog
+                $modelProfile.fable | Should -BeExactly 'claude-fable-6'
+                $modelProfile.opus | Should -BeExactly 'claude-opus-4-10'
+            }
+        }
+
         It 'injects the complete role profile including Fable and small-fast' {
             InModuleScope Copilot {
                 $catalog = [pscustomobject]@{ data = @(
@@ -796,6 +1054,168 @@ Describe 'Copilot module' {
                 copilot-model --auto -ErrorAction SilentlyContinue -ErrorVariable +errors
                 $errors.Exception.Message | Should -Match 'needs a reachable proxy'
                 Test-Path $script:state | Should -BeFalse
+            }
+        }
+
+        It 'renders --details from the catalog fields and marks the automatic pick' {
+            InModuleScope Copilot {
+                $catalog = [pscustomobject]@{ data = @(
+                    [pscustomobject]@{
+                        id = 'gpt-6-astra'; model_picker_category = 'powerful'
+                        model_picker_price_category = 'very_high'; model_picker_enabled = $true
+                        preview = $false; policy = [pscustomobject]@{ state = 'enabled' }
+                        billing = [pscustomobject]@{ restricted_to = @('pro_plus', 'max') }
+                        capabilities = [pscustomobject]@{
+                            type = 'chat'; limits = [pscustomobject]@{ max_context_window_tokens = 1000000; max_output_tokens = 128000 }
+                            supports = [pscustomobject]@{ reasoning_effort = @('low', 'max') }
+                        }
+                    },
+                    [pscustomobject]@{
+                        id = 'gpt-5.6-sol'; model_picker_category = 'powerful'
+                        model_picker_price_category = 'high'; model_picker_enabled = $true
+                        capabilities = [pscustomobject]@{
+                            type = 'chat'; limits = [pscustomobject]@{ max_context_window_tokens = 1050000; max_output_tokens = 128000 }
+                            supports = [pscustomobject]@{ reasoning_effort = @('none', 'max') }
+                        }
+                    },
+                    [pscustomobject]@{
+                        id = 'text-embedding-3-small'; model_picker_enabled = $false
+                        capabilities = [pscustomobject]@{ type = 'embeddings' }
+                    }
+                ) }
+                Mock Get-CopilotModelCatalog { $catalog }
+                Mock Get-CopilotDefaultModel { 'gpt-5.6-sol[1m]' }
+                Mock Get-CopilotFastRouting { $null }
+
+                $output = (copilot-model --details | Out-String)
+                $output | Should -Match 'gpt-6-astra'
+                $output | Should -Match 'powerful'
+                $output | Should -Match 'very_high'
+                $output | Should -Match '1000k'
+                $output | Should -Match 'pro_plus\+'
+                $output | Should -Match 'text-embedding-3-small'
+                $output | Should -Match 'nopick'
+            }
+        }
+
+        It 'passes --json through and keeps --why as a no-write dry run' {
+            InModuleScope Copilot {
+                $script:state = Join-Path (Get-Location) 'state/model'
+                Mock Get-CopilotModelState { $script:state }
+                $catalog = [pscustomobject]@{ data = @(
+                    [pscustomobject]@{
+                        id = 'gpt-6-astra'; model_picker_category = 'powerful'
+                        capabilities = [pscustomobject]@{
+                            type = 'chat'; limits = [pscustomobject]@{ max_context_window_tokens = 1000000 }
+                        }
+                    },
+                    [pscustomobject]@{
+                        id = 'gpt-5.6-sol'; model_picker_category = 'powerful'
+                        capabilities = [pscustomobject]@{ type = 'chat' }
+                    }
+                ) }
+                Mock Get-CopilotModelCatalog { $catalog }
+
+                $json = copilot-model --json | ConvertFrom-Json
+                @($json.data).Count | Should -Be 2
+                $why = (& { copilot-model --why } 6>&1 | Out-String)
+                $why | Should -Match 'dry run, nothing written'
+                $why | Should -Match 'gpt-6-astra'
+                Test-Path $script:state | Should -BeFalse
+            }
+        }
+
+        It 'explains and then writes for --auto --why' {
+            InModuleScope Copilot {
+                $script:state = Join-Path (Get-Location) 'state/model'
+                Mock Get-CopilotModelState { $script:state }
+                $catalog = [pscustomobject]@{ data = @(
+                    [pscustomobject]@{
+                        id = 'gpt-6-astra'; model_picker_category = 'powerful'
+                        capabilities = [pscustomobject]@{
+                            type = 'chat'; limits = [pscustomobject]@{ max_context_window_tokens = 1000000 }
+                        }
+                    },
+                    [pscustomobject]@{
+                        id = 'gpt-5.6-sol'; model_picker_category = 'powerful'
+                        capabilities = [pscustomobject]@{ type = 'chat' }
+                    }
+                ) }
+                Mock Get-CopilotModelCatalog { $catalog }
+
+                $output = (& { copilot-model --auto --why } 6>&1 | Out-String)
+                $output | Should -Match 'copilot-model: --auto reasoning'
+                (Get-Content -Raw $script:state).Trim() | Should -BeExactly 'gpt-6-astra[1m]'
+            }
+        }
+
+        It 'fails --why cleanly when every catalog entry is vetoed' {
+            InModuleScope Copilot {
+                $catalog = [pscustomobject]@{ data = @(
+                    [pscustomobject]@{ id = 'gpt-disabled'; policy = [pscustomobject]@{ state = 'disabled' }; capabilities = [pscustomobject]@{ type = 'chat' } },
+                    [pscustomobject]@{ id = 'gpt-hidden'; model_picker_enabled = $false; capabilities = [pscustomobject]@{ type = 'chat' } },
+                    [pscustomobject]@{ id = 'text-embedding-3-small'; capabilities = [pscustomobject]@{ type = 'embeddings' } }
+                ) }
+                Mock Get-CopilotModelCatalog { $catalog }
+                $errors = @()
+                copilot-model --why -ErrorAction SilentlyContinue -ErrorVariable +errors
+                $errors.Exception.Message | Should -Match 'found no selectable chat model'
+            }
+        }
+
+        It 'never narrows the persisted model advertised plan set' {
+            InModuleScope Copilot {
+                $entry = {
+                    param($id, $plans)
+                    [pscustomobject]@{
+                        id = $id; billing = [pscustomobject]@{ restricted_to = @($plans) }
+                        capabilities = [pscustomobject]@{ type = 'chat' }
+                    }
+                }
+                $catalog = [pscustomobject]@{ data = @(
+                    (& $entry 'gpt-6-astra' @('pro_plus','business','enterprise','max')),
+                    (& $entry 'gpt-5.6-sol' @('pro_plus','business','enterprise','max')),
+                    (& $entry 'gpt-5.6-terra' @('pro','pro_plus','business','enterprise','max')),
+                    (& $entry 'gpt-5.6-luna' @('free','edu','pro','pro_plus','business','enterprise','max')),
+                    (& $entry 'gpt-5-mini' @())
+                ) }
+
+                $ids = @(Get-CopilotAutoCandidateIds -Catalog $catalog -BaselineModel 'gpt-5.6-terra')
+                $ids | Should -Not -Contain 'gpt-6-astra'
+                $ids | Should -Not -Contain 'gpt-5.6-sol'
+                $ids | Should -Contain 'gpt-5.6-terra'
+
+                $ids = @(Get-CopilotAutoCandidateIds -Catalog $catalog -BaselineModel 'gpt-5.6-sol')
+                Select-CopilotBestModel -Model $ids -Catalog $catalog | Should -BeExactly 'gpt-6-astra'
+
+                $ids = @(Get-CopilotAutoCandidateIds -Catalog $catalog -BaselineModel '')
+                Select-CopilotBestModel -Model $ids -Catalog $catalog | Should -BeExactly 'gpt-5.6-luna'
+            }
+        }
+
+        It 'uses a fast sibling as the entitlement baseline' {
+            InModuleScope Copilot {
+                $plans = @('pro_plus','business','enterprise','max')
+                $catalog = [pscustomobject]@{ data = @(
+                    [pscustomobject]@{ id = 'gpt-6-astra'; billing = [pscustomobject]@{ restricted_to = $plans }; capabilities = [pscustomobject]@{ type = 'chat' } },
+                    [pscustomobject]@{ id = 'gpt-5.6-sol'; billing = [pscustomobject]@{ restricted_to = $plans }; capabilities = [pscustomobject]@{ type = 'chat' } },
+                    [pscustomobject]@{ id = 'gpt-5.6-sol-fast'; billing = [pscustomobject]@{ restricted_to = $plans }; capabilities = [pscustomobject]@{ type = 'chat' } }
+                ) }
+                $ids = @(Get-CopilotAutoCandidateIds -Catalog $catalog -BaselineModel 'gpt-5.6-sol-fast')
+                Select-CopilotBestModel -Model $ids -Catalog $catalog | Should -BeExactly 'gpt-6-astra'
+            }
+        }
+
+        It 'rejects malformed catalogs for metadata and automatic paths' {
+            InModuleScope Copilot {
+                Test-CopilotModelCatalog '<html>gateway error</html>' | Should -BeFalse
+                Test-CopilotModelCatalog ([pscustomobject]@{ error = 'bad gateway' }) | Should -BeFalse
+                Mock Get-CopilotModelCatalog { [pscustomobject]@{ error = 'bad gateway' } }
+                foreach ($flag in '--details', '--json', '--why', '--auto') {
+                    $errors = @()
+                    copilot-model $flag -ErrorAction SilentlyContinue -ErrorVariable +errors
+                    $errors.Exception.Message | Should -Match 'valid|reachable'
+                }
             }
         }
 
@@ -983,6 +1403,112 @@ Describe 'Copilot module' {
                 Get-CopilotHereDrift | Should -BeNullOrEmpty
             }
         }
+
+        # -Model is what makes `claude-copilot-once --fast` honest. Without it the
+        # want-side is the global default, which knows nothing about --fast, so a
+        # fast pin always looked stale against its own standard sibling - and
+        # accepting the "refresh" silently downgraded it off fast.
+        It 'reports no drift for a fast pin when the launch model is that fast id' {
+            InModuleScope Copilot {
+                $fast = Get-CopilotEnvBlock -Pinned -Model 'gpt-5.6-sol-fast[1m]'
+                @{ env = $fast } | ConvertTo-Json -Depth 5 | Set-Content '.claude/settings.local.json'
+                Get-CopilotHereDrift -Model 'gpt-5.6-sol-fast[1m]' | Should -BeNullOrEmpty
+            }
+        }
+        It 'still reports a fast pin as stale when no fast model was asked for' {
+            # Crash residue: there is no EXIT trap by design, so a killed session
+            # can leave a fast pin behind. Without -Model the diff is TRUE.
+            InModuleScope Copilot {
+                Mock Get-CopilotDefaultModel { 'gpt-5.6-sol[1m]' }
+                $fast = Get-CopilotEnvBlock -Pinned -Model 'gpt-5.6-sol-fast[1m]'
+                @{ env = $fast } | ConvertTo-Json -Depth 5 | Set-Content '.claude/settings.local.json'
+                ($drift = Get-CopilotHereDrift) | Should -Not -BeNullOrEmpty
+                ($drift -join "`n") | Should -Match 'ANTHROPIC_MODEL : gpt-5\.6-sol-fast\[1m\] ->'
+            }
+        }
+        It 'reports the honest upgrade when a standard pin meets --fast' {
+            InModuleScope Copilot {
+                $std = Get-CopilotEnvBlock -Pinned -Model 'gpt-5.6-sol[1m]'
+                @{ env = $std } | ConvertTo-Json -Depth 5 | Set-Content '.claude/settings.local.json'
+                ($drift = Get-CopilotHereDrift -Model 'gpt-5.6-sol-fast[1m]') | Should -Not -BeNullOrEmpty
+                ($drift -join "`n") | Should -Match '-> gpt-5\.6-sol-fast\[1m\]'
+            }
+        }
+    }
+
+    Context 'permission posture on the raw (--no-specstory) path' {
+        It 'detects every spelling of an explicit permission flag' {
+            InModuleScope Copilot {
+                Test-CopilotClaudePermissionFlag -Argv @('--dangerously-skip-permissions') | Should -BeTrue
+                Test-CopilotClaudePermissionFlag -Argv @('--permission-mode', 'plan') | Should -BeTrue
+                Test-CopilotClaudePermissionFlag -Argv @('--permission-mode=plan') | Should -BeTrue
+                Test-CopilotClaudePermissionFlag -Argv @('--permission-prompt-tool=x') | Should -BeTrue
+                Test-CopilotClaudePermissionFlag -Argv @('--permission-prompts', 'none') | Should -BeTrue
+                Test-CopilotClaudePermissionFlag -Argv @('--restricted') | Should -BeTrue
+                Test-CopilotClaudePermissionFlag -Argv @('--allow-dangerously-skip-permissions') | Should -BeFalse
+                Test-CopilotClaudePermissionFlag -Argv @('-p', 'write a --permission-mode doc') | Should -BeFalse
+                Test-CopilotClaudePermissionFlag -Argv @('-p', '--permission-mode=plan') | Should -BeTrue
+                Test-CopilotClaudePermissionFlag -Argv @('-p', '--', '--permission-mode=plan') | Should -BeFalse
+                Test-CopilotClaudeAlternatePermissionFlag -Argv @('--permission-mode=plan') | Should -BeTrue
+                Test-CopilotClaudeAlternatePermissionFlag -Argv @('--dangerously-skip-permissions') | Should -BeFalse
+                Test-CopilotClaudeAlternatePermissionFlag -Argv @('-p', '--', '--permission-mode=plan') | Should -BeFalse
+                Test-CopilotClaudePermissionFlag -Argv @() | Should -BeFalse
+                Test-CopilotClaudePermissionFlag -Argv $null | Should -BeFalse
+            }
+        }
+        It 'treats Codex approval and sandbox as independent axes' {
+            InModuleScope Copilot {
+                Test-CopilotCodexApprovalFlag -Argv @('--ask-for-approval', 'untrusted') | Should -BeTrue
+                Test-CopilotCodexApprovalFlag -Argv @('--sandbox', 'read-only') | Should -BeFalse
+                Test-CopilotCodexSandboxFlag -Argv @('--sandbox', 'read-only') | Should -BeTrue
+                Test-CopilotCodexSandboxFlag -Argv @('-s', 'read-only') | Should -BeTrue
+                Test-CopilotCodexSandboxFlag -Argv @('-sread-only') | Should -BeTrue
+                Test-CopilotCodexApprovalFlag -Argv @('-aon-request') | Should -BeTrue
+                Test-CopilotCodexSandboxFlag -Argv @('--ask-for-approval', 'untrusted') | Should -BeFalse
+                Test-CopilotCodexApprovalFlag -Argv @('--approve-for-me') | Should -BeTrue
+                Test-CopilotCodexApprovalFlag -Argv @('--full-auto') | Should -BeTrue
+                Test-CopilotCodexSandboxFlag -Argv @('--full-auto') | Should -BeTrue
+                Test-CopilotCodexSandboxFlag -Argv @('--approve-for-me') | Should -BeTrue
+                Test-CopilotCodexApprovalFlag -Argv @('--', '--ask-for-approval=never') | Should -BeFalse
+            }
+        }
+        It 'rewrites only the exact repo-seeded bypass command' {
+            InModuleScope Copilot {
+                Remove-CopilotSeededBypass 'claude --dangerously-skip-permissions' |
+                    Should -BeExactly 'claude'
+                $custom = 'claude --append-system-prompt "explain --dangerously-skip-permissions safely" --dangerously-skip-permissions --verbose'
+                Remove-CopilotSeededBypass $custom | Should -BeExactly $custom
+            }
+        }
+        It 'does not append the bypass when argv already states a posture' {
+            InModuleScope Copilot {
+                Mock Get-SpecstoryClaudeCmd { 'claude' }
+                New-SpecstoryClaudeCommand -Argv @('--permission-mode', 'plan') |
+                    Should -Not -Match '--dangerously-skip-permissions'
+                New-SpecstoryClaudeCommand -Argv @() |
+                    Should -Match '--dangerously-skip-permissions'
+                # A bare configured command plus an explicit bypass must keep the
+                # caller's token exactly once; the detector and deduper must not
+                # erase it together.
+                $cmd = New-SpecstoryClaudeCommand -Argv @('--dangerously-skip-permissions')
+                ([regex]::Matches($cmd, '--dangerously-skip-permissions')).Count | Should -Be 1
+
+                Mock Get-SpecstoryClaudeCmd { 'claude --dangerously-skip-permissions' }
+                $cmd = New-SpecstoryClaudeCommand -Argv @('--permission-mode', 'plan')
+                $cmd | Should -Not -Match '--dangerously-skip-permissions'
+                $cmd | Should -Match '--permission-mode'
+
+                $cmd = New-SpecstoryClaudeCommand -Argv @('-p', '--', '--permission-mode=plan')
+                $cmd | Should -Match '--dangerously-skip-permissions'
+
+                Mock Get-SpecstoryClaudeCmd {
+                    'claude --append-system-prompt "--dangerously-skip-permissions"'
+                }
+                $cmd = New-SpecstoryClaudeCommand -Argv @('--permission-mode', 'plan')
+                $cmd | Should -Match '--append-system-prompt "--dangerously-skip-permissions"'
+                $cmd | Should -Match '--permission-mode'
+            }
+        }
     }
 
     Context 'specstory claude_cmd resolution' {
@@ -1090,6 +1616,20 @@ Describe 'Copilot module' {
             }
         }
 
+        It 'uses exit 127 when the child command cannot be resolved' {
+            InModuleScope Copilot {
+                Mock Test-CopilotAlive { $true }
+                Mock Get-CopilotShimEnabled { $false }
+                Mock Get-CopilotEnvBlock { @{} }
+                $errors = @()
+
+                copilot-run -ErrorAction SilentlyContinue -ErrorVariable +errors __copilot_missing_child__
+
+                $LASTEXITCODE | Should -Be 127
+                ($errors.Exception.Message -join "`n") | Should -Match 'exited with code 127'
+            }
+        }
+
         It 'restores the environment without masking a native child failure' {
             InModuleScope Copilot {
                 $savedProbe = $env:COPILOT_RUN_TEST
@@ -1100,7 +1640,7 @@ Describe 'Copilot module' {
                     $env:COPILOT_RUN_TEST = 'original'
 
                     $errors = @()
-                    copilot-run -ErrorAction SilentlyContinue -ErrorVariable +errors cmd.exe /d /c 'exit 7'
+                    copilot-run -ErrorAction SilentlyContinue -ErrorVariable +errors pwsh -NoProfile -Command 'exit 7'
                     $succeeded = $?
                     $exitCode = $LASTEXITCODE
 
@@ -1179,6 +1719,27 @@ Describe 'Copilot module' {
                 $script:capturedLaunchModel | Should -BeExactly 'gpt-explicit-fast'
             }
         }
+        It 'reuses a concrete once fast resolution without a second routing lookup' {
+            InModuleScope Copilot {
+                $saved = $script:CopilotResolvedFastForOnce
+                try {
+                    $script:CopilotResolvedFastForOnce = 'gpt-cached-fast'
+                    Mock Test-CopilotAlive { $true }
+                    Mock Assert-CopilotShim { $true }
+                    Mock Resolve-CopilotFastModel { throw 'must not be called' }
+                    Mock Get-Command { $null } -ParameterFilter { $Name -eq 'specstory' }
+                    Mock copilot-run { $script:capturedLaunch = @($Argv) }
+
+                    claude-copilot --fast --no-specstory
+
+                    $script:capturedLaunch | Should -Contain 'gpt-cached-fast'
+                    Should -Invoke Resolve-CopilotFastModel -Times 0 -Exactly
+                } finally {
+                    $script:CopilotResolvedFastForOnce = $saved
+                }
+            }
+        }
+
         It 'keeps the standard model when no fast sibling is available' {
             InModuleScope Copilot {
                 Mock Test-CopilotAlive { $true }
@@ -1194,6 +1755,19 @@ Describe 'Copilot module' {
                 ($warnings -join "`n") | Should -Match 'using the standard model'
             }
         }
+        It 'refuses --fast with end-of-options before model injection' {
+            InModuleScope Copilot {
+                Mock Test-CopilotAlive { $true }
+                Mock Assert-CopilotShim { $true }
+                Mock copilot-run {}
+                $errors = @()
+                claude-copilot -Argv @('--fast', '--print', '--', '--model-looking-prompt') `
+                    -ErrorAction SilentlyContinue -ErrorVariable +errors
+                ($errors.Exception.Message -join "`n") | Should -Match "cannot be combined with '--'"
+                Should -Invoke copilot-run -Times 0 -Exactly
+            }
+        }
+
         It 'keeps claude-copilot-once as a single delegating policy layer' {
             InModuleScope Copilot {
                 Mock Test-CopilotAlive { $true }
@@ -1208,6 +1782,32 @@ Describe 'Copilot module' {
                 Should -Invoke claude-copilot -Times 1 -Exactly
             }
         }
+        It 'detects a second late --fast even when one leading flag was consumed' {
+            InModuleScope Copilot {
+                Test-CopilotClaudeLateFast -Argv @('--fast', '--no-specstory', '--verbose', '--fast') |
+                    Should -BeTrue
+                Test-CopilotClaudeLateFast -Argv @('--fast', '-p', '--', '--fast') |
+                    Should -BeFalse
+            }
+        }
+
+        It 'refuses a misplaced --fast instead of forwarding it to Claude' {
+            InModuleScope Copilot {
+                Mock Test-CopilotAlive { $true }
+                Mock Test-Path { $false } -ParameterFilter { $Path -eq '.claude/settings.local.json' }
+                Mock copilot-here {}
+                Mock claude-copilot {}
+
+                $errors = @()
+                claude-copilot-once --resume session-id --fast `
+                    -ErrorAction SilentlyContinue -ErrorVariable +errors
+
+                ($errors.Exception.Message -join "`n") | Should -Match 'must come before other arguments'
+                Should -Invoke claude-copilot -Times 0 -Exactly
+                Should -Invoke copilot-here -Times 0 -Exactly
+            }
+        }
+
         It 'builds a temporary pin for the explicit launch model' {
             InModuleScope Copilot {
                 $script:capturedPins = [System.Collections.Generic.List[object]]::new()
@@ -1388,6 +1988,20 @@ Describe 'Copilot module' {
                 $target.Model | Should -BeExactly 'gpt-5.6-sol'
                 $target.Label | Should -BeExactly 'CatalogFallback'
                 $target.Reason | Should -Match "claude-opus-5.*not advertised"
+            }
+        }
+
+        It 'uses live tier metadata for an unknown newer flagship fallback' {
+            InModuleScope Copilot {
+                $catalog = [pscustomobject]@{ data = @(
+                    [pscustomobject]@{ id = 'gpt-7-helios'; model_picker_category = 'powerful'; capabilities = [pscustomobject]@{ type = 'chat' } },
+                    [pscustomobject]@{ id = 'gpt-5.6-sol'; model_picker_category = 'powerful'; capabilities = [pscustomobject]@{ type = 'chat' } }
+                ) }
+                $target = Resolve-CopilotDoctorTarget -ConfiguredMain 'claude-opus-5[1m]' `
+                    -RawModel @('gpt-7-helios', 'gpt-5.6-sol') `
+                    -SelectableModel @('gpt-7-helios', 'gpt-5.6-sol') -Catalog $catalog
+                $target.Model | Should -BeExactly 'gpt-7-helios'
+                $target.Label | Should -BeExactly 'CatalogFallback'
             }
         }
 
@@ -1829,6 +2443,10 @@ $m.Dispose()
             }
         }
         It 'stops only shim processes associated with the selected port' {
+            if (-not $IsWindows) {
+                Set-ItResult -Skipped -Because 'Get-CimInstance process inspection is Windows-only'
+                return
+            }
             InModuleScope Copilot {
                 $savedPort = $env:COPILOT_SHIM_PORT
                 try {
@@ -1938,6 +2556,18 @@ $m.Dispose()
                 Should -Invoke Invoke-RestMethod -Times 0 -Exactly
                 Should -Invoke Write-Error -Times 1 -Exactly -ParameterFilter { $Message -match 'integer from 1 to 32' }
             }
+        }
+    }
+
+    Context 'proxy startup requires the enabled shim' {
+        It 'reaps the fork and returns before ready when shim startup fails' {
+            $source = Get-Content -Raw (Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'modules' 'Copilot' 'Copilot.psm1')
+            $source | Should -Match "if \(-not \(Start-CopilotShim\)\) \{"
+            $source | Should -Match "required metrics shim failed; stopped the fork"
+            $failure = $source.IndexOf("-Detail 'required shim failed'")
+            $ready = $source.IndexOf('Set-CopilotProcessReady -Component proxy', $failure)
+            $failure | Should -BeGreaterThan -1
+            $ready | Should -BeGreaterThan $failure
         }
     }
 

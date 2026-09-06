@@ -1059,6 +1059,15 @@ function script:Get-CopilotModelCatalog {
     catch { $null }
 }
 
+function script:Test-CopilotModelCatalog {
+    param($Catalog)
+    if (-not $Catalog -or $Catalog -is [string]) { return $false }
+    $property = $Catalog.PSObject.Properties['data']
+    if (-not $property) { return $false }
+    $property.Value -is [System.Collections.IEnumerable] -and
+        $property.Value -isnot [string]
+}
+
 function script:Get-CopilotCatalogIds {
     param($Catalog)
     if (-not $Catalog) { return @() }
@@ -1081,6 +1090,48 @@ function script:Get-CopilotSelectableModelIds {
 function script:Remove-CopilotContextHint {
     param([string] $Model)
     $Model -replace '\[1m\]$', ''
+}
+
+# Explicitly selected/persisted model used as an entitlement floor. Never
+# return the built-in fallback: it may itself be unavailable on a lower plan.
+function script:Get-CopilotEntitlementBaselineModel {
+    $settings = '.claude/settings.local.json'
+    if (Test-Path $settings) {
+        try {
+            $obj = Get-Content -Raw $settings | ConvertFrom-Json
+            if ($obj.env.ANTHROPIC_BASE_URL -and $obj.env.ANTHROPIC_MODEL) {
+                return [string] $obj.env.ANTHROPIC_MODEL
+            }
+        } catch { $null = $_ }
+    }
+    if ($env:COPILOT_CLAUDE_MODEL) { return [string] $env:COPILOT_CLAUDE_MODEL }
+    $state = Get-CopilotModelState
+    if (Test-Path $state) { return [string] (Get-Content -First 1 $state -ErrorAction SilentlyContinue) }
+    $null
+}
+
+# Selectable ids whose advertised plan set is no narrower than the baseline.
+# With no explicit baseline, require the broadest restriction set found in the
+# catalog (or an unrestricted entry). Manual ids remain unrestricted.
+function script:Get-CopilotAutoCandidateIds {
+    param($Catalog, [string] $BaselineModel)
+    if (-not $Catalog) { return @() }
+    $selectable = @(Get-CopilotSelectableModelIds $Catalog)
+    $servedEntries = @($Catalog.data | Where-Object {
+        $_.id -and ($selectable -contains [string] $_.id)
+    })
+    $entries = @($servedEntries | Where-Object { $_.id -notmatch '-fast$' })
+    $universe = @($entries | ForEach-Object { @($_.billing.restricted_to) } |
+        Where-Object { $_ } | Sort-Object -Unique)
+    $currentId = Remove-CopilotContextHint $BaselineModel
+    $current = $servedEntries | Where-Object { $_.id -eq $currentId } | Select-Object -First 1
+    $currentPlans = @($current.billing.restricted_to | Where-Object { $_ })
+    $need = if ($current -and $currentPlans.Count -gt 0) { $currentPlans } else { $universe }
+
+    @($entries | Where-Object {
+        $have = @($_.billing.restricted_to | Where-Object { $_ })
+        $have.Count -eq 0 -or @($need | Where-Object { $have -notcontains $_ }).Count -eq 0
+    } | ForEach-Object { $_.id } | Sort-Object -Unique)
 }
 
 # Claude Code uses [1m] only for its full-context/HUD classification. Its
@@ -1116,7 +1167,7 @@ function script:Get-CopilotClaudeCompactWindow {
 # Pick exactly one live inference target. The configured main wins when its raw id
 # is advertised; only the automatic catalog fallback is eligibility-filtered.
 function script:Resolve-CopilotDoctorTarget {
-    param([string] $ConfiguredMain, [string[]] $RawModel, [string[]] $SelectableModel)
+    param([string] $ConfiguredMain, [string[]] $RawModel, [string[]] $SelectableModel, $Catalog)
     $RawModel = @($RawModel | Where-Object { $_ -and $_ -notmatch 'embedding' } | Sort-Object -Unique)
     if (-not $PSBoundParameters.ContainsKey('SelectableModel')) { $SelectableModel = $RawModel }
     $SelectableModel = @($SelectableModel | Where-Object { $_ -and $_ -notmatch 'embedding' } | Sort-Object -Unique)
@@ -1136,7 +1187,7 @@ function script:Resolve-CopilotDoctorTarget {
         }
     }
 
-    $fallback = Select-CopilotBestModel -Model $SelectableModel
+    $fallback = Select-CopilotBestModel -Model $SelectableModel -Catalog $Catalog
     [pscustomobject]@{
         Model  = $fallback
         Label  = 'CatalogFallback'
@@ -1272,37 +1323,45 @@ function script:Get-CopilotModelProfile {
     if (-not $PSBoundParameters.ContainsKey('Catalog')) { $Catalog = Get-CopilotModelCatalog }
     # The selected main may be an explicit override; only automatically derived
     # alternative roles are constrained by the selectable catalog policy.
-    $models = Get-CopilotSelectableModelIds $Catalog
+    $models = @(Get-CopilotAutoCandidateIds -Catalog $Catalog -BaselineModel $Model)
     $raw = Remove-CopilotContextHint $Model
     $main = ConvertTo-CopilotClaudeModel -Model $Model -Catalog $Catalog
 
     $fableRaw = $raw; $opusRaw = $raw; $sonnetRaw = $raw; $haikuRaw = $raw
     if ($raw -like 'claude-*') {
-        $fableRaw = Select-CopilotFirstServed -Model $models -Candidate @('claude-fable-5')
-        if (-not $fableRaw) { $fableRaw = @($models | Where-Object { $_ -like 'claude-fable-*' } | Sort-Object)[-1] }
+        $fableRaw = @($models | Where-Object { $_ -like 'claude-fable-*' } | Sort-Object { Get-CopilotVersionSortKey $_ })[-1]
         if (-not $fableRaw) { $fableRaw = $raw }
 
-        $opusRaw = Select-CopilotFirstServed -Model $models -Candidate @(
-            'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-opus-4-5'
-        )
-        if (-not $opusRaw) { $opusRaw = @($models | Where-Object { $_ -like 'claude-opus-*' } | Sort-Object)[-1] }
+        $opusRaw = @($models | Where-Object { $_ -like 'claude-opus-*' } | Sort-Object { Get-CopilotVersionSortKey $_ })[-1]
         if (-not $opusRaw) { $opusRaw = $raw }
 
-        $sonnetRaw = Select-CopilotFirstServed -Model $models -Candidate @(
-            'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-sonnet-4-5'
-        )
-        if (-not $sonnetRaw) { $sonnetRaw = @($models | Where-Object { $_ -like 'claude-sonnet-*' } | Sort-Object)[-1] }
+        $sonnetRaw = @($models | Where-Object { $_ -like 'claude-sonnet-*' } | Sort-Object { Get-CopilotVersionSortKey $_ })[-1]
         if (-not $sonnetRaw) { $sonnetRaw = $raw }
 
-        $haikuRaw = Select-CopilotFirstServed -Model $models -Candidate @('claude-haiku-4-5')
-        if (-not $haikuRaw) { $haikuRaw = @($models | Where-Object { $_ -like 'claude-haiku-*' } | Sort-Object)[-1] }
+        $haikuRaw = @($models | Where-Object { $_ -like 'claude-haiku-*' } | Sort-Object { Get-CopilotVersionSortKey $_ })[-1]
         if (-not $haikuRaw) { $haikuRaw = $raw }
     }
-    elseif ($raw -like 'gpt-*' -or $raw -match 'codex') {
+    elseif ($raw -like 'gpt-*' -or $raw -match '^o\d' -or $raw -match 'codex') {
+        # Terra and Luna deliberately stay on 5.6 - OpenAI did not ship a gen-6
+        # balanced or lightweight tier, and its own guidance is to mix
+        # gpt-6-astra with gpt-5.6-terra and gpt-5.6-luna.
         $sonnetRaw = Select-CopilotFirstServed -Model $models -Candidate @('gpt-5.6-terra')
         if (-not $sonnetRaw) { $sonnetRaw = $raw }
         $haikuRaw = Select-CopilotFirstServed -Model $models -Candidate @('gpt-5.6-luna', 'gpt-5.4-mini', 'gpt-5-mini')
         if (-not $haikuRaw) { $haikuRaw = $raw }
+    }
+    elseif ($raw -like 'grok-*') {
+        # No curated grok roles - derive them from the tier rows.
+        $grokRows = Get-CopilotTierRows -Catalog $Catalog -Model $models
+        $sonnetRaw = Select-CopilotCompleteTierBest -Prefix '^grok-' -Row $grokRows -Model $models
+        if ($sonnetRaw) {
+            $haikuRows = @($grokRows | Where-Object { $_.Tier -eq 1 -and $_.Id -match '^grok-' } |
+                Sort-Object { Get-CopilotVersionSortKey $_.Id })
+            $haikuRaw = if ($haikuRows.Count -gt 0) { $haikuRows[-1].Id } else { $sonnetRaw }
+        } else {
+            $sonnetRaw = $raw
+            $haikuRaw = $raw
+        }
     }
 
     [ordered]@{
@@ -1763,7 +1822,16 @@ function copilot-proxy {
             for ($i = 0; $i -lt $startTimeout; $i++) {
                 if (Test-CopilotAlive) {
                     if (Get-CopilotShimEnabled) {
-                        if (Start-CopilotShim) { Write-Host "copilot-proxy: throttle shim up -> $(Get-CopilotShimBase) (-> $(Get-CopilotBase))" }
+                        if (-not (Start-CopilotShim)) {
+                            Write-CopilotLifecycleEvent -Component proxy -EventName start_failed `
+                                -ProcessId $p.Id -Port ([int]$port) -Detail 'required shim failed'
+                            Set-CopilotStopIntent -Component proxy -ProcessId $p.Id
+                            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+                            Remove-Item $pidf -ErrorAction SilentlyContinue
+                            Write-Error 'copilot-proxy: fork started, but the required metrics shim failed; stopped the fork.'
+                            return
+                        }
+                        Write-Host "copilot-proxy: throttle shim up -> $(Get-CopilotShimBase) (-> $(Get-CopilotBase))"
                     }
                     Set-CopilotProcessReady -Component proxy -ProcessId $p.Id
                     Write-CopilotLifecycleEvent -Component proxy -EventName ready -ProcessId $p.Id -Port ([int]$port)
@@ -2224,7 +2292,7 @@ function script:Invoke-CopilotDoctor {
     Write-Host "`nLive probe"
     $effective = (Get-CopilotEffectiveModel) -split '\|', 2
     $probeTarget = Resolve-CopilotDoctorTarget -ConfiguredMain $effective[0] -RawModel $rawIds `
-        -SelectableModel $selectableIds
+        -SelectableModel $selectableIds -Catalog $catalog
     if (-not $Live) { SKIP 'skipped' 'pass --live to send one real request (consumes 1 quota unit)' }
     elseif (-not $proxyAlive) { SKIP 'skipped' 'proxy is not running' }
     elseif ($probeTarget.Label -eq 'MissingConfiguredMain') { SKIP 'skipped' $probeTarget.Reason }
@@ -2295,9 +2363,16 @@ function copilot-run {
         $exe = $Argv[0]
         $rest = @($Argv | Select-Object -Skip 1)
         $global:LASTEXITCODE = 0
-        & $exe @rest
-        $invocationSucceeded = $?
-        $childExitCode = $LASTEXITCODE
+        try {
+            & $exe @rest
+            $invocationSucceeded = $?
+            # Non-terminating PowerShell invocation failures do not update
+            # LASTEXITCODE. Use shell-standard 127 instead of publishing success.
+            $childExitCode = if (-not $invocationSucceeded -and $LASTEXITCODE -eq 0) { 127 } else { $LASTEXITCODE }
+        } catch [System.Management.Automation.CommandNotFoundException] {
+            $invocationSucceeded = $false
+            $childExitCode = 127
+        }
         $childSucceeded = $invocationSucceeded -and ($childExitCode -eq 0)
     } finally {
         foreach ($k in $inject.Keys) {
@@ -2316,57 +2391,207 @@ function copilot-run {
     }
 }
 
+# --- capability-tier ranking ---------------------------------------------------
+#
+# POSIX twin: _copilot_tier_rows / _copilot_tier_best / _copilot_tier_prepass in
+# dot_config/shell/43_copilot_proxy.sh. `model_picker_category` is the upstream
+# tier taxonomy and lines up with OpenAI's DURABLE capability tiers (Sol and
+# Astra are `powerful`, Terra `versatile`, Luna `lightweight`). Generation and
+# tier advance independently - gpt-6-astra is the gen-6 flagship while Terra and
+# Luna stayed on 5.6 - so ranking on the version alone would promote a future
+# gpt-6-luna over gpt-5.6-sol. Ranking on the tier first makes that impossible,
+# and it also tiers grok/gemini/mai, which carry no allowlist.
+function script:Get-CopilotTierRows {
+    param($Catalog, [string[]] $Model)
+    if (-not $Catalog) { return @() }
+    $rank = @{ powerful = 3; versatile = 2; lightweight = 1 }
+    @($Catalog.data | Where-Object {
+        $_ -and $_.id -and
+        (-not $_.policy -or -not $_.policy.state -or $_.policy.state -ne 'disabled') -and
+        ($_.model_picker_enabled -ne $false) -and
+        (-not $_.capabilities -or -not $_.capabilities.type -or $_.capabilities.type -ne 'embeddings') -and
+        # -fast siblings are picker-enabled AND inherit their standard sibling's
+        # category, so only an explicit exclusion keeps them out of the main pick.
+        (-not $_.id.EndsWith('-fast')) -and
+        $_.model_picker_category -and $rank.ContainsKey([string] $_.model_picker_category) -and
+        (-not $PSBoundParameters.ContainsKey('Model') -or $Model -contains [string] $_.id)
+    } | ForEach-Object {
+        $category = [string] $_.model_picker_category
+        [pscustomobject]@{ Tier = $rank[$category]; Id = [string] $_.id }
+    })
+}
+
+# PowerShell has no `sort -V`, so pad every numeric run to a fixed width and sort
+# on that. Verified equivalent to `sort -V` for the shapes we serve, including
+# gpt-10-x > gpt-9-x and claude-opus-4-10 > claude-opus-4-8.
+function script:Get-CopilotVersionSortKey {
+    param([string] $Id)
+    [regex]::Replace($Id, '\d+', { param($m) $m.Value.PadLeft(6, '0') })
+}
+
+# Generation only, so a tier codename never leaks into the comparison:
+# gpt-6-astra and gpt-6-nova are both "6". Digit-dash-digit becomes a dot first,
+# because Anthropic spells minor versions with `-`.
+function script:Get-CopilotModelGeneration {
+    param([string] $Id)
+    $patterns = @(
+        '^gpt-(?<v>\d+(?:[.-]\d+)*)',
+        '^o(?<v>\d+(?:[.-]\d+)*)',
+        '^gemini-(?<v>\d+(?:[.-]\d+)*)',
+        '^grok-(?<v>\d+(?:[.-]\d+)*)',
+        '^mai-code-(?<v>\d+(?:[.-]\d+)*)',
+        '^claude-(?:fable|opus|sonnet|haiku)-(?<v>\d+(?:[.-]\d+)*)'
+    )
+    foreach ($pattern in $patterns) {
+        $m = [regex]::Match($Id, $pattern)
+        if ($m.Success) { return $m.Groups['v'].Value -replace '-', '.' }
+    }
+    ''
+}
+
+function script:Select-CopilotTierBest {
+    param([string] $Prefix, $Row)
+    $c = @($Row | Where-Object { $_.Id -match $Prefix })
+    if ($c.Count -eq 0) { return $null }
+    $top = ($c | Measure-Object -Property Tier -Maximum).Maximum
+    $ordered = @($c | Where-Object { $_.Tier -eq $top } |
+        Sort-Object {
+            "$(Get-CopilotVersionSortKey (Get-CopilotModelGeneration $_.Id))|$(Get-CopilotVersionSortKey $_.Id)"
+        })
+    $ordered[-1].Id
+}
+
+function script:Select-CopilotCompleteTierBest {
+    param([string] $Prefix, $Row, [string[]] $Model)
+    $candidate = @($Model | Where-Object { $_ -match $Prefix } | Sort-Object -Unique)
+    if ($candidate.Count -eq 0) { return $null }
+    $covered = @($Row | Where-Object { $_.Id -match $Prefix -and $candidate -contains $_.Id } |
+        ForEach-Object Id | Sort-Object -Unique)
+    if ($candidate.Count -ne $covered.Count) { return $null }
+    Select-CopilotTierBest -Prefix $Prefix -Row $Row
+}
+
+# Prints the pre-pass winner, or $null when the allowlist should own the call.
+function script:Select-CopilotTierPrepass {
+    param([string] $Prefix, $Row, [string[]] $Model, [string[]] $Allowlist)
+    if (-not $Row -or $Row.Count -eq 0) { return $null }
+    $scopedRows = @($Row | Where-Object { $Model -contains [string] $_.Id })
+    $pick = Select-CopilotCompleteTierBest -Prefix $Prefix -Row $scopedRows -Model $Model
+    if (-not $pick) { return $null }
+
+    # An id we curate by name is never promoted here - the allowlist loop owns
+    # it. That is what keeps the allowlist an override.
+    if ($Allowlist -contains $pick) { return $null }
+
+    # Only beat the curated set when it is a genuinely newer GENERATION: an
+    # unknown same-generation sibling must not displace a vetted pick.
+    $pickTier = ($scopedRows | Where-Object { $_.Id -eq $pick } | Select-Object -First 1).Tier
+    $sameTierIds = @($scopedRows | Where-Object { $_.Tier -eq $pickTier } | ForEach-Object Id)
+    $served = @($Allowlist | Where-Object { $Model -contains $_ -and $sameTierIds -contains $_ })
+    if ($served.Count -gt 0) {
+        $topKnown = @($served | Sort-Object { Get-CopilotVersionSortKey $_ })[-1]
+        $pv = Get-CopilotModelGeneration $pick
+        $kv = Get-CopilotModelGeneration $topKnown
+        if (-not $pv -or $pv -eq $kv) { return $null }
+        $ordered = @(@($pv, $kv) | Sort-Object { Get-CopilotVersionSortKey $_ })
+        if ($ordered[-1] -ne $pv) { return $null }
+    }
+    $pick
+}
+
 # One OpenAI tier policy for both Claude Code and Codex. Known model roles beat
 # lexical guesses about future ids; only then consider unknown flagship/coding/
 # lightweight GPT variants.
 function script:Select-CopilotBestOpenAIModel {
-    param([string[]] $Model)
+    param([string[]] $Model, $Catalog)
     if (-not $Model -or $Model.Count -eq 0) { return $null }
-    $Model = @($Model | ForEach-Object { Remove-CopilotContextHint $_ } | Sort-Object -Unique)
+    $Model = @($Model | ForEach-Object { Remove-CopilotContextHint $_ } |
+        Where-Object { $_ -notmatch '-fast$' } | Sort-Object -Unique)
+    $allow = @('gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.5', 'gpt-5.4', 'gpt-5.3-codex',
+               'gpt-5.6-luna', 'gpt-5.4-mini', 'gpt-5-mini')
 
-    foreach ($preferred in 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.5', 'gpt-5.4', 'gpt-5.3-codex',
-                           'gpt-5.6-luna', 'gpt-5.4-mini', 'gpt-5-mini') {
+    # With a catalog, a genuinely newer flagship wins without waiting for someone
+    # to hand-edit $allow; without one the historical ranker runs unchanged.
+    $rows = Get-CopilotTierRows -Catalog $Catalog -Model $Model
+    $tier = Select-CopilotTierPrepass -Prefix '^(gpt-|o\d)' -Row $rows -Model $Model -Allowlist $allow
+    if ($tier) { return $tier }
+
+    foreach ($preferred in $allow) {
         if ($Model -contains $preferred) { return $preferred }
     }
     $pick = { param($re, $exclude)
-        $c = @($Model | Where-Object { $_ -match $re -and (-not $exclude -or $_ -notmatch $exclude) } | Sort-Object)
+        $c = @($Model | Where-Object { $_ -match $re -and (-not $exclude -or $_ -notmatch $exclude) } |
+               Sort-Object { Get-CopilotVersionSortKey $_ })
         if ($c.Count -gt 0) { $c[-1] } else { $null }
     }
-    $r = & $pick '^gpt-' 'mini|nano|luna'
+    $r = & $pick '^(gpt-|o\d)' 'mini|nano|luna|-fast$'
     if ($r) { return $r }
     $r = & $pick 'codex' $null
     if ($r) { return $r }
-    & $pick '^gpt-' $null
+    & $pick '^(gpt-|o\d)' $null
+}
+
+# xAI. No allowlist on purpose - grok bumps versions faster than we can track,
+# and the tier rows rank it correctly whenever a catalog is available.
+function script:Select-CopilotBestGrokModel {
+    param([string[]] $Model, $Catalog)
+    if (-not $Model -or $Model.Count -eq 0) { return $null }
+    $tier = Select-CopilotCompleteTierBest -Prefix '^grok-' -Row (Get-CopilotTierRows -Catalog $Catalog -Model $Model) -Model $Model
+    if ($tier) { return $tier }
+    $pick = { param($exclude)
+        $c = @($Model | Where-Object { $_ -match '^grok-' -and (-not $exclude -or $_ -notmatch $exclude) } |
+               Sort-Object {
+                   "$(Get-CopilotVersionSortKey (Get-CopilotModelGeneration $_))|$(Get-CopilotVersionSortKey $_)"
+               })
+        if ($c.Count -gt 0) { $c[-1] } else { $null }
+    }
+    $r = & $pick 'mini|nano|lite|-fast$'
+    if ($r) { return $r }
+    & $pick $null
 }
 
 # Codex prefers a native Responses-capable OpenAI model. Claude/Gemini are
 # Responses Lite fallbacks only, unlike Select-CopilotBestModel (Claude Code),
 # where native Claude remains the first choice.
 function script:Select-CopilotBestCodexModel {
-    param([string[]] $Model)
+    param([string[]] $Model, $Catalog)
     if (-not $Model -or $Model.Count -eq 0) { return $null }
-    $Model = @($Model | ForEach-Object { Remove-CopilotContextHint $_ } | Sort-Object -Unique)
+    $Model = @($Model | ForEach-Object { Remove-CopilotContextHint $_ } |
+        Where-Object { $_ -notmatch '-fast$' } | Sort-Object -Unique)
+    $claudeAllow = @('claude-fable-5',
+               'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6',
+               'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-sonnet-4-5',
+               'claude-opus-4-5', 'claude-haiku-4-5')
 
-    $r = Select-CopilotBestOpenAIModel -Model $Model
+    $r = Select-CopilotBestOpenAIModel -Model $Model -Catalog $Catalog
     if ($r) { return $r }
     $pick = { param($re, $exclude)
-        $c = @($Model | Where-Object { $_ -match $re -and (-not $exclude -or $_ -notmatch $exclude) } | Sort-Object)
+        $c = @($Model | Where-Object { $_ -match $re -and (-not $exclude -or $_ -notmatch $exclude) } |
+               Sort-Object { Get-CopilotVersionSortKey $_ })
         if ($c.Count -gt 0) { $c[-1] } else { $null }
     }
 
-    foreach ($preferred in 'claude-fable-5',
-                           'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6',
-                           'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-sonnet-4-5',
-                           'claude-opus-4-5', 'claude-haiku-4-5') {
+    $tier = Select-CopilotTierPrepass -Prefix '^claude-' -Row (Get-CopilotTierRows -Catalog $Catalog -Model $Model) `
+        -Model $Model -Allowlist $claudeAllow
+    if ($tier) { return $tier }
+    foreach ($preferred in $claudeAllow) {
         if ($Model -contains $preferred) { return $preferred }
     }
     $r = & $pick '^claude-' $null
     if ($r) { return $r }
+    $r = Select-CopilotBestGrokModel -Model $Model -Catalog $Catalog
+    if ($r) { return $r }
+    $rows = Get-CopilotTierRows -Catalog $Catalog -Model $Model
+    $tier = Select-CopilotCompleteTierBest -Prefix '^gemini-' -Row $rows -Model $Model
+    if ($tier) { return $tier }
     $r = & $pick '^gemini-' 'flash'
     if ($r) { return $r }
     $r = & $pick '^gemini-' $null
     if ($r) { return $r }
-    @($Model | Sort-Object)[-1]
+    $remainingRows = @($rows | Where-Object { $_.Id -notmatch '^(claude|gpt|grok|gemini)-' })
+    $tier = Select-CopilotCompleteTierBest -Prefix '.*' -Row $remainingRows -Model @($Model | Where-Object { $_ -notmatch '^(claude|gpt|grok|gemini)-' })
+    if ($tier) { return $tier }
+    @($Model | Sort-Object { Get-CopilotVersionSortKey $_ })[-1]
 }
 
 function script:Get-SpecstoryCodexCmd {
@@ -2385,6 +2610,7 @@ function script:Get-SpecstoryCodexCmd {
 function script:Test-CopilotExplicitCodexModel {
     param([string[]] $Argv)
     foreach ($a in $Argv) {
+        if ($a -eq '--') { break }
         if ($a -in '-m', '--model' -or $a -match '^(?:-m|--model)=') { return $true }
     }
     $false
@@ -2406,6 +2632,28 @@ function script:Get-CodexCopilotProviderArgs {
         '-c', 'features.remote_compaction_v2=true',
         '-c', 'features.code_mode.excluded_tool_namespaces=["mcp__codex_apps__sites"]'
     )
+}
+
+# Codex has two independent permission axes. Detect them separately: an
+# explicit sandbox does not suppress the wrapper's no-prompt approval default,
+# and an explicit approval policy does not suppress its full-access sandbox.
+function script:Test-CopilotCodexApprovalFlag {
+    param([string[]] $Argv)
+    foreach ($a in @($Argv)) {
+        if ($a -eq '--') { return $false }
+        if ($a -match '^(?:-a.*|--ask-for-approval(?:=.*)?)$' -or
+            $a -in '--approve-for-me', '--full-auto', '--dangerously-bypass-approvals-and-sandbox') { return $true }
+    }
+    $false
+}
+function script:Test-CopilotCodexSandboxFlag {
+    param([string[]] $Argv)
+    foreach ($a in @($Argv)) {
+        if ($a -eq '--') { return $false }
+        if ($a -match '^(?:-s.*|--sandbox(?:=.*)?)$' -or
+            $a -in '--approve-for-me', '--full-auto', '--dangerously-bypass-approvals-and-sandbox') { return $true }
+    }
+    $false
 }
 
 function script:Get-CodexSessionsRoot {
@@ -2435,7 +2683,7 @@ function codex-copilot {
     elseif ($Argv -and $Argv[0] -in '-h', '--help') {
         Write-Host 'Usage: codex-copilot [--no-specstory] [codex args...]'
         Write-Host '  One-off Codex session on the local Copilot Responses gateway.'
-        Write-Host '  Auto model: OpenAI/Codex > Claude > Gemini > other served chat models.'
+        Write-Host '  Auto model: OpenAI/Codex > Claude > grok > Gemini > other served chat models.'
         Write-Host '  Alias: codex-copilot-once'
         return
     }
@@ -2449,13 +2697,16 @@ function codex-copilot {
     # shim is already up.
     if (-not (Start-CopilotShim)) { return }
     $catalog = Get-CopilotModelCatalog
-    if (-not $catalog) { Write-Error 'codex-copilot: could not read the live gateway model catalog'; return }
+    if (-not (Test-CopilotModelCatalog $catalog)) {
+        Write-Error 'codex-copilot: could not read a valid live gateway model catalog'; return
+    }
 
     $explicitModel = Test-CopilotExplicitCodexModel -Argv $Argv
     $model = $null
     if (-not $explicitModel) {
-        $models = Get-CopilotSelectableModelIds $catalog
-        $model = Select-CopilotBestCodexModel -Model $models
+        $models = Get-CopilotAutoCandidateIds -Catalog $catalog `
+            -BaselineModel (Get-CopilotEntitlementBaselineModel)
+        $model = Select-CopilotBestCodexModel -Model $models -Catalog $catalog
         if (-not $model) { Write-Error 'codex-copilot: no usable chat model in the live gateway catalog'; return }
         $Argv = @('-m', $model) + @($Argv)
         if ($model -like 'claude-*' -or $model -like 'gemini-*') {
@@ -2487,7 +2738,16 @@ function codex-copilot {
             $cc = Get-SpecstoryCodexCmd
             foreach ($a in @($providerArgs) + @($Argv)) { $cc = "$cc $(ConvertTo-CopilotShQuote $a)" }
             specstory run codex -c $cc
-        } else { codex @providerArgs @Argv }
+        } else {
+            $permissionArgs = @()
+            if (-not (Test-CopilotCodexApprovalFlag -Argv $Argv)) {
+                $permissionArgs += @('--ask-for-approval', 'never')
+            }
+            if (-not (Test-CopilotCodexSandboxFlag -Argv $Argv)) {
+                $permissionArgs += @('--sandbox', 'danger-full-access')
+            }
+            codex @permissionArgs @providerArgs @Argv
+        }
         $invocationSucceeded = $?
         $childExitCode = $LASTEXITCODE
         $childSucceeded = $invocationSucceeded -and ($childExitCode -eq 0)
@@ -2553,6 +2813,77 @@ function script:ConvertTo-CopilotShQuote {
     "'" + ($Value -replace "'", "'\''") + "'"
 }
 
+function script:Test-CopilotClaudeLateFast {
+    param([string[]] $Argv)
+    $leading = $true
+    $skipData = $false
+    foreach ($a in @($Argv)) {
+        if ($leading) {
+            if ($a -in '--fast', '--no-specstory', '--specstory') { continue }
+            $leading = $false
+        }
+        if ($a -eq '--') { return $false }
+        if ($skipData) { $skipData = $false; continue }
+        if ($a -in '--append-system-prompt', '--system-prompt', '--settings',
+                   '--model', '--permission-mode', '--permission-prompts', '--permission-prompt-tool') {
+            $skipData = $true; continue
+        }
+        if ($a -eq '--fast') { return $true }
+    }
+    $false
+}
+
+# True when argv already states a permission posture, so the wrapper must not
+# add a second, contradictory one. POSIX twin:
+# _copilot_claude_has_permission_flag in dot_config/shell/43_copilot_proxy.sh.
+function script:Test-CopilotClaudePermissionFlag {
+    param([string[]] $Argv)
+    if (-not $Argv) { return $false }
+    $skip = $false
+    foreach ($a in $Argv) {
+        # -- ends options even when it follows -p; it is not -p's data value.
+        if ($a -eq '--') { return $false }
+        if ($skip) { $skip = $false; continue }
+        if ($a -in '--append-system-prompt', '--system-prompt', '--settings', '--model') {
+            $skip = $true; continue
+        }
+        switch -Regex ($a) {
+            '^--dangerously-skip-permissions$'       { return $true }
+            '^--restricted$'                          { return $true }
+            '^--permission-mode(=.*)?$'        { return $true }
+            '^--permission-prompts(=.*)?$'      { return $true }
+            '^--permission-prompt-tool(=.*)?$' { return $true }
+        }
+    }
+    $false
+}
+
+# The subset that must remove a bypass already present in the configured
+# claude_cmd. Uses the same prompt/data boundaries as the broad detector above.
+function script:Test-CopilotClaudeAlternatePermissionFlag {
+    param([string[]] $Argv)
+    if (-not $Argv) { return $false }
+    $skip = $false
+    foreach ($a in $Argv) {
+        if ($a -eq '--') { return $false }
+        if ($skip) { $skip = $false; continue }
+        if ($a -in '--append-system-prompt', '--system-prompt', '--settings', '--model') {
+            $skip = $true; continue
+        }
+        if ($a -eq '--restricted' -or
+            $a -match '^--permission-mode(?:=.*)?$' -or
+            $a -match '^--permission-prompts(?:=.*)?$' -or
+            $a -match '^--permission-prompt-tool(?:=.*)?$') { return $true }
+    }
+    $false
+}
+
+function script:Remove-CopilotSeededBypass {
+    param([string] $Command)
+    if ($Command -ceq 'claude --dangerously-skip-permissions') { return 'claude' }
+    $Command
+}
+
 # Build the complete command string passed to `specstory run claude -c`.
 # Recognize the normal unquoted/fully quoted bypass token without pretending to
 # parse arbitrary shell syntax. Exact duplicate wrapper arguments are suppressed;
@@ -2563,11 +2894,30 @@ function script:New-SpecstoryClaudeCommand {
     $bypass = '--dangerously-skip-permissions'
     $command = (Get-SpecstoryClaudeCmd).Trim()
     $escaped = [regex]::Escape($bypass)
-    $hasBypass = $command -cmatch "(?:^|\s)(?:$escaped|'$escaped'|`"$escaped`")(?=\s|$)"
-    if (-not $hasBypass) { $command = "$command $bypass" }
+    # Only an unquoted trailing token is unambiguously an option without
+    # shell-parsing arbitrary user command text. A quoted identical string may
+    # be data for --append-system-prompt.
+    $tokenPattern = "(?:^|\s)$escaped\s*$"
+    $isSeededCommand = $command -ceq 'claude --dangerously-skip-permissions'
+    $explicitAlternate = Test-CopilotClaudeAlternatePermissionFlag -Argv $Argv
+    if ($isSeededCommand -and $explicitAlternate) {
+        $command = Remove-CopilotSeededBypass -Command $command
+    }
+    $hasBypass = $command -cmatch $tokenPattern
+    # Preserve the historical wrapper contract for a custom command: append the
+    # default when no alternate posture was requested, but never rewrite custom
+    # shell text to remove a token.
+    if (-not $explicitAlternate -and -not $hasBypass -and
+        -not (Test-CopilotClaudePermissionFlag -Argv $Argv)) {
+        $command = "$command $bypass"
+        $hasBypass = $true
+    }
     if ($null -ne $Argv) {
         foreach ($argument in $Argv) {
-            if ($argument -ceq $bypass) { continue }
+            # Suppress an explicit duplicate only when the CONFIGURED BASE already
+            # has it. If the base is bare and argv supplied bypass, keep argv's
+            # token; otherwise the two guards together would erase it entirely.
+            if ($argument -ceq $bypass -and $hasBypass) { continue }
             $command = "$command $(ConvertTo-CopilotShQuote $argument)"
         }
     }
@@ -2577,12 +2927,18 @@ function script:New-SpecstoryClaudeCommand {
 function script:Get-CopilotClaudeModelArgument {
     param([string[]] $Argv)
     $model = $null
+    $skipData = $false
     for ($i = 0; $i -lt $Argv.Count; $i++) {
-        if ($Argv[$i] -ceq '--model' -and $i + 1 -lt $Argv.Count) {
+        $a = $Argv[$i]
+        if ($a -eq '--') { break }
+        if ($skipData) { $skipData = $false; continue }
+        if ($a -in '--append-system-prompt', '--system-prompt', '--settings',
+                   '--permission-mode', '--permission-prompts', '--permission-prompt-tool') { $skipData = $true; continue }
+        if ($a -ceq '--model' -and $i + 1 -lt $Argv.Count) {
             $model = $Argv[$i + 1]
             $i++
-        } elseif ($Argv[$i] -clike '--model=*') {
-            $model = $Argv[$i].Substring('--model='.Length)
+        } elseif ($a -clike '--model=*') {
+            $model = $a.Substring('--model='.Length)
         }
     }
     $model
@@ -2651,12 +3007,25 @@ function claude-copilot {
         break
     }
 
+    if (Test-CopilotClaudeLateFast -Argv $Argv) {
+        Write-Error "claude-copilot: '--fast' must come before other arguments; refusing to forward it."
+        return
+    }
     if ($fast) {
+        if ($Argv -contains '--') {
+            Write-Error "claude-copilot: --fast cannot be combined with '--' (the resolved --model would become prompt data)."
+            return
+        }
         if (-not (Test-CopilotAlive)) { copilot-proxy start }
         if ((Test-CopilotAlive) -and (Assert-CopilotShim)) {
-            $explicitModel = Get-CopilotClaudeModelArgument -Argv $Argv
-            $baseModel = Resolve-CopilotClaudeFastBaseModel -ExplicitModel $explicitModel
-            $fastModel = if ($baseModel) { Resolve-CopilotFastModel -Model $baseModel } else { $null }
+            if ($script:CopilotResolvedFastForOnce) {
+                $baseModel = [string] $script:CopilotResolvedFastForOnce
+                $fastModel = $baseModel
+            } else {
+                $explicitModel = Get-CopilotClaudeModelArgument -Argv $Argv
+                $baseModel = Resolve-CopilotClaudeFastBaseModel -ExplicitModel $explicitModel
+                $fastModel = if ($baseModel) { Resolve-CopilotFastModel -Model $baseModel } else { $null }
+            }
             if ($fastModel) {
                 # Appended last so it overrides an earlier explicit --model while
                 # using that value to choose the corresponding fast sibling.
@@ -2679,8 +3048,13 @@ function claude-copilot {
         } else {
             # No specstory on PATH (the Windows default — no native CLI yet): run claude
             # directly, still bypassing permission prompts so behaviour matches the
-            # specstory path regardless of whether specstory is installed.
-            copilot-run claude --dangerously-skip-permissions @Argv
+            # specstory path regardless of whether specstory is installed — unless the
+            # caller already stated a posture of their own, which must win.
+            if (Test-CopilotClaudePermissionFlag -Argv $Argv) {
+                copilot-run claude @Argv
+            } else {
+                copilot-run claude --dangerously-skip-permissions @Argv
+            }
         }
     } finally {
         if ($null -eq $savedLaunchModel) { Remove-Item env:COPILOT_CLAUDE_MODEL -ErrorAction SilentlyContinue }
@@ -2704,43 +3078,80 @@ function claude-copilot-once {
     if (Test-Path '.claude/settings.local.json') {
         try { if ((Get-Content -Raw '.claude/settings.local.json' | ConvertFrom-Json).env.ANTHROPIC_BASE_URL) { $wasOn = $true } } catch { $null = $_ }
     }
-    if (-not $wasOn) {
-        $explicitModel = Get-CopilotClaudeModelArgument -Argv $Argv
-        $wantsFast = $Argv -contains '--fast'
-        if ($explicitModel -or $wantsFast) {
-            $pinModel = Resolve-CopilotClaudeFastBaseModel -ExplicitModel $explicitModel
-            if ($wantsFast) {
-                $fastPinModel = Resolve-CopilotFastModel -Model $pinModel
-                if ($fastPinModel) { $pinModel = $fastPinModel }
-            }
-            copilot-here on $pinModel
-        } else {
-            copilot-here on
+    # The model this launch will actually use, computed BEFORE the pinned/unpinned
+    # split so both branches agree: the drift check below has to compare the pin
+    # against what --fast is about to ask for, not against the global default.
+    # Leading options only, matching claude-copilot's own parser - a --fast buried
+    # in a prompt string (-p "...--fast...") must not count.
+    $wantsFast = $false
+    foreach ($a in $Argv) {
+        if ($a -eq '--fast') { $wantsFast = $true; continue }
+        if ($a -in '--no-specstory', '--specstory') { continue }
+        break
+    }
+    if ($wantsFast -and $Argv -contains '--') {
+        Write-Error "claude-copilot-once: --fast cannot be combined with '--' (the resolved --model would become prompt data)."
+        return
+    }
+    if (Test-CopilotClaudeLateFast -Argv $Argv) {
+        Write-Error "claude-copilot-once: '--fast' must come before other arguments; refusing to forward it."
+        return
+    }
+    if ($wantsFast -and -not (Assert-CopilotShim)) { return }
+    $explicitModel = Get-CopilotClaudeModelArgument -Argv $Argv
+    $pinModel = $null
+    $fastPinModel = $null
+    if ($explicitModel -or $wantsFast) {
+        $pinModel = Resolve-CopilotClaudeFastBaseModel -ExplicitModel $explicitModel
+        if ($wantsFast) {
+            # Idempotent on an id that is already a fast sibling, so re-running
+            # --fast against a fast pin resolves to that same pin (no drift).
+            $fastPinModel = Resolve-CopilotFastModel -Model $pinModel
+            if ($fastPinModel) { $pinModel = $fastPinModel }
         }
+    }
+
+    if (-not $wasOn) {
+        if ($pinModel) { copilot-here on $pinModel } else { copilot-here on }
     }
     else {
         # Already pinned here. If the pin drifted from current defaults (model bump,
         # proxy moved, a key added since), offer to refresh it in place; otherwise
         # leave it untouched. Either way it was already ON, so it stays ON on exit.
-        $drift = Get-CopilotHereDrift
+        $drift = Get-CopilotHereDrift -Model $pinModel
         if ($drift) {
             Write-Host "claude-copilot-once: this project's copilot-here pin looks stale:"
             $drift | ForEach-Object { Write-Host $_ }
-            if (Confirm-CopilotAction '  override with current defaults? (keep = default) [y/N]') { copilot-here on }
-            else { Write-Host 'claude-copilot-once: kept the existing pin (stays ON on exit).' }
+            if (Confirm-CopilotAction '  override with current defaults? (keep = default) [y/N]') {
+                if ($pinModel) { copilot-here on $pinModel } else { copilot-here on }
+            }
+            else {
+                Write-Host 'claude-copilot-once: kept the existing pin (stays ON on exit).'
+                if ($wantsFast) {
+                    # settings.local.json outranks process env for the keys it
+                    # holds, so --fast can only move the main model this session.
+                    Write-Host "  --fast still applies to the session's main model, but the pinned"
+                    Write-Host '  ANTHROPIC_DEFAULT_* role models stay on the non-fast ids.'
+                }
+            }
         } else {
             Write-Host "claude-copilot-once: copilot-here already ON here — leaving the pin in place on exit."
         }
     }
     $sessionSucceeded = $true
     $sessionExitCode = 0
+    $savedResolvedFast = $script:CopilotResolvedFastForOnce
     try {
+        if ($wantsFast -and $fastPinModel) {
+            $script:CopilotResolvedFastForOnce = [string] $fastPinModel
+        }
         $global:LASTEXITCODE = 0
         if ($Argv.Count -gt 0) { claude-copilot @Argv } else { claude-copilot }
         $invocationSucceeded = $?
         $sessionExitCode = $LASTEXITCODE
         $sessionSucceeded = $invocationSucceeded -and ($sessionExitCode -eq 0)
     } finally {
+        $script:CopilotResolvedFastForOnce = $savedResolvedFast
         if (-not $wasOn) { copilot-here off }
         Write-Host "claude-copilot-once: session ended. Proxy still running on $(Get-CopilotBase)."
     }
@@ -2782,14 +3193,19 @@ function script:Confirm-CopilotAction {
 # subset (that is how three keys silently went unchecked). The asymmetry is
 # deliberate: keys present in the file but absent from the want-set are NOT drift,
 # because `on` merges and never removes them (only `off` does).
+# Drift of this project's pin against what a launch would want RIGHT NOW.
+# -Model is the model that launch will actually use. Without it the want-side is
+# the global default, which knows nothing about --fast or about the pin itself,
+# so a fast pin would always look "stale" against its own standard sibling.
 function script:Get-CopilotHereDrift {
+    param([string] $Model)
     $settings = '.claude/settings.local.json'
     if (-not (Test-Path $settings)) { return @() }
     try { $obj = Get-Content -Raw $settings | ConvertFrom-Json } catch { return @() }
     # ANTHROPIC_BASE_URL is only set while the pin is ON — absent -> nothing to do.
     if (-not $obj.env.ANTHROPIC_BASE_URL) { return @() }
 
-    $want = Get-CopilotEnvBlock -Pinned
+    $want = if ($Model) { Get-CopilotEnvBlock -Pinned -Model $Model } else { Get-CopilotEnvBlock -Pinned }
     $out = [System.Collections.Generic.List[string]]::new()
     foreach ($k in $want.Keys) {
         $cur = if ($obj.env.PSObject.Properties[$k]) { $obj.env.$k } else { '(unset)' }
@@ -2880,31 +3296,48 @@ function copilot-here {
 # first choice when entitled. Without Claude, rank OpenAI by capability tier and
 # deliberately place lightweight Luna behind older flagship/coding tiers.
 function script:Select-CopilotBestModel {
-    param([string[]] $Model)
+    param([string[]] $Model, $Catalog)
     if (-not $Model -or $Model.Count -eq 0) { return $null }
-    $Model = @($Model | ForEach-Object { Remove-CopilotContextHint $_ } | Sort-Object -Unique)
+    $Model = @($Model | ForEach-Object { Remove-CopilotContextHint $_ } |
+        Where-Object { $_ -notmatch '-fast$' } | Sort-Object -Unique)
+    $claudeAllow = @('claude-fable-5',
+               'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6',
+               'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-sonnet-4-5',
+               'claude-opus-4-5', 'claude-haiku-4-5')
 
-    foreach ($preferred in 'claude-fable-5',
-                           'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6',
-                           'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-sonnet-4-5',
-                           'claude-opus-4-5', 'claude-haiku-4-5') {
+    $tier = Select-CopilotTierPrepass -Prefix '^claude-' -Row (Get-CopilotTierRows -Catalog $Catalog -Model $Model) `
+        -Model $Model -Allowlist $claudeAllow
+    if ($tier) { return $tier }
+    foreach ($preferred in $claudeAllow) {
         if ($Model -contains $preferred) { return $preferred }
     }
     $pick = { param($re, $exclude)
-        $c = @($Model | Where-Object { $_ -match $re -and (-not $exclude -or $_ -notmatch $exclude) } | Sort-Object)
+        $c = @($Model | Where-Object { $_ -match $re -and (-not $exclude -or $_ -notmatch $exclude) } |
+               Sort-Object { Get-CopilotVersionSortKey $_ })
         if ($c.Count -gt 0) { $c[-1] } else { $null }
     }
     $r = & $pick '^claude-' $null
     if ($r) { return $r }
 
-    $r = Select-CopilotBestOpenAIModel -Model $Model
+    $r = Select-CopilotBestOpenAIModel -Model $Model -Catalog $Catalog
     if ($r) { return $r }
 
+    $r = Select-CopilotBestGrokModel -Model $Model -Catalog $Catalog
+    if ($r) { return $r }
+
+    $rows = Get-CopilotTierRows -Catalog $Catalog -Model $Model
+    $tier = Select-CopilotCompleteTierBest -Prefix '^gemini-' -Row $rows -Model $Model
+    if ($tier) { return $tier }
     foreach ($try in @(@('^gemini-', 'flash'), @('^gemini-', $null))) {
         $r = & $pick $try[0] $try[1]
         if ($r) { return $r }
     }
-    (@($Model | Sort-Object))[-1]
+    # Remaining vendors (for example MAI) still get their catalog tier before
+    # the offline lexical catch-all. Known vendor rows were handled above.
+    $remainingRows = @($rows | Where-Object { $_.Id -notmatch '^(claude|gpt|grok|gemini)-' })
+    $tier = Select-CopilotCompleteTierBest -Prefix '.*' -Row $remainingRows -Model @($Model | Where-Object { $_ -notmatch '^(claude|gpt|grok|gemini)-' })
+    if ($tier) { return $tier }
+    (@($Model | Sort-Object { Get-CopilotVersionSortKey $_ }))[-1]
 }
 
 # ----------------------------------------------------------- copilot-model ----
@@ -2914,6 +3347,8 @@ function copilot-model {
     $settings = '.claude/settings.local.json'
     $statef = Get-CopilotModelState
     $arg = if ($Argv -and $Argv.Count -ge 1) { $Argv[0] } else { '' }
+    # --why alone is a dry run; after --auto it explains and then writes.
+    $explainAuto = $arg -eq '--auto' -and $Argv.Count -ge 2 -and $Argv[1] -eq '--why'
 
     $target = 'state'
     if (Test-Path $settings) {
@@ -2923,8 +3358,10 @@ function copilot-model {
     $fallback = @(
         'claude-fable-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-opus-4-5',
         'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-sonnet-4-5', 'claude-haiku-4-5',
+        'gpt-6-astra',
         'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.4', 'gpt-5.3-codex',
-        'gpt-5.4-mini', 'gpt-5-mini'
+        'gpt-5.4-mini', 'gpt-5-mini',
+        'grok-4.6', 'grok-4.5'
     )
     $currentModel = if ($target -eq 'local') {
         (Get-Content -Raw $settings | ConvertFrom-Json).env.ANTHROPIC_MODEL
@@ -2933,8 +3370,83 @@ function copilot-model {
     switch ($arg) {
         { $_ -in '-l', '--list' } {
             $catalog = Get-CopilotModelCatalog
-            if ($catalog) { Get-CopilotCatalogIds $catalog }
-            else { Write-Host 'copilot-model: proxy not reachable — showing fallback list'; $fallback }
+            if (Test-CopilotModelCatalog $catalog) { Get-CopilotCatalogIds $catalog }
+            else { Write-Host 'copilot-model: proxy not reachable or catalog invalid — showing fallback list'; $fallback }
+            return
+        }
+        { $_ -in '-L', '--details' } {
+            # `-l` stays the bare-id, pipeable form; this is its long sibling.
+            # `--long` is deliberately NOT the name: "long" already means 1M
+            # context everywhere else here. Columns come from the same catalog
+            # fields the tier ranker reads, so the table IS the ranking.
+            $catalog = Get-CopilotModelCatalog
+            if (-not (Test-CopilotModelCatalog $catalog)) { Write-Error 'copilot-model: --details needs a reachable proxy and valid catalog'; return }
+            $autoIds = @(Get-CopilotAutoCandidateIds -Catalog $catalog `
+                -BaselineModel (Get-CopilotEntitlementBaselineModel))
+            $auto = Select-CopilotBestModel -Model $autoIds -Catalog $catalog
+            $cur = Remove-CopilotContextHint $currentModel
+            $rank = @{ powerful = 3; versatile = 2; lightweight = 1 }
+            # One shim request for the whole table, not one per model row.
+            $routing = Get-CopilotFastRouting
+            $catalog.data |
+                Where-Object { $_ -and $_.id } |
+                Sort-Object `
+                    @{ Expression = { $t = [string] $_.model_picker_category
+                                      if ($rank.ContainsKey($t)) { $rank[$t] } else { 0 } }; Descending = $true },
+                    @{ Expression = { Get-CopilotVersionSortKey ([string] $_.id) }; Descending = $true } |
+                ForEach-Object {
+                    $limits = $_.capabilities.limits
+                    $effort = @($_.capabilities.supports.reasoning_effort)
+                    $plans = @($_.billing.restricted_to)
+                    $mark = ''
+                    if ([string] $_.id -eq $cur) { $mark = '*' }
+                    if ([string] $_.id -eq $auto) { $mark = "$mark->" }
+                    [pscustomobject]@{
+                        '  '   = $mark
+                        Id     = [string] $_.id
+                        Tier   = if ($_.model_picker_category) { $_.model_picker_category } else { '-' }
+                        Price  = if ($_.model_picker_price_category) { $_.model_picker_price_category } else { '-' }
+                        Ctx    = if ($limits.max_context_window_tokens) { "$([math]::Floor($limits.max_context_window_tokens / 1000))k" } else { '-' }
+                        Out    = if ($limits.max_output_tokens) { "$([math]::Floor($limits.max_output_tokens / 1000))k" } else { '-' }
+                        Effort = if ($effort.Count -eq 0) { '-' } elseif ($effort.Count -eq 1) { $effort[0] } else { "$($effort[0])..$($effort[-1])" }
+                        Fast   = if ([string] $_.id -match '-fast$') { 'self' } elseif (Resolve-CopilotFastModel -Model ([string] $_.id) -Routing $routing) { 'yes' } else { '-' }
+                        Plans  = if ($plans.Count -eq 0) { 'all' }
+                                 elseif ($plans -contains 'free') { 'free+' }
+                                 elseif ($plans -contains 'pro') { 'pro+' }
+                                 elseif ($plans -contains 'pro_plus') { 'pro_plus+' }
+                                 elseif ($plans -contains 'business') { 'business+' }
+                                 elseif ($plans -contains 'enterprise') { 'enterprise+' }
+                                 elseif ($plans -contains 'max') { 'max' }
+                                 else { $plans -join ',' }
+                        State  = if ($_.policy.state -eq 'disabled') { 'disabled' }
+                                 elseif ($_.model_picker_enabled -eq $false) { 'nopick' }
+                                 elseif ($_.preview -eq $true) { 'preview' } else { 'ok' }
+                    }
+                } | Format-Table -AutoSize | Out-String -Width 240
+            return
+        }
+        '--json' {
+            $catalog = Get-CopilotModelCatalog
+            if (-not (Test-CopilotModelCatalog $catalog)) { Write-Error 'copilot-model: --json needs a reachable proxy and valid catalog'; return }
+            $catalog | ConvertTo-Json -Depth 12
+            return
+        }
+        '--why' {
+            # Dry run: explain what --auto WOULD pick, write nothing.
+            $catalog = Get-CopilotModelCatalog
+            if (-not (Test-CopilotModelCatalog $catalog)) { Write-Error 'copilot-model: --why needs a reachable proxy and valid catalog'; return }
+            $sel = @(Get-CopilotAutoCandidateIds -Catalog $catalog `
+                -BaselineModel (Get-CopilotEntitlementBaselineModel))
+            if ($sel.Count -eq 0) { Write-Error 'copilot-model: --why found no selectable chat model in the live catalog'; return }
+            Write-Host 'copilot-model: --auto reasoning (dry run, nothing written)'
+            Write-Host "  catalog      : $(@($catalog.data).Count) models, $($sel.Count) selectable"
+            $pick = Select-CopilotBestModel -Model $sel -Catalog $catalog
+            $rows = Get-CopilotTierRows -Catalog $catalog -Model $sel
+            foreach ($prefix in '^claude-', '^(gpt-|o\d)', '^grok-', '^gemini-') {
+                $best = Select-CopilotTierBest -Prefix $prefix -Row $rows
+                if ($best) { Write-Host ("  {0,-12} : top tier -> {1}" -f $prefix, $best) }
+            }
+            Write-Host "  -> $(ConvertTo-CopilotClaudeModel -Model $pick -Catalog $catalog)"
             return
         }
         { $_ -in '-c', '--current' } {
@@ -2961,9 +3473,15 @@ function copilot-model {
             return
         }
         { $_ -in '-h', '--help' } {
-            Write-Host "Usage: copilot-model [<model-id>|-l|-c|--auto]"
-            Write-Host "  --auto  live catalog: Claude; else capability-ranked OpenAI"
-            Write-Host "          (Sol > Terra > GPT-5.5 > GPT-5.4 > GPT-5.3 Codex > Luna > mini)"
+            Write-Host "Usage: copilot-model [<model-id>|-l|-L|-c|--auto|--why|--json]"
+            Write-Host "  -l      bare served ids (pipeable; static fallback when offline)"
+            Write-Host "  -L      the same list with tier/price/context/plan metadata"
+            Write-Host "  --json  raw /v1/models from the proxy"
+            Write-Host "  --why   explain what --auto would pick, without writing"
+            Write-Host "  --auto  live catalog, ranked by capability tier (powerful >"
+            Write-Host "          versatile > lightweight, newest generation first);"
+            Write-Host "          vendor order Claude > OpenAI > grok > Gemini. A curated"
+            Write-Host "          per-vendor allowlist overrides the tier ranking."
             Write-Host "  Writes a complete Main/Fable/Opus/Sonnet/Haiku role profile locally."
             return
         }
@@ -2975,20 +3493,31 @@ function copilot-model {
     if ($arg -in '--auto', '-a') {
         # Never silently choose from the static list while the proxy is down: that
         # recreates the stale model_not_supported pin this command is meant to fix.
-        if (-not $catalog) {
-            Write-Error 'copilot-model: --auto needs a reachable proxy and live /v1/models catalog'; return
+        if (-not (Test-CopilotModelCatalog $catalog)) {
+            Write-Error 'copilot-model: --auto needs a reachable proxy and valid /v1/models catalog'; return
         }
-        $selectableModels = @(Get-CopilotSelectableModelIds $catalog)
+        $selectableModels = @(Get-CopilotAutoCandidateIds -Catalog $catalog `
+            -BaselineModel (Get-CopilotEntitlementBaselineModel))
         if ($selectableModels.Count -eq 0) {
             Write-Error 'copilot-model: --auto found no selectable chat model in the live catalog'; return
         }
-        $raw = Select-CopilotBestModel -Model $selectableModels
+        if ($explainAuto) {
+            Write-Host 'copilot-model: --auto reasoning'
+            Write-Host "  catalog      : $(@($catalog.data).Count) models, $($selectableModels.Count) selectable"
+            $rows = Get-CopilotTierRows -Catalog $catalog -Model $selectableModels
+            foreach ($prefix in '^claude-', '^(gpt-|o\d)', '^grok-', '^gemini-') {
+                $best = Select-CopilotTierBest -Prefix $prefix -Row $rows
+                if ($best) { Write-Host ("  {0,-12} : top tier -> {1}" -f $prefix, $best) }
+            }
+        }
+        $raw = Select-CopilotBestModel -Model $selectableModels -Catalog $catalog
         if (-not $raw) { Write-Error "copilot-model: --auto could not pick a model"; return }
         $resolved = ConvertTo-CopilotClaudeModel -Model $raw -Catalog $catalog
         $why = switch -Regex ($resolved) {
             '^claude-'  { 'Claude preferred'; break }
             '^(gpt-|.*codex|o\d)' { 'no Claude; capability-ranked OpenAI'; break }
-            '^gemini-'  { 'no Claude/OpenAI; best Gemini'; break }
+            '^grok-'    { 'no Claude/OpenAI; best grok'; break }
+            '^gemini-'  { 'no Claude/OpenAI/grok; best Gemini'; break }
             default     { 'best available' }
         }
         Write-Host "copilot-model: --auto -> $resolved  ($why)"

@@ -31,7 +31,7 @@ the PowerShell profile. It requires Bun, Node/npm and a Copilot subscription.
 | `claude-copilot-once [--fast]` | pin this project, run once, then restore it |
 | `codex-copilot` / `codex-copilot-once` | zero-persistence Codex session on the Responses proxy |
 | `copilot-here [on\|off\|status]` | sticky project pin in `.claude/settings.local.json` |
-| `copilot-model [<id>\|-l\|-c\|--auto]` | switch or inspect the complete role profile |
+| `copilot-model [<id>\|-l\|-L\|-c\|--auto [--why]\|--why\|--json]` | switch, inspect or explain the complete role profile |
 | `copilot-embed [TEXT\|-]` | embed text through `/v1/embeddings` |
 | `semsearch index \| <QUERY>` | semantic search over local text |
 
@@ -40,6 +40,8 @@ the PowerShell profile. It requires Bun, Node/npm and a Copilot subscription.
 ```powershell
 copilot-proxy auth                 # once
 copilot-proxy start
+copilot-model --why              # explain automatic selection; write nothing
+copilot-model -L                   # inspect live tier/price/context/plan metadata
 copilot-model --auto              # select from the live catalog
 copilot-model -c                   # inspect Main/Fable/Opus/Sonnet/Haiku
 copilot-here on                    # sticky project; or use claude-copilot-once
@@ -120,25 +122,47 @@ tested exact pin with `latest`.
 
 `copilot-model --auto` requires the live `/v1/models` catalog and chooses a
 profile **before any later inference request**. Automatic candidates exclude
-policy-disabled, picker-hidden and embedding-only entries; raw listing and explicit
-manual selection remain available as user overrides. It prefers served Claude
-families (`Fable > Opus > Sonnet > Haiku`), then uses the same named OpenAI tier
-order as the Codex launcher:
+policy-disabled, picker-hidden, embedding-only, and `-fast` entries; raw listing
+and explicit manual selection remain available as user overrides. Vendor order is
+Claude > OpenAI > grok > Gemini. Inside each vendor, it reads Copilot's own
+`model_picker_category` (`powerful > versatile > lightweight`) and compares
+model generations only inside the winning tier. A curated allowlist wins for
+known ids and unknown same-generation siblings; an unknown newer flagship can
+win without waiting for a module update. Missing category metadata falls back to
+the historical allowlist rather than guessing. Automatic selection also uses
+the explicitly pinned/persisted current model as an entitlement floor: a
+candidate's `restricted_to` set must be at least as broad. With no explicit
+baseline, only the broadest/unrestricted entries are considered; manual ids stay
+unrestricted.
 
-```text
-Sol > Terra > GPT-5.5 > GPT-5.4 > GPT-5.3 Codex > Luna > mini > Gemini
-```
-
-Luna follows the older flagships because it is the lightweight tier. Unknown future
-GPT ids are considered only after every named OpenAI tier above is absent. This role
-intent follows OpenAI's [current model guidance](https://developers.openai.com/api/docs/guides/latest-model).
-For the normal Claude-less Copilot catalog, the generated profile is:
+OpenAI generation and capability tier are independent: Astra succeeds Sol as the
+flagship while Terra and Luna remain on 5.6. Therefore `gpt-6-astra` outranks
+`gpt-5.6-sol`, but a hypothetical lightweight `gpt-6-luna` would not. This follows
+OpenAI's [current model guidance](https://developers.openai.com/api/docs/guides/latest-model).
+The current Copilot catalog restricts Astra to `pro_plus` / Business / Enterprise /
+Max and exposes a 1,000,000-token context with an 872,000-token prompt ceiling
+(smaller than Sol's 1,050,000 / 922,000); it starts at `reasoning_effort=low`, with
+no `none` mode. The backward-compatible offline fallback stays
+`gpt-5.6-sol[1m]`; that is not an entitlement guarantee — check the live PLANS
+column with `copilot-model -L`. `restricted_to` is advisory catalog metadata:
+`--auto` cannot prove the active billing target/organization, so a later
+entitlement rejection still requires choosing another served model manually.
+The generated profile is:
 
 | Claude Code role | Copilot model |
 |---|---|
-| Main / Fable / Opus | `gpt-5.6-sol` |
+| Main / Fable / Opus | selected main (`gpt-6-astra` when entitled) |
 | Sonnet | `gpt-5.6-terra` |
 | Haiku / background / legacy small-fast | `gpt-5.6-luna` |
+
+`-l` remains the pipeable bare-id list. `-L` / `--details` exposes tier,
+price category, context/output limits, reasoning range, fast sibling, eligible
+plan, and picker state; `*` marks the current model and `->` the authoritative
+automatic pick. Rows are grouped by tier/generation for comparison; display order
+does not replace vendor/allowlist policy.
+`--why` is a no-write dry run, `--auto --why` explains and then writes, and
+`--json` returns the raw catalog. That live HTTP payload is separate from the
+shim's `/_shim/fast-routing` endpoint and Codex's generated on-disk model catalog.
 
 A manually selected OpenAI main remains Main/Fable/Opus; Terra and Luna are used
 for the lower roles only when served and selectable. Missing or policy-vetoed tiers
@@ -253,10 +277,13 @@ no automatic paid inference probe is performed.
   committed project settings. `off` removes every env key owned by the helper and
   preserves unrelated settings.
 - `claude-copilot` and `claude-copilot-once` retain the Windows port's trusted
-  `--dangerously-skip-permissions` and optional SpecStory behavior. On the
-  SpecStory path they resolve the project/user `claude_cmd` as the base, enforce
-  one bypass flag, quote all user arguments, and always pass the complete command
-  through `specstory run claude -c` (including zero-argument sessions). The
+  `--dangerously-skip-permissions` and optional SpecStory behavior. The raw path yields to explicit permission modes. On the SpecStory path an
+  explicit mode replaces the repo-seeded bypass. A custom `claude_cmd` is never
+  rewritten: without an alternate mode the wrapper appends its default bypass,
+  while embedded permission flags remain the command owner's responsibility. On
+  the SpecStory path they resolve the project/user `claude_cmd` as the base,
+  quote all user arguments, and always pass the complete
+  command through `specstory run claude -c` (including zero-argument sessions). The
   create-seeded `~/.specstory/cli/config.toml` remains user-owned, and direct
   `specstory run claude` still follows that user/project configuration. Plain
   `claude` is unaffected.
@@ -328,9 +355,9 @@ Codex `-c` overrides. That provider supplies its own authentication, so the
 launcher does not require a Codex/ChatGPT login; an existing login is neither
 removed nor changed. They do not edit user or project Codex config, so plain
 `codex` is unaffected. An explicit `-m` / `--model` wins; otherwise the live raw
-catalog is ranked OpenAI/Codex first (`Sol > Terra > GPT-5.5 > GPT-5.4 > GPT-5.3
-Codex > Luna > mini`), then Claude, Gemini and other chat models. Policy-disabled,
-picker-hidden and embedding-only entries are excluded from automatic selection.
+catalog uses the same tier-aware policy in OpenAI/Codex-first order, then Claude,
+grok, Gemini and other chat models. Policy-disabled, picker-hidden, embedding-only,
+and `-fast` main candidates are excluded from automatic selection.
 
 Codex always uses the shim on `localhost:4142`, even when the persisted
 throttling toggle is off. Besides throttling, that boundary normalizes blank

@@ -72,8 +72,8 @@ function global:_herdr_wrap_agent {
         if ($Agent) { return $Agent } else { return 'claude' }
     }
     switch ($Agent) {
-        ''          { return 'specstory run' }
-        'specstory' { return 'specstory run' }
+        ''          { return 'specstory run claude' }
+        'specstory' { return 'specstory run claude' }
         { $_ -in 'claude', 'codex', 'cursor', 'droid', 'gemini' } { return "specstory run $Agent" }
         default     { return $Agent }
     }

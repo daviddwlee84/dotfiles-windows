@@ -31,7 +31,7 @@ fork，讓 **GitHub Copilot 訂閱**可作為 **Claude Code** 與其他 Anthropi
 | `claude-copilot-once [--fast]` | 暫時釘住專案、執行一次、結束後還原 |
 | `codex-copilot` / `codex-copilot-once` | 零持久化的 Codex Responses proxy session |
 | `copilot-here [on\|off\|status]` | 在 `.claude/settings.local.json` 做 sticky pin |
-| `copilot-model [<id>\|-l\|-c\|--auto]` | 切換或檢查完整 role profile |
+| `copilot-model [<id>\|-l\|-L\|-c\|--auto [--why]\|--why\|--json]` | 切換、檢查或解釋完整 role profile |
 | `copilot-embed [TEXT\|-]` | 透過 `/v1/embeddings` 產生向量 |
 | `semsearch index \| <QUERY>` | 對本機文字做語意搜尋 |
 
@@ -40,6 +40,8 @@ fork，讓 **GitHub Copilot 訂閱**可作為 **Claude Code** 與其他 Anthropi
 ```powershell
 copilot-proxy auth                 # 只需一次
 copilot-proxy start
+copilot-model --why              # 解釋自動選擇，不寫入
+copilot-model -L                   # 查看 live tier／price／context／plan metadata
 copilot-model --auto              # 從 live catalog 選模型
 copilot-model -c                   # 查看 Main/Fable/Opus/Sonnet/Haiku
 copilot-here on                    # 固定本專案；或用 claude-copilot-once
@@ -110,25 +112,41 @@ runtime files，逐檔核對內建 SHA-256，再只透過目前 npm registry 解
 ## 模型選擇與 role profile
 
 `copilot-model --auto` 必須讀到 live `/v1/models`，並在後續 inference request
-發生**之前**選好 profile。自動候選會排除 policy-disabled、picker-hidden 與
-embedding-only entries；raw 列表與明確手動選擇仍保留給使用者 override。它會先選 served
-Claude 家族（`Fable > Opus > Sonnet > Haiku`），再使用與 Codex launcher 相同的命名
-OpenAI tier 順序：
+發生**之前**選好 profile。自動候選會排除 policy-disabled、picker-hidden、
+embedding-only 與 `-fast` entries；raw 列表與手動選擇仍可 override。Vendor 順序是
+Claude > OpenAI > grok > Gemini。同一 vendor 讀 Copilot 的
+`model_picker_category`（`powerful > versatile > lightweight`），只在勝出的 tier 內
+比較世代。已知 id 與未知同世代 sibling 由 curated allowlist 決定；未知但更新世代的
+旗艦可不等 module 更新就勝出。沒有 category metadata 時退回既有 allowlist，不會猜測。
+Auto 也把目前明確 pin／persist 的 model 當作 entitlement floor：候選的
+`restricted_to` 集合不得更窄；沒有明確 baseline 時只考慮最廣泛或 unrestricted 的
+entries。手動指定 model 不受此限制。
 
-```text
-Sol > Terra > GPT-5.5 > GPT-5.4 > GPT-5.3 Codex > Luna > mini > Gemini
-```
-
-Luna 雖是 5.6 世代，但屬於輕量 tier，所以排在舊旗艦後面。只有上面所有命名的 OpenAI
-tier 都不存在時，才會考慮未知的 future GPT id。這個角色意圖依照 OpenAI 的
+OpenAI 的世代與 capability tier 是兩個獨立維度：Astra 接替 Sol 的旗艦位置，Terra / Luna
+仍留在 5.6。因此 `gpt-6-astra` 高於 `gpt-5.6-sol`，但假想的輕量
+`gpt-6-luna` 不會。意圖依照 OpenAI 的
 [current model guidance](https://developers.openai.com/api/docs/guides/latest-model)。
-一般沒有 Claude 的 Copilot catalog 會產生：
+目前 Copilot catalog 只向 `pro_plus` / Business / Enterprise / Max 提供 Astra，context /
+prompt ceiling 為 1,000,000 / 872,000（比 Sol 的 1,050,000 / 922,000 小），reasoning
+從 `low` 起跳、沒有 `none`。向後相容的離線 fallback 仍是
+`gpt-5.6-sol[1m]`；這不代表 entitlement 較廣，請以 `copilot-model -L` 的 live
+PLANS 欄為準。`restricted_to` 只是 catalog 提示；`--auto` 無法證明目前 billing
+target／organization 的實際資格，若 inference 仍被 entitlement 拒絕，需手動改選其他
+served model。
+產生的 profile 是：
 
 | Claude Code role | Copilot model |
 |---|---|
-| Main / Fable / Opus | `gpt-5.6-sol` |
+| Main / Fable / Opus | 選定 main（有資格時為 `gpt-6-astra`） |
 | Sonnet | `gpt-5.6-terra` |
 | Haiku / background / legacy small-fast | `gpt-5.6-luna` |
+
+`-l` 仍是可 pipe 的裸 id 清單。`-L` / `--details` 顯示 tier、price category、
+context/output limits、reasoning 範圍、fast sibling、可用方案與 picker state；`*` 是目前
+模型、`->` 是具權威性的 auto pick。Rows 為方便比較而按 tier／generation 分組；
+顯示順序不取代 vendor／allowlist policy。`--why` 只解釋而不寫入，`--auto --why` 先解釋再寫入，
+`--json` 原樣回傳 catalog。它與 shim 的 `/_shim/fast-routing`、Codex 產生在磁碟上的
+model catalog 是不同資料。
 
 若手動選另一個 OpenAI main，Main/Fable/Opus 會保留該主模型；只有 served 且 selectable
 的 Terra/Luna 才會供較低 role 使用。缺少或被 policy veto 的 tier 會退回主模型，不會寫入
@@ -227,9 +245,11 @@ Status 與 doctor 會顯示 routing state。關閉 shim 也會關閉這項轉譯
 - `copilot-here` 只寫入 gitignored `.claude/settings.local.json`，不碰 committed project
   settings；`off` 只移除 helper 擁有的 env keys，保留其他設定。
 - `claude-copilot` / `claude-copilot-once` 保留 Windows port 的 trusted
-  `--dangerously-skip-permissions` 與 optional SpecStory 行為。走 SpecStory 時會先解析
-  project/user `claude_cmd` 作為 base、強制只留一個 bypass flag、逐一 quote 使用者參數，
-  並一律把完整 command 交給 `specstory run claude -c`（包含零參數 session）。只建立一次的
+  `--dangerously-skip-permissions` 與 optional SpecStory 行為。Raw path 會讓明確 permission mode 優先；SpecStory path 的明確 mode 會取代 repo seeded
+  bypass。自訂 `claude_cmd` 不會被重寫：沒有 alternate mode 時 wrapper 會在後面追加預設
+  bypass；custom command 內既有 permission flags 由該 command 自行負責。走 SpecStory 時會先
+  解析 project/user `claude_cmd` 作為 base、逐一 quote 使用者參數，並一律把完整 command 交給
+  `specstory run claude -c`（包含零參數 session）。只建立一次的
   `~/.specstory/cli/config.toml` 仍由使用者擁有；直接執行 `specstory run claude` 仍遵循該
   user/project config。純 `claude` 不受影響。
 - **Managed client 對啟用中的 shim 一律 fail closed。** `copilot-run`、
@@ -282,9 +302,9 @@ gateway/shim，並用本次啟動的 Codex `-c` overrides 傳入 `copilot_api`
 Responses provider。該 provider 自行提供 authentication，因此 launcher 不要求
 Codex/ChatGPT login；既有 login 也不會被移除或改寫。它們不改 user/project Codex
 config，所以 plain `codex` 不受影響。明確 `-m` / `--model` 永遠優先；否則從即時 catalog 依序選
-OpenAI/Codex（`Sol > Terra > GPT-5.5 > GPT-5.4 > GPT-5.3 Codex > Luna > mini`），
-再退到 Claude、Gemini 與其他 chat model；automatic selection 會排除 policy-disabled、
-picker-hidden 與 embedding-only entries。
+使用同一套 tier-aware policy，依 OpenAI/Codex-first 順序挑選，再退到 Claude、grok、
+Gemini 與其他 chat model；automatic selection 會排除 policy-disabled、picker-hidden、
+embedding-only 與 `-fast` main candidates。
 
 Codex 一律走 `localhost:4142` shim，即使持久化的 throttling 開關是 off。
 這一層除了限流，也會正規化 Codex `mcp_list_tools` Responses item 裡的空白
