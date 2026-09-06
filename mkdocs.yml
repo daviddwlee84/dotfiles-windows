@@ -35,6 +35,7 @@ plugins:
         - locale: zh-TW
           name: 繁體中文
           nav_translations:
+            Default editor and Micro: 預設編輯器與 Micro
             Home: 首頁
             Setup: 安裝
             GitHub authentication and proxies: GitHub 登入與代理
@@ -75,6 +76,7 @@ nav:
   - LazyGit branch insights: lazygit.md
   - Disk space: disk-space.md
   - Shell: shell.md
+  - Default editor and Micro: editor.md
   - CLI sources and conflicts: appsrc.md
   - PowerShell maintenance notes: powershell-maintenance.md
   - Yazi: yazi.md

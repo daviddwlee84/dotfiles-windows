@@ -159,6 +159,7 @@ Scoop download cache and temporary staging. See [Disk space](disk-space.md).
 | Prompt | Default | Meaning |
 |---|---|---|
 | Role | `workstation` | `workstation` = full desktop; `minimal` = shell only |
+| `preferredEditor` | `nvim` | External editor, independent of PSReadLine vi mode; nvim / micro / vim / nano / code / cursor. Switch later with [editorcfg](editor.md). |
 | `Install coding agents (Claude Code, OpenCode, Codex, Copilot CLI, Pi, pia, OMP, SpecStory)` | on (workstation) | native and npm agents plus the Git-managed `pia` combo checkout; credentials and mutable sessions stay outside chezmoi |
 | Agent completion feedback | `notify` (workstation) / `none` (minimal) | what a coding agent does when it finishes: `none` / `notify` (Windows toast) / `peon` (game voice line) / `both` — see [Agent completion sounds](agent-sounds.md) |
 | `Install standalone SpecStory CLI (also included with coding agents)` | off | install the official Windows release without the full agent bundle; retains the `installSpecstoryBuild` data key for compatibility |

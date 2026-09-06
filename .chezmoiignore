@@ -1,5 +1,7 @@
 # Repo-meta files that must NOT be deployed into %USERPROFILE%.
 # chezmoiignore patterns match TARGET paths (what would land in $HOME).
+.config/dotfiles/editor-choice
+.config/powershell/local.ps1
 
 README.md
 LICENSE

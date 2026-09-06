@@ -31,12 +31,13 @@ Enter 是**送出**。要在不送出的情況下換行:
 剛 `chezmoi apply` 之後,**重開終端機**讓新的鍵綁定載入。若 Shift+Enter 仍然送出,就
 退回用 `Ctrl+J` —— 並優先用 WezTerm 或 Windows Terminal,而非裸的主控台視窗。
 
-### Ctrl+G —— 用 nvim 撰寫提示
+### Ctrl+G —— 用偏好的編輯器撰寫提示
 
-**`Ctrl+G`**(或 `Ctrl+X Ctrl+E` 和弦)會用 `$EDITOR` 打開目前的提示。這個 repo 已在
-`dot_config/powershell/profile.d/00_env.ps1.tmpl` 設定 `$env:EDITOR = 'nvim'`(當 nvim 在
-PATH 上時),所以 `Ctrl+G` 會直接進入 nvim;存檔離開即把編輯後的文字帶回。在 Windows
-的 pwsh 下可用。
+**`Ctrl+G`**（或 `Ctrl+X Ctrl+E` 和弦）會開啟目前提示的外部編輯器。
+`09_editor.ps1` 將 EDITOR／VISUAL 設成 `dotfiles-editor`，預設 nvim。
+用 `editorcfg use micro` 切到非 modal 編輯器，或 `editorcfg use code` 使用帶
+`--wait` 的 VS Code。儲存並關閉後取回文字；fallback、覆寫及 Windows 互動驗收
+見 [編輯器選擇](editor.zh-TW.md)。
 
 以上三者都是 Claude Code 的預設鍵;可在 `~/.claude/keybindings.json` 以
 `chat:newline`、`chat:submit`、`chat:externalEditor` 這幾個 action 重新綁定。

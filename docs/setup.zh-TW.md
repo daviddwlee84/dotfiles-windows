@@ -144,6 +144,7 @@ shell 的開發 baseline，**不是**極小安裝：它仍會安裝核心 CLI／
 | 提問 | 預設 | 意義 |
 |---|---|---|
 | Role | `workstation` | `workstation` = 完整桌面；`minimal` = 只有 shell |
+| `preferredEditor` | `nvim` | 外部編輯器，與 PSReadLine vi mode 獨立；nvim / micro / vim / nano / code / cursor。之後用 [editorcfg](editor.zh-TW.md) 切換。 |
 | `Install coding agents (Claude Code, OpenCode, Codex, Copilot CLI, Pi, pia, OMP, SpecStory)` | 開（workstation） | 原生與 npm agents，加上 Git 管理的 `pia` combo checkout；credentials 與可變 sessions 都不進 chezmoi |
 | Agent 完成回饋 | `notify`（workstation）/`none`（minimal） | coding agent 跑完時做什麼：`none`／`notify`（Windows 通知）／`peon`（遊戲語音）／`both` —— 見 [Agent 完成音效](agent-sounds.zh-TW.md) |
 | `Install standalone SpecStory CLI (also included with coding agents)` | 關 | 不啟用完整 agent bundle 時獨立安裝官方 Windows release；相容保留 `installSpecstoryBuild` data key |

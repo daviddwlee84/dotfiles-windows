@@ -61,6 +61,7 @@
     managedMachine       = {{ promptBoolOnce . "managedMachine" "Managed or corporate machine (skip org-policy-blocked apps like Tailscale and Grammarly)" false }}
     allowPublicPackageFallback = {{ promptBoolOnce . "allowPublicPackageFallback" "Allow one public PyPI/npm retry after eligible corporate feed failures" false }}
     backupMode           = {{ promptChoiceOnce . "backupMode" "Back up existing files before apply (smart|full|off)" (list "smart" "full" "off") "smart" | quote }}
+    preferredEditor      = {{ promptChoiceOnce . "preferredEditor" "Preferred external editor (nvim|micro|vim|nano|code|cursor)" (list "nvim" "micro" "vim" "nano" "code" "cursor") "nvim" | quote }}
     enableVimMode        = {{ promptBoolOnce . "enableVimMode" "Enable PSReadLine vi editing mode" true }}
 
 # Run .ps1 scripts (.chezmoiscripts + modify_/create_) under PowerShell 7.

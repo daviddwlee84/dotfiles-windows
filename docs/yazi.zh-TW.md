@@ -1,5 +1,7 @@
 # Yazi 檔案管理員
 
+文字檔編輯使用 [editorcfg](editor.zh-TW.md)，包含 Micro 與等待關閉的 GUI preset；目錄編輯保留明確命名的 Neovim 入口。
+
 Yazi 透過 Scoop 安裝，並由受管的 `YAZI_CONFIG_HOME` 讀取 `~/.config/yazi`。
 在 PowerShell 執行 `y`，離開後會停在 Yazi 最後瀏覽的目錄；在 Herdr 使用
 `prefix+Y`，則會從聚焦 agent pane 的 cwd 開啟一次性的檔案管理 pane。

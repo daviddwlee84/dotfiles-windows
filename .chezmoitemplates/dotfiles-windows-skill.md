@@ -89,6 +89,8 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   Television channels live under `%APPDATA%\television\cable\` (`tv <name>`).
 
 ## What's enabled on THIS machine
+
+- **External editor** — init default `{{ get . "preferredEditor" | default "nvim" }}` (independent of `enableVimMode`); `editorcfg status/list/use/reset/doctor` manages the local override. `EDITOR`/`VISUAL` name the blocking `dotfiles-editor` launcher. Micro is baseline Scoop; code/cursor presets add `--wait`. `local.ps1` runs last; see `docs/editor.md`.
 - role: **{{ .role }}**
 - Coding agents (Pi/pia/OMP included): {{ .installCodingAgents }} · Agent sounds: {{ .agentSounds }} · Standalone SpecStory (also bundled with coding agents): {{ .installSpecstoryBuild }} · GUI apps: {{ .installWindowsApps }} · WSL2 (Docker backend): {{ .installWsl }} · WSL Ubuntu: {{ .installWslUbuntu }} · Utility apps: {{ .installUtilityApps }} · Gaming: {{ .installGamingApps }}
 - Extra runtimes: {{ .installExtraRuntimes }} · Media: {{ .installMediaTools }} · LLM: {{ .installLlmTools }} · summarize: {{ .installSummarize }} · Tunnel: {{ .installTunnelTools }} · IaC: {{ .installIacTools }} · OpenSSH: {{ .installSshServer }} · herdr: {{ .installHerdr }} · Clink(cmd): {{ .installClink }} · try: {{ .installTry }} · translate: {{ .installTranslate }} · Rime/Weasel: {{ .installInputMethod }}

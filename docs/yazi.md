@@ -1,5 +1,7 @@
 # Yazi file manager
 
+Text-file editing follows [editorcfg](editor.md), including Micro and waiting GUI presets. Directory editing remains an explicitly named Neovim action.
+
 Yazi is installed through Scoop and reads `~/.config/yazi` through the managed
 `YAZI_CONFIG_HOME`. Run `y` from PowerShell to return in the directory where
 Yazi exits, or use Herdr `prefix+Y` for a disposable file-manager pane rooted at

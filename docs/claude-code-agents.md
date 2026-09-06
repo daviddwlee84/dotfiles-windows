@@ -35,13 +35,13 @@ After a fresh `chezmoi apply`, **restart the terminal** so the new keybinding
 loads. If Shift+Enter still submits, fall back to `Ctrl+J` — and prefer WezTerm or
 Windows Terminal over the bare console window.
 
-### Ctrl+G — compose the prompt in nvim
+### Ctrl+G — compose the prompt in your editor
 
 **`Ctrl+G`** (or the `Ctrl+X Ctrl+E` chord) opens the current prompt in `$EDITOR`.
-This repo already sets `$env:EDITOR = 'nvim'` in
-`dot_config/powershell/profile.d/00_env.ps1.tmpl` (when nvim is on PATH), so `Ctrl+G`
-drops you straight into nvim; save and quit to load the edited text back. Works in
-pwsh on Windows.
+`09_editor.ps1` sets EDITOR and VISUAL to `dotfiles-editor` (default nvim).
+Use `editorcfg use micro` for non-modal editing, or `editorcfg use code` for VS Code
+with `--wait`. Save and close to load the text back. See [editor selection](editor.md)
+for fallback, overrides and Windows interactive acceptance checks.
 
 All three are Claude Code defaults; remap them in `~/.claude/keybindings.json`
 via the `chat:newline`, `chat:submit`, and `chat:externalEditor` actions.

@@ -13,6 +13,7 @@ GUI 應用程式。
 |---|---|
 | git、gh、glab | 版本控制 + GitHub / GitLab CLI |
 | neovim | 編輯器（已配置 LazyVim） |
+| micro | 非 modal 終端編輯器；[editorcfg](editor.zh-TW.md) 的基礎 fallback |
 | lazygit | git TUI（delta 呈現 + [`I` branch containment／PR 洞察](lazygit.zh-TW.md)） |
 | zoxide | 更聰明的 `cd` |
 | fzf、fd、ripgrep | 模糊搜尋 / 找檔案 / grep |

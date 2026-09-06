@@ -39,7 +39,8 @@ jobs:
             $result = Invoke-Pester -PassThru -Output Detailed -Path @(
               './tests/AppSource.Tests.ps1', './tests/PowerShellRuntime.Tests.ps1',
               './tests/PowerShellInitCache.Tests.ps1', './tests/Bootstrap.Tests.ps1',
-              './tests/GitAliases.Tests.ps1', './tests/HerdrLazyGit.Tests.ps1'
+              './tests/GitAliases.Tests.ps1', './tests/HerdrLazyGit.Tests.ps1',
+              './tests/EditorConfig.Tests.ps1'
             )
             if ($result.FailedCount -or $result.FailedContainersCount) { exit 1 }
           }
@@ -124,6 +125,7 @@ jobs:
             agentSounds = 'none'
             backupMode = 'smart'
             enableVimMode = $true
+            preferredEditor = 'nvim'
             useChineseMirror = $false
             managedMachine = $false
             allowPublicPackageFallback = $false
@@ -143,6 +145,7 @@ jobs:
         shell: pwsh
         run: |
           $flags = @(
+            '--promptChoice','Preferred external editor (nvim|micro|vim|nano|code|cursor)=nvim',
             '--promptChoice','Role: workstation (full desktop) or minimal (shell only)=minimal',
             '--promptString','Your full name (git)=CI Runner',
             '--promptString','Your git email=ci@example.com',

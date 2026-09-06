@@ -1,5 +1,7 @@
 # dotfiles-windows
 
+Micro is included as a non-modal terminal editor. `preferredEditor` defaults to nvim independently of shell Vim mode; use [editorcfg](docs/editor.md) to switch, inspect and diagnose external editing.
+
 Native **Windows + PowerShell 7** dotfiles, managed by [chezmoi](https://chezmoi.io).
 A self-contained, Windows-only companion to the cross-platform (macOS/Linux)
 dotfiles at **[daviddwlee84/dotfiles](https://github.com/daviddwlee84/dotfiles)** —

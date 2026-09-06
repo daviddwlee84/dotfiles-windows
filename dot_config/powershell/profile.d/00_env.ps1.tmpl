@@ -100,5 +100,4 @@ if ((Test-Path -LiteralPath $PiOwnedLauncher -PathType Leaf) -and
 }
 {{ end -}}
 
-# Default editor (resolved only after PATH precedence is normalized).
-if (Get-Command nvim -ErrorAction SilentlyContinue) { $env:EDITOR = 'nvim' }
+# Default editor is initialized by 09_editor.ps1 after PATH normalization.

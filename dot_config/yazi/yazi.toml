@@ -14,13 +14,19 @@ show_symlink = true
 
 [open]
 rules = [
-  # edit / open / reveal come from yazi's built-in Windows preset; `git` is ours.
-  { url = "*/", use = ["edit", "git", "reveal", "open"] },
+  # open / reveal are built in; text editing follows editorcfg.
+  { url = "*/", use = ["nvim_dir", "git", "reveal", "open"] },
   { mime = "text/*", use = ["edit", "open"] },
   { mime = "*", use = ["open"] },
 ]
 
 [opener]
+edit = [
+  { run = 'if defined EDITOR ("%EDITOR%" %*) else (dotfiles-editor %*)', block = true, desc = "Preferred editor" },
+]
+nvim_dir = [
+  { run = 'nvim %*', block = true, desc = "Neovim (directory)" },
+]
 # Open lazygit in the hovered directory. %* is the selected path on Windows;
 # adjust the placeholder if your yazi version differs.
 git = [

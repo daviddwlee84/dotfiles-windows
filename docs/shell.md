@@ -18,7 +18,8 @@ logic lives in the fragments; the loader stays boring.
 
 | Fragment | Does |
 |---|---|
-| `00_env.ps1` | XDG base dirs, `$env:EDITOR`, PATH |
+| `00_env.ps1` | XDG base dirs, PATH |
+| `09_editor.ps1` | EDITOR/VISUAL, [editorcfg](editor.md), retained native editor module and completion |
 | `05_mirrors.ps1` | company-approved registries on managed machines; otherwise China mirrors when enabled |
 | `10_tools.ps1` | cached `init` hooks and completions: starship, zoxide, atuin, fzf, direnv, tv, dev-cli, translate, pia |
 | `20_aliases.ps1` | aliases + helpers (`reload`, `cas`/`cau`, modern-CLI shims) |

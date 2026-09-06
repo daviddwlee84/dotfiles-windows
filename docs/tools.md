@@ -13,6 +13,7 @@ read-only CLI provenance and duplicate-installation checks. It requires no extra
 |---|---|
 | git, gh, glab | version control + GitHub / GitLab CLIs |
 | neovim | editor (LazyVim, pre-configured) |
+| micro | non-modal terminal editor; baseline fallback for [editorcfg](editor.md) |
 | lazygit | git TUI with delta rendering and [`I` branch containment/PR insights](lazygit.md) |
 | zoxide | smarter `cd` |
 | fzf, fd, ripgrep | fuzzy find / file search / grep |

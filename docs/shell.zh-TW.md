@@ -16,7 +16,8 @@
 
 | 片段 | 做什麼 |
 |---|---|
-| `00_env.ps1` | XDG base 目錄、`$env:EDITOR`、PATH |
+| `00_env.ps1` | XDG base 目錄、PATH |
+| `09_editor.ps1` | EDITOR／VISUAL、[editorcfg](editor.zh-TW.md)、保留的原生 editor module 與補全 |
 | `05_mirrors.ps1` | 受管機器使用公司核准 registry；其他機器可選中國鏡像 |
 | `10_tools.ps1` | 快取的 `init` 掛鉤與補全：starship、zoxide、atuin、fzf、direnv、tv、dev-cli、translate、pia |
 | `20_aliases.ps1` | alias 與 helper（`reload`、`cas`/`cau`、現代 CLI 替身） |
