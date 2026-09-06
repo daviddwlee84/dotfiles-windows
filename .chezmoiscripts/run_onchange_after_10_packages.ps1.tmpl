@@ -60,7 +60,7 @@ $allowPublicPackageFallback = {{ if (get . "allowPublicPackageFallback") }}$true
 {{ include "scripts/windows-cli-release.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 {{ include "scripts/windows-system-proxy.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 {{ include "scripts/herdr-upgrade-core.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
-{{ include "scripts/weasel-core.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
+{{ template "weasel-core.ps1" . }}
 
 function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 function Have($n) { [bool](Get-Command $n -ErrorAction SilentlyContinue) }

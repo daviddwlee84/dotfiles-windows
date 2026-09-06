@@ -11,10 +11,18 @@ Describe 'first-party PowerShell runtime contract' {
         $files = @($roots | ForEach-Object { Get-ChildItem -LiteralPath (Join-Path $script:Repo $_) -Recurse -File } |
             Where-Object Name -Match '\.(ps1|psm1)(\.tmpl)?$')
         $files += Get-Item (Join-Path $script:Repo 'modify_dot_gitconfig.ps1.tmpl')
+        $packageSourcesPartial = Join-Path $script:Repo '.chezmoitemplates/package-sources.ps1'
+        $headerlessPartials = @(
+            (Join-Path $script:Repo '.chezmoitemplates/weasel-core.ps1')
+        )
         foreach ($file in $files) {
             $text = Get-Content -LiteralPath $file.FullName -Raw
-            $text | Should -Match '(?m)^#Requires -Version 7\.4\r?$' -Because $file.FullName
-            if ($file.FullName -ne (Join-Path $script:Repo '.chezmoitemplates/package-sources.ps1')) {
+            if ($file.FullName -notin $headerlessPartials) {
+                $text | Should -Match '(?m)^#Requires -Version 7\.4\r?$' -Because $file.FullName
+            } else {
+                $text | Should -Not -Match '(?m)^#Requires\s' -Because "$($file.FullName) is embedded inside an enclosing script"
+            }
+            if ($file.FullName -ne $packageSourcesPartial -and $file.FullName -notin $headerlessPartials) {
                 $text | Should -Match '(?m)^#Requires -PSEdition Core\r?$' -Because $file.FullName
             }
         }

@@ -3,10 +3,10 @@
 
 BeforeAll {
     $RepoRoot = Split-Path -Parent $PSScriptRoot
-    $CorePath = Join-Path $RepoRoot 'scripts' 'weasel-core.ps1'
+    $CoreTemplate = Join-Path $RepoRoot '.chezmoitemplates' 'weasel-core.ps1'
     $PackageTemplate = Join-Path $RepoRoot '.chezmoiscripts' 'run_onchange_after_10_packages.ps1.tmpl'
     $DeployTemplate = Join-Path $RepoRoot '.chezmoiscripts' 'run_onchange_after_50_rime_deploy.ps1.tmpl'
-    . $CorePath
+    . ([scriptblock]::Create((Get-Content -Raw -LiteralPath $CoreTemplate)))
 
     function New-CompleteWeaselRoot([string] $Path) {
         $null = New-Item -ItemType Directory -Force -Path $Path
@@ -81,8 +81,10 @@ Describe 'Rime package and deploy integration' {
     }
 
     It 'embeds the shared resolver in both run scripts' {
-        $package | Should -Match 'include "scripts/weasel-core\.ps1"'
-        $deploy | Should -Match 'include "scripts/weasel-core\.ps1"'
+        $package | Should -Match 'template "weasel-core\.ps1" \.'
+        $deploy | Should -Match 'template "weasel-core\.ps1" \.'
+        $package | Should -Not -Match 'template "weasel-core\.ps1" \.\s*\|\s*replace'
+        $deploy | Should -Not -Match 'template "weasel-core\.ps1" \.\s*\|\s*replace'
         $package | Should -Match '\$installation = Resolve-WeaselInstallation'
         $deploy | Should -Match '\$installation = Resolve-WeaselInstallation'
         $package | Should -Not -Match 'Get-ItemProperty.+SOFTWARE\\Rime\\Weasel'
@@ -100,5 +102,21 @@ Describe 'Rime package and deploy integration' {
         $deploy | Should -Match 'Start-Process -FilePath \$installation\.DeployerPath'
         $deploy | Should -Not -Match "Join-Path.+WeaselDeployer\.exe"
         $deploy | Should -Match '(?s)catch \{.*?Rime deploy error:.*?\}\s*exit 0'
+    }
+
+    It 'renders with one valid Requires directive of each kind' {
+        $data = @{ installInputMethod = $true } | ConvertTo-Json -Compress
+        $rendered = (& chezmoi execute-template --source $RepoRoot --override-data $data --file $DeployTemplate) -join "`n"
+        $LASTEXITCODE | Should -Be 0
+
+        $errors = $null
+        [void] [System.Management.Automation.Language.Parser]::ParseInput(
+            $rendered,
+            [ref] $null,
+            [ref] $errors
+        )
+        $errors | Should -BeNullOrEmpty
+        [regex]::Matches($rendered, '(?m)^#Requires -Version 7\.4$').Count | Should -Be 1
+        [regex]::Matches($rendered, '(?m)^#Requires -PSEdition Core$').Count | Should -Be 1
     }
 }

@@ -21,6 +21,7 @@ $PSNativeCommandUseErrorActionPreference = $false
 function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 
 {{ include "scripts/weasel-core.ps1" | replace "#Requires -PSEdition Core" "" }}
+{{ template "weasel-core.ps1" . }}
 
 $installation = Resolve-WeaselInstallation
 if (-not $installation) {
