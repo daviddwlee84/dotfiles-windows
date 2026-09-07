@@ -57,8 +57,10 @@ Claude 指令不要再加 `--effort`：啟動時的 effort pin 會阻止 session
 `ultracode` 生效。Codex 0.151.0 沒有啟動時指定 collaboration mode 的公開 flag，
 所以套用 override 後仍需輸入 `/plan`。
 
-`chezmoi apply` 不會偷偷遷移既有 global/project pin。升級後請手動執行一次
-`copilot-model --auto`。若 `copilot-here` 已開，它會刷新 local role set；否則只更新
+`chezmoi apply` 不會偷偷遷移既有 global/project pin。部署此修正並重新載入 PowerShell
+profile 後，再執行 `copilot-model --auto` 即可恢復先前誤選的 `gpt-5-mini`，不需刪除
+settings 或 state 檔案。若 Astra 是 live catalog 中最佳的 selectable candidate，無論
+舊 pin 為何都會選到 Astra。若 `copilot-here` 已開，它會刷新 local role set；否則只更新
 global 的單行 main-model state。
 
 ## Routing 原理
@@ -118,9 +120,10 @@ Claude > OpenAI > grok > Gemini。同一 vendor 讀 Copilot 的
 `model_picker_category`（`powerful > versatile > lightweight`），只在勝出的 tier 內
 比較世代。已知 id 與未知同世代 sibling 由 curated allowlist 決定；未知但更新世代的
 旗艦可不等 module 更新就勝出。沒有 category metadata 時退回既有 allowlist，不會猜測。
-Auto 也把目前明確 pin／persist 的 model 當作 entitlement floor：候選的
-`restricted_to` 集合不得更窄；沒有明確 baseline 時只考慮最廣泛或 unrestricted 的
-entries。手動指定 model 不受此限制。
+每次 auto 都只排序該次取得的 live catalog，不受舊 state、環境變數指定的 model 或
+project pin 影響；不根據舊 model 推測帳號 tier，也不比較 `billing.restricted_to`
+方案集合，這些欄位僅供診斷。目前 model 仍決定 current marker 與一般 launch precedence，
+啟用中的 project pin 仍決定 `--auto` 寫入的位置。
 
 OpenAI 的世代與 capability tier 是兩個獨立維度：Astra 接替 Sol 的旗艦位置，Terra / Luna
 仍留在 5.6。因此 `gpt-6-astra` 高於 `gpt-5.6-sol`，但假想的輕量
@@ -129,20 +132,20 @@ OpenAI 的世代與 capability tier 是兩個獨立維度：Astra 接替 Sol 的
 目前 Copilot catalog 只向 `pro_plus` / Business / Enterprise / Max 提供 Astra，context /
 prompt ceiling 為 1,000,000 / 872,000（比 Sol 的 1,050,000 / 922,000 小），reasoning
 從 `low` 起跳、沒有 `none`。向後相容的離線 fallback 仍是
-`gpt-5.6-sol[1m]`；這不代表 entitlement 較廣，請以 `copilot-model -L` 的 live
-PLANS 欄為準。`restricted_to` 只是 catalog 提示；`--auto` 無法證明目前 billing
-target／organization 的實際資格，若 inference 仍被 entitlement 拒絕，需手動改選其他
-served model。
+`gpt-5.6-sol[1m]`；這不代表 entitlement 保證。`copilot-model -L` 的 live PLANS
+欄與 `--json` 的原始 `billing.restricted_to` 只描述 catalog，不是目前帳號／billing
+target／organization 實際資格的證據。真正的存取資格由 gateway 執行；若後續 inference
+被 entitlement 拒絕，仍需手動改選其他 served model。
 產生的 profile 是：
 
 | Claude Code role | Copilot model |
 |---|---|
-| Main / Fable / Opus | 選定 main（有資格時為 `gpt-6-astra`） |
+| Main / Fable / Opus | 選定 main（`gpt-6-astra` 是最佳 selectable live candidate 時即選它） |
 | Sonnet | `gpt-5.6-terra` |
 | Haiku / background / legacy small-fast | `gpt-5.6-luna` |
 
 `-l` 仍是可 pipe 的裸 id 清單。`-L` / `--details` 顯示 tier、price category、
-context/output limits、reasoning 範圍、fast sibling、可用方案與 picker state；`*` 是目前
+context/output limits、reasoning 範圍、fast sibling、刊登的方案與 picker state；`*` 是目前
 模型、`->` 是具權威性的 auto pick。Rows 為方便比較而按 tier／generation 分組；
 顯示順序不取代 vendor／allowlist policy。`--why` 只解釋而不寫入，`--auto --why` 先解釋再寫入，
 `--json` 原樣回傳 catalog。它與 shim 的 `/_shim/fast-routing`、Codex 產生在磁碟上的
@@ -304,7 +307,9 @@ Codex/ChatGPT login；既有 login 也不會被移除或改寫。它們不改 us
 config，所以 plain `codex` 不受影響。明確 `-m` / `--model` 永遠優先；否則從即時 catalog 依序選
 使用同一套 tier-aware policy，依 OpenAI/Codex-first 順序挑選，再退到 Claude、grok、
 Gemini 與其他 chat model；automatic selection 會排除 policy-disabled、picker-hidden、
-embedding-only 與 `-fast` main candidates。
+embedding-only 與 `-fast` main candidates。此選擇不受舊 model state 或 Claude project
+pin 影響，raw model id 與 context/prompt limits 皆來自同一份 catalog snapshot，且不會
+持久化該次選擇。
 
 Codex 一律走 `localhost:4142` shim，即使持久化的 throttling 開關是 off。
 這一層除了限流，也會正規化 Codex `mcp_list_tools` Responses item 裡的空白

@@ -1038,12 +1038,163 @@ Describe 'Copilot module' {
     }
 
     Context 'copilot-model writes' {
+        $autoStates = @(
+            @{ Scenario = 'fresh'; InitialModel = $null; ProjectPin = $false },
+            @{ Scenario = 'mini'; InitialModel = 'gpt-5-mini'; ProjectPin = $false },
+            @{ Scenario = 'Sol'; InitialModel = 'gpt-5.6-sol[1m]'; ProjectPin = $false },
+            @{ Scenario = 'Terra'; InitialModel = 'gpt-5.6-terra[1m]'; ProjectPin = $false },
+            @{ Scenario = 'fast-Sol'; InitialModel = 'gpt-5.6-sol-fast[1m]'; ProjectPin = $false },
+            @{ Scenario = 'stale'; InitialModel = 'gpt-retired'; ProjectPin = $false },
+            @{ Scenario = 'project pin'; InitialModel = 'gpt-5-mini'; ProjectPin = $true }
+        )
+        BeforeAll {
+            InModuleScope Copilot {
+                function script:New-CopilotAutoTestCatalog {
+                    # Deliberately non-nested plans: Luna has free/edu, GPT-5.4 has
+                    # individual_trial. Their union matches only unrestricted mini.
+                    $premium = @('pro_plus', 'business', 'enterprise', 'max')
+                    $rows = @(
+                        @{ Id = 'gpt-6-astra'; Tier = 'powerful'; Plans = $premium; Context = 1000000; Prompt = 872000; Price = 'very_high' },
+                        @{ Id = 'gpt-5.6-sol'; Tier = 'powerful'; Plans = $premium; Context = 1050000; Prompt = 922000 },
+                        @{ Id = 'gpt-5.6-sol-fast'; Tier = 'powerful'; Plans = $premium; Context = 1050000; Prompt = 922000 },
+                        @{ Id = 'gpt-5.6-terra'; Tier = 'versatile'; Plans = @('pro') + $premium; Context = 1000000; Prompt = 872000 },
+                        @{ Id = 'gpt-5.6-luna'; Tier = 'lightweight'; Plans = @('free', 'edu', 'pro') + $premium; Context = 1000000; Prompt = 872000 },
+                        @{ Id = 'gpt-5.4'; Tier = 'versatile'; Plans = @('individual_trial', 'pro') + $premium; Context = 400000; Prompt = 272000 },
+                        @{ Id = 'gpt-5-mini'; Tier = 'lightweight'; Plans = @(); Context = 128000; Prompt = 112000 }
+                    )
+                    [pscustomobject]@{ data = @($rows | ForEach-Object {
+                        [pscustomobject]@{
+                            id = $_.Id; model_picker_category = $_.Tier
+                            model_picker_price_category = if ($_.Price) { $_.Price } else { 'high' }
+                            model_picker_enabled = $true; preview = $false
+                            policy = [pscustomobject]@{ state = 'enabled' }
+                            billing = [pscustomobject]@{ restricted_to = $_.Plans }
+                            capabilities = [pscustomobject]@{
+                                type = 'chat'
+                                limits = [pscustomobject]@{
+                                    max_context_window_tokens = $_.Context
+                                    max_prompt_tokens = $_.Prompt
+                                    max_output_tokens = $_.Context - $_.Prompt
+                                }
+                                supports = [pscustomobject]@{ reasoning_effort = @('low', 'max') }
+                            }
+                        }
+                    }) }
+                }
+                function script:Set-CopilotAutoTestState {
+                    param([string] $InitialModel, [bool] $ProjectPin = $false)
+                    if ($InitialModel) {
+                        New-Item -ItemType Directory -Force (Split-Path $script:state) | Out-Null
+                        $InitialModel | Set-Content $script:state
+                    }
+                    if ($ProjectPin) {
+                        New-Item -ItemType Directory -Force '.claude' | Out-Null
+                        @{
+                            permissions = @{ allow = @('Read') }
+                            env = @{
+                                ANTHROPIC_BASE_URL = 'http://localhost:4142'
+                                ANTHROPIC_MODEL = $InitialModel
+                                UNRELATED = 'keep-me'
+                            }
+                        } | ConvertTo-Json -Depth 8 | Set-Content '.claude/settings.local.json'
+                    }
+                }
+                function script:Get-CopilotAutoTestSnapshot {
+                    @(foreach ($path in $script:state, '.claude/settings.local.json') {
+                        if (Test-Path $path) {
+                            @{ Path = $path; Content = Get-Content -Raw $path; Ticks = (Get-Item $path).LastWriteTimeUtc.Ticks }
+                        } else { @{ Path = $path; Missing = $true } }
+                    }) | ConvertTo-Json -Compress
+                }
+            }
+        }
         BeforeEach {
             $script:tmp = Join-Path ([System.IO.Path]::GetTempPath()) "copilot-model-$([guid]::NewGuid())"
             New-Item -ItemType Directory -Force -Path $script:tmp | Out-Null
             Push-Location $script:tmp
+            InModuleScope Copilot {
+                $script:publicSavedHome = $HOME
+                $script:publicEnvNames = @('HOME', 'USERPROFILE', 'XDG_STATE_HOME', 'CODEX_HOME', 'GITHUB_COPILOT_API_KEY',
+                    'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY') + @(
+                    Get-ChildItem Env: | Where-Object { $_.Name -match '^(COPILOT|ANTHROPIC|CLAUDE_CODE)_' } |
+                        Select-Object -ExpandProperty Name
+                )
+                $script:publicSavedEnv = @{}
+                foreach ($name in $script:publicEnvNames) {
+                    $script:publicSavedEnv[$name] = [Environment]::GetEnvironmentVariable($name)
+                    [Environment]::SetEnvironmentVariable($name, $null)
+                }
+                Set-Variable -Name HOME -Scope Script -Force -Value (Join-Path (Get-Location) 'home')
+                New-Item -ItemType Directory -Force $HOME | Out-Null
+                $env:HOME = $HOME; $env:USERPROFILE = $HOME
+                $env:XDG_STATE_HOME = Join-Path (Get-Location) 'state'
+                $env:CODEX_HOME = Join-Path $HOME '.codex'
+                $script:state = Join-Path $env:XDG_STATE_HOME 'model'
+                $script:autoCatalog = New-CopilotAutoTestCatalog
+                Mock Get-CopilotModelState { $script:state }
+                Mock Get-CopilotModelCatalog { $script:autoCatalog }
+                Mock Get-CopilotFastRouting { $null }
+                Mock Invoke-RestMethod { throw 'Unexpected HTTP in isolated model tests' }
+                Mock Start-Process { throw 'Unexpected native child in isolated model tests' }
+                Mock copilot-proxy { throw 'Unexpected proxy startup in isolated model tests' }
+                Mock Start-CopilotShim { throw 'Unexpected shim startup in isolated model tests' }
+            }
         }
-        AfterEach { Pop-Location; Remove-Item -Recurse -Force $script:tmp -ErrorAction SilentlyContinue }
+        AfterEach {
+            InModuleScope Copilot {
+                Set-Variable -Name HOME -Scope Script -Force -Value $script:publicSavedHome
+                foreach ($name in $script:publicEnvNames) {
+                    [Environment]::SetEnvironmentVariable($name, $script:publicSavedEnv[$name])
+                }
+            }
+            Pop-Location
+            Remove-Item -Recurse -Force $script:tmp -ErrorAction SilentlyContinue
+        }
+        AfterAll {
+            InModuleScope Copilot {
+                Remove-Item Function:\New-CopilotAutoTestCatalog, Function:\Set-CopilotAutoTestState,
+                    Function:\Get-CopilotAutoTestSnapshot -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'public auto selects Astra from <Scenario> state' -Tag 'AutoStateRegression' -ForEach $autoStates {
+            InModuleScope Copilot -Parameters @{ InitialModel = $InitialModel; ProjectPin = $ProjectPin } {
+                param($InitialModel, $ProjectPin)
+                Set-CopilotAutoTestState -InitialModel $InitialModel -ProjectPin $ProjectPin
+                $output = (& { copilot-model --auto } 6>&1 | Out-String)
+                foreach ($role in 'main', 'fable', 'opus') {
+                    $output | Should -Match "$role\s+: gpt-6-astra\[1m\]"
+                }
+                $output | Should -Match 'sonnet\s+: gpt-5.6-terra\[1m\]'
+                $output | Should -Match 'haiku\s+: gpt-5.6-luna\[1m\]'
+                if ($ProjectPin) {
+                    $saved = Get-Content -Raw '.claude/settings.local.json' | ConvertFrom-Json
+                    foreach ($role in 'ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_FABLE_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL') {
+                        $saved.env.$role | Should -BeExactly 'gpt-6-astra[1m]'
+                    }
+                    $saved.env.ANTHROPIC_DEFAULT_SONNET_MODEL | Should -BeExactly 'gpt-5.6-terra[1m]'
+                    $saved.env.ANTHROPIC_DEFAULT_HAIKU_MODEL | Should -BeExactly 'gpt-5.6-luna[1m]'
+                    $saved.env.ANTHROPIC_SMALL_FAST_MODEL | Should -BeExactly 'gpt-5.6-luna[1m]'
+                    $saved.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW | Should -BeExactly '872000'
+                    $saved.env.UNRELATED | Should -BeExactly 'keep-me'
+                    $saved.permissions.allow | Should -Contain 'Read'
+                    (Get-Content -Raw $script:state).Trim() | Should -BeExactly $InitialModel
+                } else {
+                    @(Get-Content $script:state) | Should -HaveCount 1
+                    (Get-Content -Raw $script:state).Trim() | Should -BeExactly 'gpt-6-astra[1m]'
+                    Test-Path '.claude/settings.local.json' | Should -BeFalse
+                    (Get-Item $script:state).LastWriteTimeUtc = [datetime]'2001-01-01Z'
+                }
+                $snapshot = Get-CopilotAutoTestSnapshot
+                $again = (& { copilot-model --auto } 6>&1 | Out-String)
+                $again | Should -Match '--auto -> gpt-6-astra\[1m\]'
+                if (-not $ProjectPin) {
+                    $again | Should -Match 'already using.*no change'
+                    Get-CopilotAutoTestSnapshot | Should -BeExactly $snapshot
+                }
+                Should -Invoke Get-CopilotModelCatalog -Times 2 -Exactly
+            }
+        }
 
         It 'refuses --auto when no live catalog is available' {
             InModuleScope Copilot {
@@ -1057,152 +1208,192 @@ Describe 'Copilot module' {
             }
         }
 
-        It 'renders --details from the catalog fields and marks the automatic pick' {
-            InModuleScope Copilot {
-                $catalog = [pscustomobject]@{ data = @(
-                    [pscustomobject]@{
-                        id = 'gpt-6-astra'; model_picker_category = 'powerful'
-                        model_picker_price_category = 'very_high'; model_picker_enabled = $true
-                        preview = $false; policy = [pscustomobject]@{ state = 'enabled' }
-                        billing = [pscustomobject]@{ restricted_to = @('pro_plus', 'max') }
-                        capabilities = [pscustomobject]@{
-                            type = 'chat'; limits = [pscustomobject]@{ max_context_window_tokens = 1000000; max_output_tokens = 128000 }
-                            supports = [pscustomobject]@{ reasoning_effort = @('low', 'max') }
-                        }
-                    },
-                    [pscustomobject]@{
-                        id = 'gpt-5.6-sol'; model_picker_category = 'powerful'
-                        model_picker_price_category = 'high'; model_picker_enabled = $true
-                        capabilities = [pscustomobject]@{
-                            type = 'chat'; limits = [pscustomobject]@{ max_context_window_tokens = 1050000; max_output_tokens = 128000 }
-                            supports = [pscustomobject]@{ reasoning_effort = @('none', 'max') }
-                        }
-                    },
-                    [pscustomobject]@{
-                        id = 'text-embedding-3-small'; model_picker_enabled = $false
-                        capabilities = [pscustomobject]@{ type = 'embeddings' }
-                    }
-                ) }
-                Mock Get-CopilotModelCatalog { $catalog }
-                Mock Get-CopilotDefaultModel { 'gpt-5.6-sol[1m]' }
-                Mock Get-CopilotFastRouting { $null }
-
-                $output = (copilot-model --details | Out-String)
-                $output | Should -Match 'gpt-6-astra'
-                $output | Should -Match 'powerful'
-                $output | Should -Match 'very_high'
-                $output | Should -Match '1000k'
-                $output | Should -Match 'pro_plus\+'
-                $output | Should -Match 'text-embedding-3-small'
-                $output | Should -Match 'nopick'
-            }
-        }
-
-        It 'passes --json through and keeps --why as a no-write dry run' {
-            InModuleScope Copilot {
-                $script:state = Join-Path (Get-Location) 'state/model'
-                Mock Get-CopilotModelState { $script:state }
-                $catalog = [pscustomobject]@{ data = @(
-                    [pscustomobject]@{
-                        id = 'gpt-6-astra'; model_picker_category = 'powerful'
-                        capabilities = [pscustomobject]@{
-                            type = 'chat'; limits = [pscustomobject]@{ max_context_window_tokens = 1000000 }
-                        }
-                    },
-                    [pscustomobject]@{
-                        id = 'gpt-5.6-sol'; model_picker_category = 'powerful'
-                        capabilities = [pscustomobject]@{ type = 'chat' }
-                    }
-                ) }
-                Mock Get-CopilotModelCatalog { $catalog }
-
-                $json = copilot-model --json | ConvertFrom-Json
-                @($json.data).Count | Should -Be 2
+        It 'keeps why and details consistent without writing from <Scenario> state' -ForEach $autoStates {
+            InModuleScope Copilot -Parameters @{ InitialModel = $InitialModel; ProjectPin = $ProjectPin } {
+                param($InitialModel, $ProjectPin)
+                Set-CopilotAutoTestState -InitialModel $InitialModel -ProjectPin $ProjectPin
+                $script:autoCatalog.data += [pscustomobject]@{
+                    id = 'text-embedding-3-small'; model_picker_enabled = $false
+                    capabilities = [pscustomobject]@{ type = 'embeddings' }
+                }
+                $snapshot = Get-CopilotAutoTestSnapshot
                 $why = (& { copilot-model --why } 6>&1 | Out-String)
                 $why | Should -Match 'dry run, nothing written'
-                $why | Should -Match 'gpt-6-astra'
-                Test-Path $script:state | Should -BeFalse
+                $why | Should -Match '(?m)^\s+-> gpt-6-astra\[1m\]\s*$'
+                $details = copilot-model --details | Out-String
+                $details | Should -Match '(?m)^\s*->\s+gpt-6-astra\s+powerful\s+very_high\s+1000k\s+128k\s+low\.\.max\s+-\s+pro_plus\+'
+                $current = if ($InitialModel) { $InitialModel -replace '\[1m\]$', '' } else { 'gpt-5.6-sol' }
+                if ($current -ne 'gpt-retired') {
+                    $details | Should -Match "(?m)^\s*\*\s+$([regex]::Escape($current))\s"
+                }
+                $details | Should -Match 'text-embedding-3-small.*nopick'
+                Get-CopilotAutoTestSnapshot | Should -BeExactly $snapshot
+                Should -Invoke Get-CopilotModelCatalog -Times 2 -Exactly
             }
         }
 
-        It 'explains and then writes for --auto --why' {
+        It 'preserves diagnostic billing and capability metadata in json and raw list' {
             InModuleScope Copilot {
-                $script:state = Join-Path (Get-Location) 'state/model'
-                Mock Get-CopilotModelState { $script:state }
-                $catalog = [pscustomobject]@{ data = @(
-                    [pscustomobject]@{
-                        id = 'gpt-6-astra'; model_picker_category = 'powerful'
-                        capabilities = [pscustomobject]@{
-                            type = 'chat'; limits = [pscustomobject]@{ max_context_window_tokens = 1000000 }
-                        }
-                    },
-                    [pscustomobject]@{
-                        id = 'gpt-5.6-sol'; model_picker_category = 'powerful'
-                        capabilities = [pscustomobject]@{ type = 'chat' }
-                    }
-                ) }
-                Mock Get-CopilotModelCatalog { $catalog }
+                $snapshot = Get-CopilotAutoTestSnapshot
+                copilot-model --json | Should -BeExactly ($script:autoCatalog | ConvertTo-Json -Depth 12)
+                @(copilot-model -l) | Should -Contain 'gpt-5.6-sol-fast'
+                Get-CopilotAutoTestSnapshot | Should -BeExactly $snapshot
+            }
+        }
 
+        It 'explains and persists mini recovery for auto why' {
+            InModuleScope Copilot {
+                Set-CopilotAutoTestState -InitialModel 'gpt-5-mini'
                 $output = (& { copilot-model --auto --why } 6>&1 | Out-String)
                 $output | Should -Match 'copilot-model: --auto reasoning'
+                $output | Should -Not -Match 'dry run'
+                $output | Should -Match '--auto -> gpt-6-astra\[1m\]'
+                (Get-Content -Raw $script:state).Trim() | Should -BeExactly 'gpt-6-astra[1m]'
+                Should -Invoke Get-CopilotModelCatalog -Times 1 -Exactly
+            }
+        }
+
+        It 'persists mini recovery using the short auto alias' {
+            InModuleScope Copilot {
+                Set-CopilotAutoTestState -InitialModel 'gpt-5-mini'
+                # Quote the literal flag: bare -a abbreviates PowerShell's -Argv.
+                copilot-model '-a'
                 (Get-Content -Raw $script:state).Trim() | Should -BeExactly 'gpt-6-astra[1m]'
             }
         }
 
-        It 'fails --why cleanly when every catalog entry is vetoed' {
-            InModuleScope Copilot {
-                $catalog = [pscustomobject]@{ data = @(
-                    [pscustomobject]@{ id = 'gpt-disabled'; policy = [pscustomobject]@{ state = 'disabled' }; capabilities = [pscustomobject]@{ type = 'chat' } },
-                    [pscustomobject]@{ id = 'gpt-hidden'; model_picker_enabled = $false; capabilities = [pscustomobject]@{ type = 'chat' } },
-                    [pscustomobject]@{ id = 'text-embedding-3-small'; capabilities = [pscustomobject]@{ type = 'embeddings' } }
-                ) }
-                Mock Get-CopilotModelCatalog { $catalog }
-                $errors = @()
-                copilot-model --why -ErrorAction SilentlyContinue -ErrorVariable +errors
-                $errors.Exception.Message | Should -Match 'found no selectable chat model'
-            }
-        }
-
-        It 'never narrows the persisted model advertised plan set' {
-            InModuleScope Copilot {
-                $entry = {
-                    param($id, $plans)
-                    [pscustomobject]@{
-                        id = $id; billing = [pscustomobject]@{ restricted_to = @($plans) }
-                        capabilities = [pscustomobject]@{ type = 'chat' }
+        It 'fails automatic paths without writing for a <CatalogCase> catalog' -ForEach @(
+            @{ CatalogCase = 'vetoed' }, @{ CatalogCase = 'fast-only' }, @{ CatalogCase = 'empty' },
+            @{ CatalogCase = 'offline' }, @{ CatalogCase = 'malformed' }
+        ) {
+            InModuleScope Copilot -Parameters @{ CatalogCase = $CatalogCase } {
+                param($CatalogCase)
+                Set-CopilotAutoTestState -InitialModel 'gpt-5-mini' -ProjectPin $true
+                $snapshot = Get-CopilotAutoTestSnapshot
+                switch ($CatalogCase) {
+                    'vetoed' {
+                        $script:autoCatalog.data = @(
+                            [pscustomobject]@{ id = 'gpt-disabled'; policy = [pscustomobject]@{ state = 'disabled' } },
+                            [pscustomobject]@{ id = 'gpt-hidden'; model_picker_enabled = $false },
+                            [pscustomobject]@{ id = 'text-embedding-3-small'; capabilities = [pscustomobject]@{ type = 'embeddings' } }
+                        )
                     }
+                    'fast-only' { $script:autoCatalog.data = @($script:autoCatalog.data | Where-Object { $_.id -match '-fast$' }) }
+                    'empty' { $script:autoCatalog.data = @() }
+                    'offline' { $script:autoCatalog = $null }
+                    'malformed' { $script:autoCatalog = [pscustomobject]@{ error = 'bad gateway' } }
                 }
-                $catalog = [pscustomobject]@{ data = @(
-                    (& $entry 'gpt-6-astra' @('pro_plus','business','enterprise','max')),
-                    (& $entry 'gpt-5.6-sol' @('pro_plus','business','enterprise','max')),
-                    (& $entry 'gpt-5.6-terra' @('pro','pro_plus','business','enterprise','max')),
-                    (& $entry 'gpt-5.6-luna' @('free','edu','pro','pro_plus','business','enterprise','max')),
-                    (& $entry 'gpt-5-mini' @())
-                ) }
-
-                $ids = @(Get-CopilotAutoCandidateIds -Catalog $catalog -BaselineModel 'gpt-5.6-terra')
-                $ids | Should -Not -Contain 'gpt-6-astra'
-                $ids | Should -Not -Contain 'gpt-5.6-sol'
-                $ids | Should -Contain 'gpt-5.6-terra'
-
-                $ids = @(Get-CopilotAutoCandidateIds -Catalog $catalog -BaselineModel 'gpt-5.6-sol')
-                Select-CopilotBestModel -Model $ids -Catalog $catalog | Should -BeExactly 'gpt-6-astra'
-
-                $ids = @(Get-CopilotAutoCandidateIds -Catalog $catalog -BaselineModel '')
-                Select-CopilotBestModel -Model $ids -Catalog $catalog | Should -BeExactly 'gpt-5.6-luna'
+                $invalid = $CatalogCase -in 'offline', 'malformed'
+                foreach ($flag in '--why', '--auto') {
+                    $errors = @()
+                    copilot-model $flag -ErrorAction SilentlyContinue -ErrorVariable +errors
+                    $errors.Exception.Message | Should -Match $(if ($invalid) { 'reachable proxy and valid' } else { 'found no selectable chat model' })
+                }
+                function script:codex { throw 'No Codex child for an unusable catalog' }
+                function script:specstory { throw 'SpecStory must not launch' }
+                try {
+                    Mock Test-CopilotAlive { $true }
+                    Mock Start-CopilotShim { $true }
+                    $errors = @()
+                    codex-copilot --no-specstory -ErrorAction SilentlyContinue -ErrorVariable +errors
+                    $errors.Exception.Message | Should -Match $(if ($invalid) { 'valid live gateway model catalog' } else { 'no usable chat model' })
+                    Get-CopilotAutoTestSnapshot | Should -BeExactly $snapshot
+                } finally {
+                    Remove-Item Function:\codex, Function:\specstory -Force -ErrorAction SilentlyContinue
+                }
             }
         }
 
-        It 'uses a fast sibling as the entitlement baseline' {
+        It 'derives candidates only from selectable policy and excludes terminal fast ids' {
             InModuleScope Copilot {
-                $plans = @('pro_plus','business','enterprise','max')
-                $catalog = [pscustomobject]@{ data = @(
-                    [pscustomobject]@{ id = 'gpt-6-astra'; billing = [pscustomobject]@{ restricted_to = $plans }; capabilities = [pscustomobject]@{ type = 'chat' } },
-                    [pscustomobject]@{ id = 'gpt-5.6-sol'; billing = [pscustomobject]@{ restricted_to = $plans }; capabilities = [pscustomobject]@{ type = 'chat' } },
-                    [pscustomobject]@{ id = 'gpt-5.6-sol-fast'; billing = [pscustomobject]@{ restricted_to = $plans }; capabilities = [pscustomobject]@{ type = 'chat' } }
-                ) }
-                $ids = @(Get-CopilotAutoCandidateIds -Catalog $catalog -BaselineModel 'gpt-5.6-sol-fast')
-                Select-CopilotBestModel -Model $ids -Catalog $catalog | Should -BeExactly 'gpt-6-astra'
+                Mock Get-CopilotModelState { throw 'Candidates must not inspect state' }
+                Mock Get-CopilotDefaultModel { throw 'Candidates must not inspect the current model' }
+                $ids = @(Get-CopilotAutoCandidateIds -Catalog $script:autoCatalog)
+                $ids | Should -BeExactly @('gpt-5-mini', 'gpt-5.4', 'gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-6-astra')
+                $ids | Should -Not -Contain 'gpt-5.6-sol-fast'
+                Select-CopilotBestModel -Model $ids -Catalog $script:autoCatalog | Should -BeExactly 'gpt-6-astra'
+            }
+        }
+
+        It 'reranks every live catalog from Astra to disabled Astra and back' {
+            InModuleScope Copilot {
+                foreach ($step in @(
+                    @{ Policy = 'enabled'; Expected = 'gpt-6-astra[1m]' },
+                    @{ Policy = 'disabled'; Expected = 'gpt-5.6-sol[1m]' },
+                    @{ Policy = 'enabled'; Expected = 'gpt-6-astra[1m]' }
+                )) {
+                    $script:autoCatalog.data[0].policy.state = $step.Policy
+                    copilot-model --auto
+                    (Get-Content -Raw $script:state).Trim() | Should -BeExactly $step.Expected
+                }
+                Should -Invoke Get-CopilotModelCatalog -Times 3 -Exactly
+            }
+        }
+
+        It 'honors a manual mini or fast main while deriving Terra and Luna from the catalog' -ForEach @(
+            @{ ManualModel = 'gpt-5-mini' }, @{ ManualModel = 'gpt-5.6-sol-fast[1m]' }
+        ) {
+            InModuleScope Copilot -Parameters @{ ManualModel = $ManualModel } {
+                param($ManualModel)
+                $output = (& { copilot-model $ManualModel } 6>&1 | Out-String)
+                (Get-Content -Raw $script:state).Trim() | Should -BeExactly $ManualModel
+                $output | Should -Match 'sonnet\s+: gpt-5.6-terra\[1m\]'
+                $output | Should -Match 'haiku\s+: gpt-5.6-luna\[1m\]'
+            }
+        }
+
+        It 'passes raw Astra and exact live limits to implicit Codex from <Scenario> state without persistence' -ForEach $autoStates {
+            InModuleScope Copilot -Parameters @{ InitialModel = $InitialModel; ProjectPin = $ProjectPin } {
+                param($InitialModel, $ProjectPin)
+                Set-CopilotAutoTestState -InitialModel $InitialModel -ProjectPin $ProjectPin
+                $snapshot = Get-CopilotAutoTestSnapshot
+                function script:codex { $script:capturedCodexLaunch = @($args) }
+                function script:specstory { throw 'SpecStory must not launch' }
+                try {
+                    Mock Test-CopilotAlive { $true }
+                    Mock Start-CopilotShim { $true }
+                    Mock Get-CopilotShimBase { 'http://127.0.0.1:4142' }
+                    codex-copilot --no-specstory exec 'fixture only'
+                    $forwarded = $script:capturedCodexLaunch
+                    $modelAt = [array]::IndexOf($forwarded, '-m')
+                    $modelAt | Should -BeGreaterOrEqual 0
+                    $forwarded[$modelAt + 1] | Should -BeExactly 'gpt-6-astra'
+                    @($forwarded | Where-Object { $_ -like 'model_context_window=*' }) | Should -BeExactly @('model_context_window=1000000')
+                    @($forwarded | Where-Object { $_ -like 'model_auto_compact_token_limit=*' }) | Should -BeExactly @('model_auto_compact_token_limit=872000')
+                    $forwarded | Should -Not -Contain 'gpt-6-astra[1m]'
+                    Get-CopilotAutoTestSnapshot | Should -BeExactly $snapshot
+                    Test-Path $env:CODEX_HOME | Should -BeFalse
+                    Should -Invoke Get-CopilotModelCatalog -Times 1 -Exactly
+                } finally {
+                    Remove-Item Function:\codex, Function:\specstory -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
+
+        It 'honors explicit Codex <ModelFlag> instead of auto without persistence' -ForEach @(
+            @{ ModelFlag = '-m' }, @{ ModelFlag = '--model' }
+        ) {
+            InModuleScope Copilot -Parameters @{ ModelFlag = $ModelFlag } {
+                param($ModelFlag)
+                Set-CopilotAutoTestState -InitialModel 'gpt-5-mini' -ProjectPin $true
+                $snapshot = Get-CopilotAutoTestSnapshot
+                function script:codex { $script:capturedCodexLaunch = @($args) }
+                function script:specstory { throw 'SpecStory must not launch' }
+                try {
+                    Mock Test-CopilotAlive { $true }
+                    Mock Start-CopilotShim { $true }
+                    Mock Get-CopilotShimBase { 'http://127.0.0.1:4142' }
+                    codex-copilot --no-specstory exec $ModelFlag gpt-5.6-terra
+                    $forwarded = $script:capturedCodexLaunch
+                    $modelAt = [array]::IndexOf($forwarded, $ModelFlag)
+                    $modelAt | Should -BeGreaterOrEqual 0
+                    $forwarded[$modelAt + 1] | Should -BeExactly 'gpt-5.6-terra'
+                    $forwarded | Should -Not -Contain 'gpt-6-astra'
+                    @($forwarded | Where-Object { $_ -match '^model_(context_window|auto_compact_token_limit)=' }) | Should -HaveCount 0
+                    Get-CopilotAutoTestSnapshot | Should -BeExactly $snapshot
+                } finally {
+                    Remove-Item Function:\codex, Function:\specstory -Force -ErrorAction SilentlyContinue
+                }
             }
         }
 
@@ -1237,36 +1428,20 @@ Describe 'Copilot module' {
             }
         }
 
-        It 'refreshes all local role pins while preserving unrelated settings' {
+        It 'refreshes same-main local roles while preserving unrelated settings' {
             InModuleScope Copilot {
-                New-Item -ItemType Directory -Force -Path '.claude' | Out-Null
-                @{
-                    permissions = @{ allow = @('Read') }
-                    env = @{
-                        ANTHROPIC_BASE_URL = 'http://localhost:4142'
-                        ANTHROPIC_MODEL = 'gpt-5.6-sol[1m]'
-                        UNRELATED = 'keep-me'
-                    }
-                } | ConvertTo-Json -Depth 8 | Set-Content '.claude/settings.local.json'
-                $limits = [pscustomobject]@{ limits = [pscustomobject]@{ max_context_window_tokens = 1000000; max_prompt_tokens = 922000 } }
-                $catalog = [pscustomobject]@{ data = @(
-                    [pscustomobject]@{ id = 'gpt-5.6-sol'; capabilities = $limits },
-                    [pscustomobject]@{ id = 'gpt-5.6-terra'; capabilities = $limits },
-                    [pscustomobject]@{ id = 'gpt-5.6-luna'; capabilities = $limits }
-                ) }
-                Mock Get-CopilotModelCatalog { $catalog }
-
-                copilot-model --auto
-
+                Set-CopilotAutoTestState -InitialModel 'gpt-6-astra[1m]' -ProjectPin $true
+                $output = (& { copilot-model --auto } 6>&1 | Out-String)
+                $output | Should -Match 'refreshed role profile for gpt-6-astra\[1m\]'
                 $saved = Get-Content -Raw '.claude/settings.local.json' | ConvertFrom-Json
-                $saved.env.ANTHROPIC_MODEL | Should -Be 'gpt-5.6-sol[1m]'
-                $saved.env.ANTHROPIC_DEFAULT_FABLE_MODEL | Should -Be 'gpt-5.6-sol[1m]'
-                $saved.env.ANTHROPIC_DEFAULT_OPUS_MODEL | Should -Be 'gpt-5.6-sol[1m]'
-                $saved.env.ANTHROPIC_DEFAULT_SONNET_MODEL | Should -Be 'gpt-5.6-terra[1m]'
-                $saved.env.ANTHROPIC_DEFAULT_HAIKU_MODEL | Should -Be 'gpt-5.6-luna[1m]'
-                $saved.env.ANTHROPIC_SMALL_FAST_MODEL | Should -Be 'gpt-5.6-luna[1m]'
-                $saved.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW | Should -Be '922000'
-                $saved.env.UNRELATED | Should -Be 'keep-me'
+                $saved.env.ANTHROPIC_MODEL | Should -BeExactly 'gpt-6-astra[1m]'
+                $saved.env.ANTHROPIC_DEFAULT_FABLE_MODEL | Should -BeExactly 'gpt-6-astra[1m]'
+                $saved.env.ANTHROPIC_DEFAULT_OPUS_MODEL | Should -BeExactly 'gpt-6-astra[1m]'
+                $saved.env.ANTHROPIC_DEFAULT_SONNET_MODEL | Should -BeExactly 'gpt-5.6-terra[1m]'
+                $saved.env.ANTHROPIC_DEFAULT_HAIKU_MODEL | Should -BeExactly 'gpt-5.6-luna[1m]'
+                $saved.env.ANTHROPIC_SMALL_FAST_MODEL | Should -BeExactly 'gpt-5.6-luna[1m]'
+                $saved.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW | Should -BeExactly '872000'
+                $saved.env.UNRELATED | Should -BeExactly 'keep-me'
                 $saved.permissions.allow | Should -Contain 'Read'
             }
         }

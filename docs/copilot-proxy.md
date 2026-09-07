@@ -58,7 +58,10 @@ session-only `ultracode` switch from taking effect. Codex 0.151.0 has no public
 startup collaboration-mode flag, so its overrides are followed by `/plan`.
 
 Existing global and project pins are deliberately not migrated by `chezmoi
-apply`. Run `copilot-model --auto` once after this upgrade. When `copilot-here`
+apply`. After deploying this fix and reloading the PowerShell profile, run
+`copilot-model --auto` again to recover a previous `gpt-5-mini` selection; no
+settings or state files need to be deleted. It selects Astra when Astra is the
+best selectable live candidate, regardless of the old pin. When `copilot-here`
 is active, that command refreshes the local role set; otherwise it updates the
 global one-line main-model state.
 
@@ -129,11 +132,12 @@ Claude > OpenAI > grok > Gemini. Inside each vendor, it reads Copilot's own
 model generations only inside the winning tier. A curated allowlist wins for
 known ids and unknown same-generation siblings; an unknown newer flagship can
 win without waiting for a module update. Missing category metadata falls back to
-the historical allowlist rather than guessing. Automatic selection also uses
-the explicitly pinned/persisted current model as an entitlement floor: a
-candidate's `restricted_to` set must be at least as broad. With no explicit
-baseline, only the broadest/unrestricted entries are considered; manual ids stay
-unrestricted.
+the historical allowlist rather than guessing. Each automatic selection ranks
+that invocation's live catalog independently of previous state, environment model
+overrides, or project pins. It does not infer an account tier from the old model
+or compare `billing.restricted_to` plan sets; those fields are diagnostic only.
+The current model still controls the current marker and normal launch precedence,
+and an active project pin still determines where `--auto` writes.
 
 OpenAI generation and capability tier are independent: Astra succeeds Sol as the
 flagship while Terra and Luna remain on 5.6. Therefore `gpt-6-astra` outranks
@@ -143,21 +147,22 @@ The current Copilot catalog restricts Astra to `pro_plus` / Business / Enterpris
 Max and exposes a 1,000,000-token context with an 872,000-token prompt ceiling
 (smaller than Sol's 1,050,000 / 922,000); it starts at `reasoning_effort=low`, with
 no `none` mode. The backward-compatible offline fallback stays
-`gpt-5.6-sol[1m]`; that is not an entitlement guarantee — check the live PLANS
-column with `copilot-model -L`. `restricted_to` is advisory catalog metadata:
-`--auto` cannot prove the active billing target/organization, so a later
-entitlement rejection still requires choosing another served model manually.
+`gpt-5.6-sol[1m]`; that is not an entitlement guarantee. The live PLANS column
+in `copilot-model -L` and raw `billing.restricted_to` in `--json` describe the
+catalog, not proof of the active account/billing target/organization's entitlement.
+The gateway enforces actual access; a later entitlement rejection still requires
+choosing another served model manually.
 The generated profile is:
 
 | Claude Code role | Copilot model |
 |---|---|
-| Main / Fable / Opus | selected main (`gpt-6-astra` when entitled) |
+| Main / Fable / Opus | selected main (`gpt-6-astra` when it is the best selectable live candidate) |
 | Sonnet | `gpt-5.6-terra` |
 | Haiku / background / legacy small-fast | `gpt-5.6-luna` |
 
 `-l` remains the pipeable bare-id list. `-L` / `--details` exposes tier,
-price category, context/output limits, reasoning range, fast sibling, eligible
-plan, and picker state; `*` marks the current model and `->` the authoritative
+price category, context/output limits, reasoning range, fast sibling, advertised
+plans, and picker state; `*` marks the current model and `->` the authoritative
 automatic pick. Rows are grouped by tier/generation for comparison; display order
 does not replace vendor/allowlist policy.
 `--why` is a no-write dry run, `--auto --why` explains and then writes, and
@@ -357,7 +362,10 @@ removed nor changed. They do not edit user or project Codex config, so plain
 `codex` is unaffected. An explicit `-m` / `--model` wins; otherwise the live raw
 catalog uses the same tier-aware policy in OpenAI/Codex-first order, then Claude,
 grok, Gemini and other chat models. Policy-disabled, picker-hidden, embedding-only,
-and `-fast` main candidates are excluded from automatic selection.
+and `-fast` main candidates are excluded from automatic selection. This choice
+is independent of any previous model state or Claude project pin; raw model id
+and context/prompt limits come from the same catalog snapshot, without persisting
+the selection.
 
 Codex always uses the shim on `localhost:4142`, even when the persisted
 throttling toggle is off. Besides throttling, that boundary normalizes blank

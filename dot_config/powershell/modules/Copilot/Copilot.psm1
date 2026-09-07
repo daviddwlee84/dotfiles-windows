@@ -1092,46 +1092,12 @@ function script:Remove-CopilotContextHint {
     $Model -replace '\[1m\]$', ''
 }
 
-# Explicitly selected/persisted model used as an entitlement floor. Never
-# return the built-in fallback: it may itself be unavailable on a lower plan.
-function script:Get-CopilotEntitlementBaselineModel {
-    $settings = '.claude/settings.local.json'
-    if (Test-Path $settings) {
-        try {
-            $obj = Get-Content -Raw $settings | ConvertFrom-Json
-            if ($obj.env.ANTHROPIC_BASE_URL -and $obj.env.ANTHROPIC_MODEL) {
-                return [string] $obj.env.ANTHROPIC_MODEL
-            }
-        } catch { $null = $_ }
-    }
-    if ($env:COPILOT_CLAUDE_MODEL) { return [string] $env:COPILOT_CLAUDE_MODEL }
-    $state = Get-CopilotModelState
-    if (Test-Path $state) { return [string] (Get-Content -First 1 $state -ErrorAction SilentlyContinue) }
-    $null
-}
-
-# Selectable ids whose advertised plan set is no narrower than the baseline.
-# With no explicit baseline, require the broadest restriction set found in the
-# catalog (or an unrestricted entry). Manual ids remain unrestricted.
+# Automatic main/role candidates depend only on the live catalog, not previous
+# selections. Plan restrictions are diagnostic metadata, not account entitlement.
+# Session fast routing remains opt-in; manual ids are not filtered here.
 function script:Get-CopilotAutoCandidateIds {
-    param($Catalog, [string] $BaselineModel)
-    if (-not $Catalog) { return @() }
-    $selectable = @(Get-CopilotSelectableModelIds $Catalog)
-    $servedEntries = @($Catalog.data | Where-Object {
-        $_.id -and ($selectable -contains [string] $_.id)
-    })
-    $entries = @($servedEntries | Where-Object { $_.id -notmatch '-fast$' })
-    $universe = @($entries | ForEach-Object { @($_.billing.restricted_to) } |
-        Where-Object { $_ } | Sort-Object -Unique)
-    $currentId = Remove-CopilotContextHint $BaselineModel
-    $current = $servedEntries | Where-Object { $_.id -eq $currentId } | Select-Object -First 1
-    $currentPlans = @($current.billing.restricted_to | Where-Object { $_ })
-    $need = if ($current -and $currentPlans.Count -gt 0) { $currentPlans } else { $universe }
-
-    @($entries | Where-Object {
-        $have = @($_.billing.restricted_to | Where-Object { $_ })
-        $have.Count -eq 0 -or @($need | Where-Object { $have -notcontains $_ }).Count -eq 0
-    } | ForEach-Object { $_.id } | Sort-Object -Unique)
+    param($Catalog)
+    @(Get-CopilotSelectableModelIds -Catalog $Catalog | Where-Object { $_ -notmatch '-fast$' })
 }
 
 # Claude Code uses [1m] only for its full-context/HUD classification. Its
@@ -1323,7 +1289,7 @@ function script:Get-CopilotModelProfile {
     if (-not $PSBoundParameters.ContainsKey('Catalog')) { $Catalog = Get-CopilotModelCatalog }
     # The selected main may be an explicit override; only automatically derived
     # alternative roles are constrained by the selectable catalog policy.
-    $models = @(Get-CopilotAutoCandidateIds -Catalog $Catalog -BaselineModel $Model)
+    $models = @(Get-CopilotAutoCandidateIds -Catalog $Catalog)
     $raw = Remove-CopilotContextHint $Model
     $main = ConvertTo-CopilotClaudeModel -Model $Model -Catalog $Catalog
 
@@ -2704,8 +2670,7 @@ function codex-copilot {
     $explicitModel = Test-CopilotExplicitCodexModel -Argv $Argv
     $model = $null
     if (-not $explicitModel) {
-        $models = Get-CopilotAutoCandidateIds -Catalog $catalog `
-            -BaselineModel (Get-CopilotEntitlementBaselineModel)
+        $models = Get-CopilotAutoCandidateIds -Catalog $catalog
         $model = Select-CopilotBestCodexModel -Model $models -Catalog $catalog
         if (-not $model) { Write-Error 'codex-copilot: no usable chat model in the live gateway catalog'; return }
         $Argv = @('-m', $model) + @($Argv)
@@ -3381,8 +3346,7 @@ function copilot-model {
             # fields the tier ranker reads, so the table IS the ranking.
             $catalog = Get-CopilotModelCatalog
             if (-not (Test-CopilotModelCatalog $catalog)) { Write-Error 'copilot-model: --details needs a reachable proxy and valid catalog'; return }
-            $autoIds = @(Get-CopilotAutoCandidateIds -Catalog $catalog `
-                -BaselineModel (Get-CopilotEntitlementBaselineModel))
+            $autoIds = @(Get-CopilotAutoCandidateIds -Catalog $catalog)
             $auto = Select-CopilotBestModel -Model $autoIds -Catalog $catalog
             $cur = Remove-CopilotContextHint $currentModel
             $rank = @{ powerful = 3; versatile = 2; lightweight = 1 }
@@ -3435,8 +3399,7 @@ function copilot-model {
             # Dry run: explain what --auto WOULD pick, write nothing.
             $catalog = Get-CopilotModelCatalog
             if (-not (Test-CopilotModelCatalog $catalog)) { Write-Error 'copilot-model: --why needs a reachable proxy and valid catalog'; return }
-            $sel = @(Get-CopilotAutoCandidateIds -Catalog $catalog `
-                -BaselineModel (Get-CopilotEntitlementBaselineModel))
+            $sel = @(Get-CopilotAutoCandidateIds -Catalog $catalog)
             if ($sel.Count -eq 0) { Write-Error 'copilot-model: --why found no selectable chat model in the live catalog'; return }
             Write-Host 'copilot-model: --auto reasoning (dry run, nothing written)'
             Write-Host "  catalog      : $(@($catalog.data).Count) models, $($sel.Count) selectable"
@@ -3496,8 +3459,7 @@ function copilot-model {
         if (-not (Test-CopilotModelCatalog $catalog)) {
             Write-Error 'copilot-model: --auto needs a reachable proxy and valid /v1/models catalog'; return
         }
-        $selectableModels = @(Get-CopilotAutoCandidateIds -Catalog $catalog `
-            -BaselineModel (Get-CopilotEntitlementBaselineModel))
+        $selectableModels = @(Get-CopilotAutoCandidateIds -Catalog $catalog)
         if ($selectableModels.Count -eq 0) {
             Write-Error 'copilot-model: --auto found no selectable chat model in the live catalog'; return
         }
