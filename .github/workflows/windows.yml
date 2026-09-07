@@ -30,6 +30,14 @@ jobs:
           Expand-Archive -LiteralPath $zip -DestinationPath $runtime
           $runtime >> $env:GITHUB_PATH
           "DOTFILES_MINIMUM_PWSH=$runtime/pwsh.exe" >> $env:GITHUB_ENV
+      - name: Install chezmoi for editor tests
+        shell: pwsh
+        run: |
+          if (-not (Get-Command chezmoi -ErrorAction SilentlyContinue)) {
+            winget install --id twpayne.chezmoi -e --silent --accept-source-agreements --accept-package-agreements
+            if ($LASTEXITCODE -ne 0) { throw 'chezmoi installation failed' }
+          }
+          "$env:LOCALAPPDATA\Microsoft\WinGet\Links" >> $env:GITHUB_PATH
       - name: Minimum runtime contracts and focused regressions
         shell: pwsh
         run: |
