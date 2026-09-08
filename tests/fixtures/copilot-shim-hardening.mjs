@@ -41,6 +41,10 @@ const upstream = Bun.serve({
         headers: { "content-type": "application/json" },
       });
     }
+    if (mode === "truncated") {
+      const event = 'event: response.created\ndata: {"type":"response.created"}\n\n';
+      return new Response(event, { headers: { "content-type": "text/event-stream" } });
+    }
     const events = url.pathname.includes("responses")
       ? 'event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed"}}\n\n'
       : 'event: message_start\ndata: {}\n\nevent: message_stop\ndata: {}\n\n';
@@ -56,6 +60,8 @@ process.env.COPILOT_SHIM_BACKOFF_MS = "10";
 process.env.COPILOT_SHIM_PING_AFTER_MS = "100";
 process.env.COPILOT_SHIM_PING_MS = "50";
 process.env.COPILOT_SHIM_STALL_MS = "5000";
+process.env.COPILOT_SHIM_BACKEND_HEADERS_TIMEOUT_MS = "4000";
+process.env.COPILOT_SHIM_BACKEND_INACTIVITY_TIMEOUT_MS = "4000";
 process.env.COPILOT_SHIM_METRICS_DB = process.argv[3];
 process.env.COPILOT_API_SQLITE_DB_PATH = `${process.argv[3]}.tokens`;
 const { closeResponse, createMetricTracker, settleCancellation, startServer } = await import(pathToFileURL(process.argv[2]).href);
@@ -120,10 +126,8 @@ try {
   const nonSse = await call("/v1/messages", "nonsse", { delay: 150 });
   const fastNonSse = await call("/v1/messages", "nonsse", { delay: 0 });
   const mixedSse = await call("/v1/messages", "mixedsse", { delay: 150 });
+  const truncated = await call("/v1/responses", "truncated", { delay: 0 });
   const billing = await call("/v1/messages", "402", { stream: false, delay: 0 });
-  const stallStarted = performance.now();
-  const stalled = await call("/v1/messages", "stallbody", { delay: 100 });
-  const stalledMs = performance.now() - stallStarted;
 
   const activeCtl = new AbortController();
   const activeAbort = call("/v1/messages", "activeabort", { signal: activeCtl.signal, delay: 500 }).catch((error) => error.name);
@@ -151,6 +155,12 @@ try {
   const backoffReleaseMs = performance.now() - backoffReleaseStarted;
   const backoffResult = await backoff;
 
+  // An uncompleted error body now quarantines its lease. Run it last: later
+  // ordinary requests must not reuse that potentially still-executing slot.
+  const stallStarted = performance.now();
+  const stalled = await call("/v1/messages", "stallbody", { delay: 100 });
+  const stalledMs = performance.now() - stallStarted;
+
   const metrics = await (await fetch(`http://127.0.0.1:${shim.port}/_shim/events?scope=all&limit=50`)).json();
   const retrySeen = seen.get("/v1/messages:retry500") ?? [];
   const retry408Seen = seen.get("/v1/messages:retry408") ?? [];
@@ -171,6 +181,7 @@ try {
     nonSse,
     fastNonSse,
     mixedSse,
+    truncated,
     billing,
     stalled: { ...stalled, elapsed_ms: stalledMs },
     cancellation: { activeAbortResult, deadResult, queueLiveResult, backoffResult, liveAfterBackoff, backoffReleaseMs, arrivals },
@@ -198,9 +209,10 @@ try {
   if (nonSse.events.at(-1) !== "error" || !nonSse.body.includes("non-SSE")) throw new Error("delayed non-SSE guard failed");
   if (fastNonSse.status !== 502 || !fastNonSse.body.includes("non-SSE")) throw new Error("fast non-SSE guard failed");
   if (mixedSse.events.join(",") !== "message_start,message_stop") throw new Error("case-insensitive SSE media type failed");
+  if (truncated.events.join(",") !== "response.created") throw new Error("truncated responses fixture changed");
   if (billing.status !== 402 || counts.get("/v1/messages:402") !== 1) throw new Error("402 retried");
   if (stalled.events.at(-1) !== "error" || stalledMs > 4000) throw new Error("stalled error body was unbounded");
-  if (activeAbortResult !== "AbortError") throw new Error("active upstream abort was not propagated");
+  if (activeAbortResult !== "AbortError") throw new Error("client cancellation did not settle promptly");
   if (deadResult !== "AbortError" || arrivals.includes("dead") || queueLiveResult.status !== 200) throw new Error("canceled waiter reached upstream");
   if (backoffResult !== "AbortError" || liveAfterBackoff.status !== 200 || backoffReleaseMs > 1000 || counts.get("/v1/messages:backoff") !== 1) throw new Error("backoff cancellation retained permit or retried");
   const hasMetric = (predicate) => metrics.some(predicate);
@@ -208,6 +220,7 @@ try {
   if (!hasMetric((row) => row.model === "gpt-fixture-fast" && row.status === 200)) throw new Error("fast routing metrics missing");
   if (!hasMetric((row) => row.model === "always500" && row.status === 500 && row.attempts === 2 && row.retries === 1 && row.error_kind === "upstream_status")) throw new Error("exhausted retry metrics missing");
   if (metrics.filter((row) => row.model === "nonsse" && row.error_kind === "upstream_protocol").length !== 2) throw new Error("fast/delayed protocol mismatch metrics missing");
+  if (!hasMetric((row) => row.model === "truncated" && row.status === 200 && row.error_kind === "upstream_protocol_eof")) throw new Error("truncated responses metric missing");
   if (!hasMetric((row) => row.model === "activeabort" && row.status === 499 && row.attempts === 1 && row.error_kind === "client_cancel")) throw new Error("active cancellation metrics missing");
   if (!hasMetric((row) => row.model === "dead" && row.status === 499 && row.attempts === 0 && row.error_kind === "client_cancel")) throw new Error("queued cancellation metrics missing");
   if (!hasMetric((row) => row.model === "backoff" && row.status === 499 && row.attempts === 1 && row.error_kind === "client_cancel")) throw new Error("backoff cancellation metrics missing");

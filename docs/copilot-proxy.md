@@ -24,8 +24,8 @@ the PowerShell profile. It requires Bun, Node/npm and a Copilot subscription.
 | `copilot-proxy bench --model ID` | run bounded real Responses benchmarks (consumes quota) |
 | `copilot-proxy whoami` | account / plan / quota |
 | `copilot-proxy reinstall` | wipe and reinstall the selected package |
-| `copilot-proxy update VERSION` | stage, verify and select exact 2.3.4/2.3.0/2.1.0 without restarting |
-| `copilot-proxy rollback` | swap to the previous verified package offline, without restarting |
+| `copilot-proxy update VERSION` | stage, verify and select exact 2.5.2/2.3.4/2.3.0/2.1.0 without restarting |
+| `copilot-proxy rollback` | restore the previous package, selection and transport settings offline, while stopped |
 | `copilot-run <cmd...>` | run a command with the proxy env injected |
 | `claude-copilot [--fast]` | one-off Claude Code session; `--fast` selects a live-catalog sibling for this session |
 | `claude-copilot-once [--fast]` | pin this project, run once, then restore it |
@@ -75,7 +75,7 @@ Claude Code --Anthropic /v1/messages--> copilot-api (localhost:4141)
                                   GitHub Copilot API
 ```
 
-The default package is `@jeffreycao/copilot-api@2.3.4`. For GPT ids it translates
+The default package is `@jeffreycao/copilot-api@2.5.2`. For GPT ids it translates
 Claude Code requests to Responses, including `output_config.effort` to
 `reasoning.effort`. This is required for GPT-5.6 and Claude Code's `ultracode`
 effort setting; the old `1.13.14` path could replace the requested effort with a
@@ -90,17 +90,31 @@ launch stale package contents. `COPILOT_API_PKG` accepts registry package specs
 (name or `@scope/name` with an optional version/tag/range); npm aliases and
 local/git/URL specs are rejected before filesystem cleanup. Warm starts do no
 package network work. Selection precedence is `COPILOT_API_PKG` → persisted
-`$XDG_STATE_HOME/copilot-proxy/package.json` → built-in 2.3.4. A verified existing
-2.1.0/2.3.0 install is persisted before the built-in is considered, so applying
+`$XDG_STATE_HOME/copilot-proxy/package.json` → built-in 2.5.2. A verified existing
+2.1.0/2.3.0/2.3.4 install is persisted before the built-in is considered, so applying
 this module never performs an implicit network upgrade.
 
-Use `copilot-proxy update 2.3.4` to stage and verify the reviewed release, preserve
+Use `copilot-proxy update 2.5.2` to stage and verify the reviewed release, preserve
 the old tree as `pkg.previous`, and select it without restarting the running
-proxy. Restart deliberately afterward. `copilot-proxy rollback` swaps the two
-verified trees offline; exact `update 2.3.0` and `update 2.1.0` remain supported.
-The 2.3.4 package is tied to source commit `a51553569ba071e0c9a8329f8f5ccac2482a3945`,
-npm SHA-1 `643f59e0c257db613954738f02300c0a7ceebfeb`, and SRI
-`sha512-yRMH3wQAH74a0K/3Gl0S3itSL7Dza/7qOGG32PXV3tKRd4feG3utpuIQf42HhnhIdcBwMz3qhmeWBPQrPxZQMQ==`.
+proxy. Restart deliberately afterward. The 2.5.2 package is tied to source commit
+[`6c1117c`](https://github.com/caozhiyuan/copilot-api/commit/6c1117c974d9b7261fc4ab4420bfbe23ae25d4d2)
+and archive SRI
+`sha512-bMVpuniekbKKq0LMtmZZJKjDVpaOODAHs19akwkP/hyGfgcx+YK0X22jfB46lQb0p9EoywDrJMyTcAfLr18jEQ==`.
+For 2.5.2 and 2.3.4, all 19 installed runtime files are compared with hashes from
+the reviewed archive, including after normal registry installation. Older exact
+2.3.0/2.1.0 selections retain their existing metadata/dependency checks.
+
+Rollback requires `copilot-proxy stop` first, then `copilot-proxy rollback`.
+The transaction restores package/selection and the previous presence/values of
+`responsesTransport` and `upstreamTransport` in the backend config. It preserves
+newer credentials, usage databases and unrelated settings. The previous generation
+stays recoverable until promotion succeeds. Deployment snapshots under
+`pkg.previous/.copilot-rollback/` (under `pkg/` after rollback) retain the wrapper
+and shim that were deployed at update time; review them and restore the matched
+source/deployed files separately, reload the module, then start. Applying new
+dotfiles before `update` means these snapshots already contain the new wrapper;
+retain a pre-apply deployment bundle for a complete rollout rollback. A legacy
+previous tree without a transport snapshot requires that manual bundle.
 
 On a corporate mirror, `ETARGET` can mean the exact public version has not synced
 yet. Check the registry that npm is actually using before deleting the working
@@ -108,14 +122,14 @@ prefix:
 
 ```powershell
 npm config get registry
-npm view '@jeffreycao/copilot-api@2.3.4' version
+npm view '@jeffreycao/copilot-api@2.5.2' version
 # Optional comparison where direct public npm is permitted:
-npm view '@jeffreycao/copilot-api@2.3.4' version --registry https://registry.npmjs.org/
+npm view '@jeffreycao/copilot-api@2.5.2' version --registry https://registry.npmjs.org/
 ```
 
 If only the configured mirror is missing the version, wait/request mirror sync or
 use an approved registry for `copilot-proxy reinstall`. The Windows module also
-falls back automatically to the exact 2.3.4 runtime files on jsDelivr, verifies a
+falls back automatically to the reviewed exact runtime files on jsDelivr, verifies a
 baked SHA-256 for every file, then resolves only its ordinary dependencies through
 the configured npm registry. This handles a lagging mirror without weakening the
 pin or bypassing the approved feed for the dependency tree. Do not replace the
@@ -185,6 +199,17 @@ minus maximum output when that field is absent), then leave Claude Code's defaul
 roughly-95% threshold unchanged. This prevents a 1M-class client window from
 crossing a smaller provider prompt ceiling such as 922k. `copilot-model -c` and
 `copilot-here status` display the effective value.
+
+For `gpt-6-astra` and `gpt-6-astra-fast`, the default compact budget is now 70% of
+the live prompt ceiling: 610,400 for an 872,000-token ceiling. Configure
+`$env:COPILOT_ASTRA_COMPACT_RATIO='0.70'` with a decimal greater than zero and at
+most one; `1` restores the full prompt budget. The result is rounded down and
+must meet Claude's 100,000-token minimum (Codex requires a positive budget).
+The actual context window and `[1m]` hint remain unchanged. A valid explicit
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW` or Codex `-c model_auto_compact_token_limit=...`
+takes precedence. Existing sessions and project pins are not rewritten; refresh
+managed pins and restart clients deliberately. This is a conservative experiment
+to reduce large compact uploads, not a claimed fix for remote body-read 408s.
 
 ### Selection, retry and failover are different
 
@@ -307,13 +332,18 @@ no automatic paid inference probe is performed.
   foreign listener with `COPILOT_SHIM_PORT`; never infer identity from a generic
   `/v1/models` response. See
   [pitfalls/copilot-proxy-shim-port-held-by-another-process.md](https://github.com/daviddwlee84/windows-dotfiles/blob/main/pitfalls/copilot-proxy-shim-port-held-by-another-process.md).
-- The metrics/throttle shim is shared byte-for-byte with the Unix implementation.
-  It derives Fast sibling routes from the live catalog and retries the **same
-  buffered request and effective model** on network errors or HTTP
-  403/429/500/502/503/504 before any upstream body is exposed. A
-  `408 user_request_timeout` while the upstream reads that buffered body gets at
-  most one replay. HTTP 402, bare 401 and policy 422 pass through once; no request-time model substitution occurs. Queue/backoff
-  cancellation releases permits promptly.
+- The metrics/throttle shim is shared byte-for-byte with Unix. It derives Fast
+  routes from the live catalog and permits at most one replay of the same
+  buffered request/model before output: completed 500/502/503, a recognized nested
+  `408 user_request_timeout`, 429 or explicitly classified throttle 403. It honors
+  `Retry-After`; waits beyond 300 seconds return the error rather than shortening
+  the requested delay. Unknown 408, 504, permission 403, 400/401/402 and policy 422
+  pass through once. A local watchdog, broken backend connection, or blocked
+  error-body read leaves execution unknown and is not replayed.
+  Queue/backoff cancellation releases promptly; after dispatch, cancellation
+  drains the backend while retaining admission. The 330-second shim watchdog
+  follows the backend's 300-second headers/inactivity deadlines; none is an
+  absolute generation deadline. Incompatible overrides are diagnosed.
 - A `422 cyber_policy` response is the provider's content-policy decision. The
   shim does not retry, rewrite, or attempt to bypass it.
 - Admission starts at `COPILOT_SHIM_MIN=4` and grows toward
@@ -330,21 +360,35 @@ no automatic paid inference probe is performed.
   Anthropic `error` or Responses `response.failed` terminal events. The stall
   watchdog remains active when pings are disabled. Timing and token rows live in
   `$XDG_STATE_HOME/copilot-proxy/metrics.sqlite` and
-  `$XDG_DATA_HOME/copilot-api/copilot-api.sqlite`; `stats`/`events` read them offline.
+  `$COPILOT_API_HOME/copilot-api.sqlite` (API home defaults to
+  `~/.local/share/copilot-api`); `COPILOT_SHIM_METRICS_DB` and
+  `COPILOT_API_SQLITE_DB_PATH` override those locations. `stats`/`events` read them offline.
   `bench` is bounded to 1–10 runs, 32–2048 max output tokens and concurrency 1–4,
-  but still sends real inference and consumes quota.
+  but still sends real inference and consumes quota. Responses completion requires
+  `response.completed`: failed/incomplete/missing terminal events do not count as
+  success merely because HTTP status was 200. Metrics record kind/size, attempts,
+  timeout owner and drain outcome, not request/response bodies or credentials.
 
 State lives under `~/.local/state/copilot-proxy/`; device login stores the GitHub
 token at `~/.local/share/copilot-api/github_token` without printing it by default.
 A detached watcher appends process lifecycle records to `lifecycle.jsonl`: spawn,
 ready, startup failure, exit code, package/version/PID/port, and whether shutdown
 was deliberate or unexpected. A shim that had reached ready and then exits
-unexpectedly is restarted at most three times after 1s/5s/30s, only while the shim
+unexpectedly on a legacy backend is restarted at most three times after 1s/5s/30s, only while the shim
 remains enabled, port 4141 is healthy, and port 4142 is still down. Five minutes of
 stable uptime resets the budget. Startup failures and deliberate stops never
 restart; the watcher never restarts port 4141 and never fails open to it. Recovery
 adds `restart_scheduled`, `restart_succeeded`, `restart_failed`,
 `restart_suppressed`, or `restart_exhausted` rows.
+
+For backend 2.5.2 or newer (and unknown versions), a ready shim crash emits
+`recovery_required` and does not trigger an automatic shim-only restart. Backend
+work may still exist. The shared shim persists an admission barrier next to its
+metrics database (`metrics.sqlite.admission.json`); an orphaned/corrupt barrier
+blocks new inference while health stays inspectable. Inspect active/draining/
+unknown work, then use a controlled `copilot-proxy restart` of both processes.
+Only a confirmed full stop clears that barrier; a failed stop or shim-only
+restart preserves it. The wrapper never automatically restarts the backend.
 
 Inspect the journal with `copilot-proxy logs lifecycle`; request-level attempts and
 stream failures remain in `stats`/`events`. Proxy and shim stdout/stderr rotate
@@ -367,8 +411,11 @@ is independent of any previous model state or Claude project pin; raw model id
 and context/prompt limits come from the same catalog snapshot, without persisting
 the selection.
 
-Codex always uses the shim on `localhost:4142`, even when the persisted
-throttling toggle is off. Besides throttling, that boundary normalizes blank
+Codex uses the enabled shim on `localhost:4142`; explicit `copilot-proxy shim off`
+uses the backend directly. With the shim enabled, Codex request/stream retries
+default to `0/0`, leaving replay ownership with the shim. Direct mode retains
+`3/1`; later explicit `-c` arguments retain precedence in direct and SpecStory
+launches. Besides throttling, the shim boundary normalizes blank
 descriptions in Codex `mcp_list_tools` Responses items. GitHub Copilot rejects
 those with `Invalid 'input[0].tools[0].description': empty string`, while MCP
 servers and the native Codex path may omit them. The shim fills only those tool

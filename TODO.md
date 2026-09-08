@@ -25,6 +25,7 @@ Likely next batch — items you'd reach for if you sat down to work today.
 
 ## P2
 
+- [ ] **[S] Validate copilot-proxy 2.5.2 on native Windows** — Native implementation and off-Windows Pester passed; confirm process ownership, install/CDN fallback, matched rollback and long-session behavior on Windows before claiming runtime validation. Shared results remain in the Unix-owned upgrade note. → [research](https://github.com/daviddwlee84/dotfiles/blob/main/backlog/copilot-proxy-backend-2-5-2-stability.md)
 - [ ] **[M] Define safe run-for native/script/batch execution contracts** — preserve argv, define exit codes and process-tree timeout behavior before replacing Start-Process serialization; intentionally deferred from the PowerShell 7.4 audit. → [research](backlog/run-for-argument-and-timeout-contract.md)
 
 Worth doing, no rush.
@@ -62,6 +63,7 @@ Needs a spike before committing to a real priority. Tag as `[?/Effort]`.
 
 ## Done
 
+- ✅ [2026-09-08] [P1/L] copilot-proxy 2.5.2 stability parity — Implemented verified runtime manifests, native transaction recovery, shared shim lifecycle/metrics, Astra budgets and coordinated client retry; Pester and bilingual docs passed, with native runtime verification tracked separately.
 - ✅ [2026-09-04] [P?/M] SpecStory Windows-native CLI (track PR #191) — Shipped official SHA-256-verified Windows releases with coding agents; retained standalone toggle and compatibility upgrade command.
 
 - ✅ [2026-08-27] [P2/M] Ship prebuilt Windows binaries for `translate` and install it via scoop — done upstream and here. The `translate` repo got its first `.github/` (CI + an on-tag release workflow) and a `.goreleaser.yaml` that cross-compiles 6 targets from one `ubuntu-latest` runner (pure Go, `CGO_ENABLED=0` — no docker images or Windows runners needed) and pushes the manifest to the new `daviddwlee84/scoop-bucket`. This repo's block is now `scoop bucket add` + `Scoop-Install @('daviddwlee84/translate')` instead of a version-pinned `go install`, so a fresh `workstation` apply no longer spends minutes compiling or drags in a Go toolchain, and `just upgrade-translate` is `scoop update translate`. Includes a migration guard that deletes a stale `~\.local\bin\translate.exe` (it precedes `~\scoop\shims` on PATH and would shadow the shim forever) — but only once the shim exists. → [backlog/translate-windows-distribution.md](backlog/translate-windows-distribution.md)

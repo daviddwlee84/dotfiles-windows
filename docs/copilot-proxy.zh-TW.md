@@ -24,8 +24,8 @@ fork，讓 **GitHub Copilot 訂閱**可作為 **Claude Code** 與其他 Anthropi
 | `copilot-proxy bench --model ID` | 執行有界的真實 Responses benchmark（消耗 quota） |
 | `copilot-proxy whoami` | 帳號 / 方案 / 額度 |
 | `copilot-proxy reinstall` | 清掉並重裝目前 selection |
-| `copilot-proxy update VERSION` | stage、驗證並選取 exact 2.3.4/2.3.0/2.1.0，不重啟 |
-| `copilot-proxy rollback` | 離線切回上一個 verified package，不重啟 |
+| `copilot-proxy update VERSION` | stage、驗證並選取 exact 2.5.2/2.3.4/2.3.0/2.1.0，不重啟 |
+| `copilot-proxy rollback` | 停機時離線還原上一版 package、selection 與 transport 設定 |
 | `copilot-run <cmd...>` | 注入 proxy 環境變數後執行指令 |
 | `claude-copilot [--fast]` | 開一次 Claude Code session；`--fast` 只為本 session 選 live-catalog sibling |
 | `claude-copilot-once [--fast]` | 暫時釘住專案、執行一次、結束後還原 |
@@ -73,7 +73,7 @@ Claude Code --Anthropic /v1/messages--> copilot-api (localhost:4141)
                                   GitHub Copilot API
 ```
 
-預設套件是 `@jeffreycao/copilot-api@2.3.4`。GPT id 會走 Responses translation，
+預設套件是 `@jeffreycao/copilot-api@2.5.2`。GPT id 會走 Responses translation，
 包括把 Claude Code 的 `output_config.effort` 轉成 `reasoning.effort`。GPT-5.6 與
 Claude Code `ultracode` 需要這條路徑；舊 `1.13.14` 可能用 hard-coded fallback 蓋掉
 client 指定的 effort。
@@ -85,28 +85,37 @@ path，不會只看舊目錄或 binlink。安裝失敗不能重新蓋 stamp，�
 `COPILOT_API_PKG` 接受 registry package spec（name 或 `@scope/name` 加 optional
 version/tag/range）；npm alias 與 local/git/URL spec 會在 filesystem cleanup 前拒絕。
 warm start 不需要套件網路。Selection precedence 是 `COPILOT_API_PKG` → persisted
-`$XDG_STATE_HOME/copilot-proxy/package.json` → 內建 2.3.4。已驗證的既有 2.1.0/2.3.0
+`$XDG_STATE_HOME/copilot-proxy/package.json` → 內建 2.5.2。已驗證的既有 2.1.0/2.3.0/2.3.4
 install 會先寫成 persisted selection，因此套用新 module 不會暗中連網升級。
 
-執行 `copilot-proxy update 2.3.4` 才會 stage 並驗證新 release、把舊 tree 保留成
-`pkg.previous`，且不重啟目前 proxy；之後再明確 restart。`copilot-proxy rollback` 可離線
-交換兩個 verified tree；exact `update 2.3.0`、`update 2.1.0` 仍支援。2.3.4 對應 source
-commit `a51553569ba071e0c9a8329f8f5ccac2482a3945`、npm SHA-1
-`643f59e0c257db613954738f02300c0a7ceebfeb`，以及 SRI
-`sha512-yRMH3wQAH74a0K/3Gl0S3itSL7Dza/7qOGG32PXV3tKRd4feG3utpuIQf42HhnhIdcBwMz3qhmeWBPQrPxZQMQ==`。
+執行 `copilot-proxy update 2.5.2` 才會 stage 並驗證新 release、把舊 tree 保留成
+`pkg.previous`，且不重啟目前 proxy；之後再明確 restart。2.5.2 對應 source commit
+[`6c1117c`](https://github.com/caozhiyuan/copilot-api/commit/6c1117c974d9b7261fc4ab4420bfbe23ae25d4d2)
+與 archive SRI
+`sha512-bMVpuniekbKKq0LMtmZZJKjDVpaOODAHs19akwkP/hyGfgcx+YK0X22jfB46lQb0p9EoywDrJMyTcAfLr18jEQ==`。
+2.5.2 與 2.3.4 的 19 個 runtime files 會逐一比對已審閱 archive 的 hash，正常 registry
+安裝也一樣；較舊的 2.3.0/2.1.0 則保留既有 metadata/dependency 檢查。
+
+Rollback 前先 `copilot-proxy stop`，再 `copilot-proxy rollback`。交易會還原 package、
+selection，以及 backend config 原本有無 `responsesTransport`／`upstreamTransport` 與其值；
+新憑證、usage DB 與其他設定都保留。新 generation 完整提交前不會丟棄上一代。
+`pkg.previous/.copilot-rollback/`（rollback 後位於 `pkg/`）保留 update 當下部署中的 wrapper
+與 shim；請審閱並由相符 source 另行還原部署、reload module，再 start。如果先 apply 新
+dotfiles 才 update，快照已是新 wrapper，因此完整 rollout 還需保留 apply 前的部署 bundle。
+舊 previous tree 沒有 transport 快照時，必須使用該手動 bundle。
 
 公司 mirror 回 `ETARGET` 時，可能只是精確的公開版本尚未同步。刪掉仍可用的 prefix 前，
 先確認 npm 實際使用的 registry：
 
 ```powershell
 npm config get registry
-npm view '@jeffreycao/copilot-api@2.3.4' version
+npm view '@jeffreycao/copilot-api@2.5.2' version
 # 公司政策允許直連 public npm 時，可做對照：
-npm view '@jeffreycao/copilot-api@2.3.4' version --registry https://registry.npmjs.org/
+npm view '@jeffreycao/copilot-api@2.5.2' version --registry https://registry.npmjs.org/
 ```
 
 若只有設定中的 mirror 缺少此版本，應等待／要求 mirror 同步，或以核准的 registry 執行
-`copilot-proxy reinstall`。Windows module 也會自動 fallback 到 jsDelivr 上精確的 2.3.4
+`copilot-proxy reinstall`。Windows module 也會自動 fallback 到 jsDelivr 上已審閱的精確版本
 runtime files，逐檔核對內建 SHA-256，再只透過目前 npm registry 解析一般 dependencies。
 這可處理 mirror 延遲同步，同時不放寬 pin，也不繞過核准 feed 取得 dependency tree。
 不要把測過的精確 pin 改成 `latest`。
@@ -163,6 +172,15 @@ Auto-compact 與完整 context 提示分開設定。Launcher 會用 live `max_pr
 （缺少時才用 context 減 maximum output）注入 `CLAUDE_CODE_AUTO_COMPACT_WINDOW`，並保留
 Claude Code 約 95% 的預設觸發比例。這可避免 client 以 1M 計算，卻超過 provider 實際
 922k prompt ceiling。`copilot-model -c` 與 `copilot-here status` 都會顯示生效值。
+
+`gpt-6-astra` 與 `gpt-6-astra-fast` 現在預設使用 live prompt ceiling 的 70% 作為 compact
+budget：872,000 ceiling 對應 610,400。可設 `$env:COPILOT_ASTRA_COMPACT_RATIO='0.70'`，
+接受大於零且不超過一的小數；`1` 恢復完整 prompt budget。結果向下取整，Claude 至少需
+100,000 tokens，Codex 至少需正整數；實際 context window 與 `[1m]` 提示不變。
+有效的明確 `CLAUDE_CODE_AUTO_COMPACT_WINDOW` 或 Codex
+`-c model_auto_compact_token_limit=...` 優先。現有 session 與 project pin 不會被改寫，請
+刻意 refresh managed pin 並重啟 client。這是減少大型 compact 上傳的保守實驗，不代表已
+修好遠端 body-read 408。
 
 ### Selection、retry 與 failover 是不同概念
 
@@ -266,11 +284,15 @@ Status 與 doctor 會顯示 routing state。關閉 shim 也會關閉這項轉譯
   `copilot-throttle-shim.js`，其他 process 會具名拒絕。required spawn 失敗也會 reap；不要用
   generic `/v1/models` 回應推論 identity。詳見
   [pitfalls/copilot-proxy-shim-port-held-by-another-process.md](https://github.com/daviddwlee84/windows-dotfiles/blob/main/pitfalls/copilot-proxy-shim-port-held-by-another-process.md)。
-- Metrics/throttle shim 與 Unix implementation byte-for-byte 相同。它會從 live catalog 推導
-  Fast sibling route；任何 upstream body 尚未暴露前，network error 或 HTTP
-  403/429/500/502/503/504 會以**相同 buffered request 與 effective model**重試。上游讀取
-  buffered body 時回 `408 user_request_timeout` 最多只重播一次；HTTP 402、bare 401 與
-  policy 422 只通過一次。
+- Metrics/throttle shim 與 Unix byte-for-byte 相同。它從 live catalog 推導 Fast route，
+  在 output 前最多以相同 buffered request/model 重播一次：完整讀完的 500/502/503、
+  可辨識巢狀 `408 user_request_timeout`、429 或明確分類為 throttle 的 403。
+  `Retry-After` 會被遵守；超過 300 秒的等待直接回 error，不會縮短 provider 指定的時間。
+  未知 408、504、permission 403、400/401/402 與 policy 422 都只通過一次。
+  本地 watchdog、backend socket 斷線或 error-body 讀取卡住則標為 unknown，不重播。
+  Queue/backoff 取消會立即釋放；dispatch 後取消會繼續 drain backend 並保留 admission。
+  Shim watchdog 為 330 秒，晚於 backend 的 300 秒 headers/inactivity deadline；它們都
+  不是整個 generation 的時間上限，不相容的 override 會被診斷。
 - `422 cyber_policy` 是 provider 的內容政策判定；shim 不 retry、不改寫，也不嘗試繞過。
 - Admission 從 `COPILOT_SHIM_MIN=4` 起步，只在持續且乾淨的queue pressure下往
   `COPILOT_SHIM_MAX=8` 增加；403/429 會立刻降回floor並cooldown五分鐘。
@@ -282,16 +304,27 @@ Status 與 doctor 會顯示 routing state。關閉 shim 也會關閉這項轉譯
 - `stream:true` 經 grace period 後會收到 keepalive comment；成功 body 必須是 SSE，late
   failure 依 endpoint 送 Anthropic `error` 或 Responses `response.failed`。關掉 ping 不會
   關掉 stall watchdog。Timing/token rows 位於 `$XDG_STATE_HOME/copilot-proxy/metrics.sqlite`
-  與 `$XDG_DATA_HOME/copilot-api/copilot-api.sqlite`，`stats`/`events` 可離線讀取。`bench`
-  限制 1–10 runs、32–2048 max output、concurrency 1–4，但仍會送真實 inference、消耗 quota。
+  與 `$COPILOT_API_HOME/copilot-api.sqlite`（API home 預設 `~/.local/share/copilot-api`），
+  可用 `COPILOT_SHIM_METRICS_DB`／`COPILOT_API_SQLITE_DB_PATH` 明確覆寫；`stats`/`events`
+  可離線讀取。`bench` 限制 1–10 runs、32–2048 max output、concurrency 1–4，但仍消耗 quota。
+  Responses 只有 `response.completed` 才算成功；failed/incomplete/缺少 terminal 不會因
+  HTTP200 而算成功。Metrics 只記 kind/size、attempts、timeout owner 與 drain outcome，
+  不記 request/response body 或憑證。
 
 狀態放在 `~/.local/state/copilot-proxy/`；device login 會把 GitHub token 存在
 `~/.local/share/copilot-api/github_token`，預設不印出內容。Detached watcher 會把spawn、ready、
 startup failure、exit code、package/version/PID/port，以及deliberate或unexpected shutdown
-append到`lifecycle.jsonl`。曾經ready後意外退出的shim最多會在1s/5s/30s後重啟三次，而且僅限
+append到`lifecycle.jsonl`。舊 backend 的 shim 曾經ready後意外退出時，最多會在1s/5s/30s後重啟三次，而且僅限
 shim仍啟用、4141健康且4142仍down；穩定運行五分鐘會重置budget。Startup failure與deliberate
 stop不會重啟，watcher也不會重啟4141或fail open。Recovery另記錄`restart_scheduled`、
 `restart_succeeded`、`restart_failed`、`restart_suppressed`、`restart_exhausted`。
+
+Backend 2.5.2 以上（或版本無法確認）若已 ready 的 shim crash，watcher 會記錄
+`recovery_required`，不自動只重啟 shim，因為 backend 可能仍在執行工作。共用 shim 會在
+metrics DB 旁保存 admission barrier（`metrics.sqlite.admission.json`）；孤立或損毀的
+barrier 會阻擋新 inference，health 仍可查。先檢查 active／draining／unknown，再做受控的
+`copilot-proxy restart` 同時重啟兩個 process；只有確認兩者已停止才清除 barrier，停機失敗
+或只重啟 shim 都會保留它。Wrapper 不會自動重啟 backend。
 
 用`copilot-proxy logs lifecycle`查看journal；request-level attempts與stream failure仍由
 `stats`/`events`查詢。Proxy與shim的stdout/stderr各自保留三代；即使stdout存在，`logs err`與
@@ -311,7 +344,9 @@ embedding-only 與 `-fast` main candidates。此選擇不受舊 model state 或 
 pin 影響，raw model id 與 context/prompt limits 皆來自同一份 catalog snapshot，且不會
 持久化該次選擇。
 
-Codex 一律走 `localhost:4142` shim，即使持久化的 throttling 開關是 off。
+Codex 使用啟用中的 `localhost:4142` shim；明確 `copilot-proxy shim off` 則直連 backend。
+有 shim 時 Codex request／stream retries 預設 `0/0`，由 shim 負責 replay；direct mode
+保留 `3/1`。後方明確 `-c` 在直接與 SpecStory launch 都優先。
 這一層除了限流，也會正規化 Codex `mcp_list_tools` Responses item 裡的空白
 description。MCP server 與原生 Codex path 可以省略描述，但 GitHub Copilot 會以
 `Invalid 'input[0].tools[0].description': empty string` 拒絕請求。shim 只補這些

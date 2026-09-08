@@ -39,18 +39,18 @@
 #   COPILOT_PROXY_PORT   default 4141    - port the proxy listens on
 #   COPILOT_PROXY_START_TIMEOUT default 45 - seconds allowed for model refresh
 #   COPILOT_SHIM_PORT    default 4142    - throttle shim port
-#   COPILOT_SHIM_MAX     default 4       - concurrent in-flight upstream POSTs
-#   COPILOT_SHIM_RETRIES default 3       - same-model transient retry attempts
+#   COPILOT_SHIM_MIN/MAX default 4/8     - admission floor/ceiling, including drains
+#   COPILOT_SHIM_RETRIES default 1       - at most one eligible same-model replay
 #   COPILOT_SHIM_BACKOFF_MS default 500  - base retry backoff (doubles per try)
 #   COPILOT_SHIM_PING_MS default 15000   - SSE ping interval; 0 disables pings
 #                                          without disabling the stall watchdog
 #   COPILOT_SHIM_PING_AFTER_MS default 10000 - grace before the slow SSE path
-#   COPILOT_SHIM_STALL_MS default 240000 - pre-header and mid-stream watchdog;
-#                                          0 disables
-#   COPILOT_API_PKG      default persisted selection, then @jeffreycao/copilot-api@2.3.4
+#   COPILOT_SHIM_STALL_MS default 330000 - outer headers/inactivity watchdog
+#   COPILOT_API_PKG      default persisted selection, then @jeffreycao/copilot-api@2.5.2
 #                          (name or @scope/name + optional version/tag/range;
 #                           aliases/local/git/URL specs are rejected before cleanup)
 #   COPILOT_CLAUDE_MODEL                 - override the pinned model
+#   COPILOT_ASTRA_COMPACT_RATIO default .70 - Astra share of the live prompt budget
 #   COPILOT_PROXY_QUIET  1               - add the telemetry-suppressing env keys
 #   COPILOT_INSTALL_NOPROXY 1            - skip straight to the no-proxy install try
 #   COPILOT_HTTP_PROXY   default auto    - Node->GitHub /models egress:
@@ -64,8 +64,9 @@
 Set-StrictMode -Off
 
 # ------------------------------------------------------------------ helpers ---
-$script:CopilotDefaultPkg = '@jeffreycao/copilot-api@2.3.4'
+$script:CopilotDefaultPkg = '@jeffreycao/copilot-api@2.5.2'
 $script:CopilotVerifiedIntegrities = @{
+    '2.5.2' = 'sha512-bMVpuniekbKKq0LMtmZZJKjDVpaOODAHs19akwkP/hyGfgcx+YK0X22jfB46lQb0p9EoywDrJMyTcAfLr18jEQ=='
     '2.3.4' = 'sha512-yRMH3wQAH74a0K/3Gl0S3itSL7Dza/7qOGG32PXV3tKRd4feG3utpuIQf42HhnhIdcBwMz3qhmeWBPQrPxZQMQ=='
     '2.3.0' = 'sha512-4h7ysNAO8N9zJkIcOnNPio9asGTMsRkvQ70deSRBSwkBJFOZXYeoKmiHU06VSP712gVNaTrRA7abLAPkTuINqA=='
     '2.1.0' = 'sha512-9/Ro1UzrYT/erB7eR/rf61XHFyc5TOwQ94B6ij/Wu91TD1hnmbuqYu/PavKGUQ7YDBVCXFENRRvQSpTkS0X3eA=='
@@ -91,12 +92,12 @@ function script:Write-CopilotPkgSelection {
     param([Parameter(Mandatory)] [string] $Spec, [Parameter(Mandatory)] [string] $Integrity, [string] $Registry = 'https://registry.npmjs.org')
     $path = Get-CopilotPkgSelectionState
     $dir = Split-Path -Parent $path
-    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    New-Item -ItemType Directory -Force -Path $dir -ErrorAction Stop | Out-Null
     $tmp = "$path.tmp-$([guid]::NewGuid())"
     try {
         [ordered]@{ spec = $Spec; integrity = $Integrity; registry = $Registry; selected_at = [DateTime]::UtcNow.ToString('o') } |
-            ConvertTo-Json -Compress | Set-Content -LiteralPath $tmp -Encoding utf8
-        Move-Item -LiteralPath $tmp -Destination $path -Force
+            ConvertTo-Json -Compress | Set-Content -LiteralPath $tmp -Encoding utf8 -ErrorAction Stop
+        Move-Item -LiteralPath $tmp -Destination $path -Force -ErrorAction Stop
     } finally { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
 }
 function script:Get-CopilotPkgFlavor {
@@ -114,7 +115,12 @@ function script:Rotate-CopilotLog {
     Move-Item -LiteralPath $Path -Destination "$Path.1" -Force
 }
 function script:Get-CopilotPidFile { Join-Path (Get-CopilotTmp) "copilot-api-$(Get-CopilotPort).pid" }
-function script:Get-CopilotToken   { Join-Path $HOME '.local/share/copilot-api/github_token' }
+function script:Get-CopilotApiHome { if ($env:COPILOT_API_HOME) { $env:COPILOT_API_HOME } else { Join-Path $HOME '.local/share/copilot-api' } }
+function script:Get-CopilotToken {
+    $dir = Get-CopilotApiHome
+    if ($env:COPILOT_API_OAUTH_APP) { $dir = Join-Path $dir $env:COPILOT_API_OAUTH_APP.Trim() }
+    Join-Path $dir $(if ($env:COPILOT_API_ENTERPRISE_URL) { 'ent_github_token' } else { 'github_token' })
+}
 
 function script:Get-XdgState { if ($env:XDG_STATE_HOME) { $env:XDG_STATE_HOME } else { Join-Path $HOME '.local/state' } }
 function script:Get-XdgConfig { if ($env:XDG_CONFIG_HOME) { $env:XDG_CONFIG_HOME } else { Join-Path $HOME '.config' } }
@@ -428,11 +434,38 @@ function script:Invoke-CopilotPkgInstallTry {
 }
 
 # Runtime files from the exact public npm package, mirrored by jsDelivr. Hashes
-# are SHA-256/base64 from data.jsdelivr.com and are pinned here so a CDN response
-# cannot silently replace the reviewed 2.3.4 gateway. This fallback is deliberately
-# unavailable for arbitrary COPILOT_API_PKG overrides.
+# are SHA-256/base64 of the runtime files in the verified npm release archives.
+# They also verify normal registry installations before a selection is promoted.
+# No manifest is available for arbitrary COPILOT_API_PKG overrides.
 function script:Get-CopilotPkgCdnManifest {
-    if ((Get-CopilotPkg) -cne $script:CopilotDefaultPkg) { return $null }
+    $spec = Get-CopilotPkg
+    if ($spec -ceq '@jeffreycao/copilot-api@2.5.2') {
+        return [pscustomobject]@{
+            BaseUrl = 'https://cdn.jsdelivr.net/npm/@jeffreycao/copilot-api@2.5.2/'
+            Files = [ordered]@{
+                'dist/auth-DQZ-A7MU.js' = 'SOUpdL5BtMtsZ3W4YCS2EG00kbpIXua/OB29yzFf/mA=' # gitleaks:allow -- verified public release SHA-256, not a credential
+                'dist/auth-GHhmC1D5.js' = 'hUoJQ5mVIJHg3Ija+lNkYZyPloM0tMJ+dY3t09BMrTc=' # gitleaks:allow -- verified public release SHA-256, not a credential
+                'dist/config-Dj2ZvQuL.js' = 'K131iJlrUPOSXNJh09tyoLIJMYPWVSW3LuP5ulMy6yk='
+                'dist/debug-g1B6CGzU.js' = '4lYk0+7lS9R7qK0Y/t7d9KaFvNW/iyIhoXzvfWNRHqM='
+                'dist/electron-fetch-BRX-ug5E.js' = 'oBa4GH1/3n4w5AT0m9tn47ir3PqqWvVeQBp2cTmsni8='
+                'dist/fast-path-BoMnZCVC.js' = 'Po6L2Mh+yjlCby1RJlE5EZN9xt4oNsetIP2VdyOqhxo='
+                'dist/main.js' = 'AIfaWjor2eY41dsHM/uJ4BTRDox3MzQjGMYV/Ez7ABQ='
+                'dist/mcp-fpSlKZxK.js' = 'PTwf6tu6Bq2ekPOlVLl+y8qwWBZZgzwIDjEtEZsPGVc='
+                'dist/mcp-server-BeNu_Edl.js' = 'ruQkaC7svMl8bgEQIJC8j9mMoevqnePPQeXuYDrewrQ='
+                'dist/mcp-server-DQ4r-fAy.js' = 'Sl3DpTS6mFf+wfNAd/sT+9fNs3BTy1RIDXwwZkwG30A='
+                'dist/models-12Y1nB8k.js' = 's3XzL3MpYm8isCu5EinvcGxlVmNPdaioJFcDTw6ZGbE='
+                'dist/server-B4-mT5EU.js' = '3XwvBQcPvgqKmph6jHXsEpOi/nU2uucLFDgxD421qyQ='
+                'dist/start-BcGt4v2F.js' = 'J1wnjt1SL+LoBTWawAwAoiTtMKBtFr3/geAR7iTefts='
+                'dist/tls-Aq1Dd8E2.js' = 'jeyg/nuW+psGNRPqRbmCUgHCuceRjrsofuHL4qTR9iM='
+                'dist/token-CaFzyRJX.js' = 'Ak9n97z9Cj2zx+F5SGOrWAOe0McG7T13Ynogz4NelgM=' # gitleaks:allow -- verified public release SHA-256, not a credential
+                'dist/tool-search-Ds1vbmGG.js' = 'nayapOul67JQ5MZlG6VHjbOOmtFWkdp57Ix1QBR6XjE='
+                'LICENSE' = 'heZrUUWQ2XF0DN2cwkTHVOuqFpAhW/xs6boMUHgC+zk='
+                'package.json' = 'rqN5AHpr5vro4G8/+xwvYwBBItCRbPREumHpWs4oUZs='
+                'pages/index.html' = 'QJi750xspiIog+m7TpHltP/NlmcFz0LAY4EBBvthdAY='
+            }
+        }
+    }
+    if ($spec -cne '@jeffreycao/copilot-api@2.3.4') { return $null }
     [pscustomobject]@{
         BaseUrl = 'https://cdn.jsdelivr.net/npm/@jeffreycao/copilot-api@2.3.4/'
         Files   = [ordered]@{
@@ -466,6 +499,21 @@ function script:Get-CopilotSha256Base64 {
         $sha = [System.Security.Cryptography.SHA256]::Create()
         try { [Convert]::ToBase64String($sha.ComputeHash($stream)) } finally { $sha.Dispose() }
     } finally { $stream.Dispose() }
+}
+
+function script:Test-CopilotPkgReviewedRuntime {
+    $manifest = Get-CopilotPkgCdnManifest
+    if (-not $manifest) { return $true } # Legacy pins retain their existing install checks.
+    $packageDir = Join-Path (Get-CopilotPkgPrefix) 'node_modules/@jeffreycao/copilot-api'
+    foreach ($relativePath in $manifest.Files.Keys) {
+        $path = Join-Path $packageDir $relativePath
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or
+            (Get-CopilotSha256Base64 -Path $path) -cne $manifest.Files[$relativePath]) {
+            Write-Warning "copilot-proxy: reviewed runtime hash mismatch: $relativePath"
+            return $false
+        }
+    }
+    $true
 }
 
 function script:Install-CopilotPkgDependencies {
@@ -618,6 +666,7 @@ function script:Install-CopilotPkg {
         Write-Error "copilot-proxy: install finished but $actual does not satisfy $spec with a runnable launch path under $prefix."
         return $false
     }
+    if (-not (Test-CopilotPkgReviewedRuntime)) { return $false }
     Write-CopilotPkgStamp -Metadata $metadata
     $true
 }
@@ -633,6 +682,173 @@ function script:Test-CopilotPkgHelp {
     finally { if ($launch.Cwd) { Pop-Location } }
 }
 
+function script:Write-CopilotAtomicText {
+    param([Parameter(Mandatory)] [string] $Path, [AllowEmptyString()] [string] $Text)
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Path) -ErrorAction Stop | Out-Null
+    $tmp = "$Path.tmp-$([guid]::NewGuid())"
+    try {
+        [IO.File]::WriteAllText($tmp, $Text, [Text.UTF8Encoding]::new($false))
+        [IO.File]::Move($tmp, $Path, $true)
+    } finally { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+}
+
+# Only transport fields belong to package rollback. Credentials, usage databases
+# and unrelated provider settings are never restored from a stale snapshot.
+function script:Get-CopilotTransportSnapshot {
+    $path = Join-Path (Get-CopilotApiHome) 'config.json'
+    $exists = Test-Path -LiteralPath $path -PathType Leaf
+    $config = @{}
+    if ($exists) {
+        $raw = [IO.File]::ReadAllText($path)
+        if ($raw.Trim()) { $config = $raw | ConvertFrom-Json -AsHashtable -ErrorAction Stop }
+        if ($config -isnot [System.Collections.IDictionary]) { throw 'copilot-proxy: backend config must be a JSON object' }
+    }
+    $fields = [ordered]@{}
+    foreach ($key in 'responsesTransport', 'upstreamTransport') {
+        $fields[$key] = [ordered]@{ present = $config.Contains($key); value = $config[$key] }
+    }
+    [ordered]@{ configPath = $path; existed = $exists; fields = $fields }
+}
+
+function script:Get-CopilotRestoredTransportText {
+    param([Parameter(Mandatory)] $Snapshot)
+    $path = Join-Path (Get-CopilotApiHome) 'config.json'
+    if ([IO.Path]::GetFullPath([string]$Snapshot.configPath) -cne [IO.Path]::GetFullPath($path)) {
+        throw 'copilot-proxy: rollback belongs to a different COPILOT_API_HOME'
+    }
+    $config = [ordered]@{}
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+        $raw = [IO.File]::ReadAllText($path)
+        if ($raw.Trim()) { $config = $raw | ConvertFrom-Json -AsHashtable -ErrorAction Stop }
+        if ($config -isnot [System.Collections.IDictionary]) { throw 'copilot-proxy: backend config must be a JSON object' }
+    }
+    foreach ($key in 'responsesTransport', 'upstreamTransport') {
+        if (-not $Snapshot.fields.Contains($key)) { throw 'copilot-proxy: incomplete transport rollback snapshot' }
+        if ($Snapshot.fields[$key].present) { $config[$key] = $Snapshot.fields[$key].value }
+        else { $config.Remove($key) | Out-Null }
+    }
+    $config | ConvertTo-Json -Depth 100
+}
+
+function script:Save-CopilotRollbackSnapshot {
+    param([Parameter(Mandatory)] [string] $Directory)
+    New-Item -ItemType Directory -Force -Path $Directory -ErrorAction Stop | Out-Null
+    $snapshot = Get-CopilotTransportSnapshot
+    Write-CopilotAtomicText -Path (Join-Path $Directory 'transport.json') -Text ($snapshot | ConvertTo-Json -Depth 100)
+    # Deployment artifacts are retained for an explicit chezmoi/source restore.
+    # Never overwrite a loaded module or a repository checkout automatically.
+    $configRoot = Get-XdgConfig
+    foreach ($file in @(
+        @{ source = (Join-Path $configRoot 'powershell/modules/Copilot/Copilot.psm1'); name = 'Copilot.psm1' },
+        @{ source = (Join-Path $configRoot 'powershell/copilot-throttle-shim.js'); name = 'copilot-throttle-shim.js' }
+    )) {
+        if (Test-Path -LiteralPath $file.source -PathType Leaf) {
+            Copy-Item -LiteralPath $file.source -Destination (Join-Path $Directory $file.name) -ErrorAction Stop
+        }
+    }
+}
+
+# Commit a prepared package as one recoverable generation. Keep the previous
+# rollback generation until package, selection and optional config writes succeed.
+function script:Set-CopilotPkgGeneration {
+    param([Parameter(Mandatory)] [string] $PreparedPrefix,
+          [Parameter(Mandatory)] [string] $Spec,
+          [Parameter(Mandatory)] [string] $Integrity,
+          [AllowNull()] [string] $TransportText = $null)
+    $restoreTransport = $PSBoundParameters.ContainsKey('TransportText')
+    $live = Get-CopilotPkgPrefix
+    $previous = "$live.previous"
+    $state = Get-CopilotPkgSelectionState
+    $previousState = "$state.previous"
+    $work = "$live.transaction-$([guid]::NewGuid())"
+    $old = Join-Path $work 'current'
+    $retired = Join-Path $work 'previous'
+    $snapshot = Join-Path $work 'snapshot'
+    $oldBundleBackup = Join-Path $work 'current-bundle'
+    $stateText = if (Test-Path -LiteralPath $state -PathType Leaf) { [IO.File]::ReadAllText($state) } else { $null }
+    $priorStateText = if (Test-Path -LiteralPath $previousState -PathType Leaf) { [IO.File]::ReadAllText($previousState) } else { $null }
+    $configPath = Join-Path (Get-CopilotApiHome) 'config.json'
+    $configText = if (Test-Path -LiteralPath $configPath -PathType Leaf) { [IO.File]::ReadAllText($configPath) } else { $null }
+    $oldSelection = $stateText
+    if ($null -eq $oldSelection) {
+        $metadata = Get-CopilotPkgMetadata
+        if ($metadata -and ($oldIntegrity = Get-CopilotVerifiedIntegrity -Version $metadata.Version)) {
+            $oldSelection = @{ spec = "@jeffreycao/copilot-api@$($metadata.Version)"; integrity = $oldIntegrity } | ConvertTo-Json -Compress
+        }
+    }
+    $promoted = $false
+    $oldMoved = $false
+    $previousMoved = $false
+    $oldCommitted = $false
+    $committed = $false
+    $bundleTouched = $false
+    $recoveryFailed = $false
+    try {
+        Save-CopilotRollbackSnapshot -Directory $snapshot
+        if ($null -ne $oldSelection) { Write-CopilotAtomicText -Path (Join-Path $snapshot 'selection.json') -Text $oldSelection }
+        if ($null -ne $priorStateText) { Write-CopilotAtomicText -Path (Join-Path $work 'previous-selection.json') -Text $priorStateText }
+        if ((Test-Path -LiteralPath $live) -and $null -eq $oldSelection) {
+            throw 'copilot-proxy: existing package has no verified rollback selection'
+        }
+        if (Test-Path -LiteralPath $previous) {
+            Move-Item -LiteralPath $previous -Destination $retired -ErrorAction Stop
+            $previousMoved = $true
+        }
+        if (Test-Path -LiteralPath $live) {
+            Move-Item -LiteralPath $live -Destination $old -ErrorAction Stop
+            $oldMoved = $true
+        }
+        Move-Item -LiteralPath $PreparedPrefix -Destination $live -ErrorAction Stop
+        $promoted = $true
+        Write-CopilotPkgSelection -Spec $Spec -Integrity $Integrity
+        if ($restoreTransport) { Write-CopilotAtomicText -Path $configPath -Text $TransportText }
+        if ($oldMoved) {
+            $bundle = Join-Path $old '.copilot-rollback'
+            if (Test-Path -LiteralPath $bundle) { Move-Item -LiteralPath $bundle -Destination $oldBundleBackup -ErrorAction Stop }
+            $bundleTouched = $true
+            Move-Item -LiteralPath $snapshot -Destination $bundle -ErrorAction Stop
+            Write-CopilotAtomicText -Path $previousState -Text $oldSelection
+            Move-Item -LiteralPath $old -Destination $previous -ErrorAction Stop
+            $oldCommitted = $true
+        } else { Remove-Item -LiteralPath $previousState -Force -ErrorAction SilentlyContinue }
+        $committed = $true
+        return $true
+    } catch {
+        $failure = $_
+        try {
+            if ($promoted -and (Test-Path -LiteralPath $live)) { Move-Item -LiteralPath $live -Destination $PreparedPrefix -ErrorAction Stop }
+            if ($oldMoved) {
+                Move-Item -LiteralPath $(if ($oldCommitted) { $previous } else { $old }) -Destination $live -ErrorAction Stop
+            }
+            if ($bundleTouched) {
+                $bundle = Join-Path $live '.copilot-rollback'
+                Remove-Item -LiteralPath $bundle -Recurse -Force -ErrorAction SilentlyContinue
+                if (Test-Path -LiteralPath $oldBundleBackup) { Move-Item -LiteralPath $oldBundleBackup -Destination $bundle -ErrorAction Stop }
+            }
+            if ($previousMoved) { Move-Item -LiteralPath $retired -Destination $previous -ErrorAction Stop }
+            if ($null -eq $stateText) { Remove-Item -LiteralPath $state -Force -ErrorAction SilentlyContinue }
+            else { Write-CopilotAtomicText -Path $state -Text $stateText }
+            if ($null -eq $priorStateText) { Remove-Item -LiteralPath $previousState -Force -ErrorAction SilentlyContinue }
+            else { Write-CopilotAtomicText -Path $previousState -Text $priorStateText }
+            if ($restoreTransport) {
+                if ($null -eq $configText) { Remove-Item -LiteralPath $configPath -Force -ErrorAction SilentlyContinue }
+                else { Write-CopilotAtomicText -Path $configPath -Text $configText }
+            }
+        } catch {
+            $recoveryFailed = $true
+            Write-Error "copilot-proxy: recovery needs manual attention; retained $work ($_)"
+            return $false
+        }
+        Write-Error "copilot-proxy: package transaction failed; previous package and settings restored ($failure)"
+        return $false
+    } finally {
+        # Failed recovery keeps every remaining artifact for manual repair.
+        if ($committed -or -not $recoveryFailed) {
+            Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 function script:Invoke-CopilotPkgUpdate {
     param([Parameter(Mandatory)] [string] $Version)
     if ($env:COPILOT_API_PKG) {
@@ -641,16 +857,11 @@ function script:Invoke-CopilotPkgUpdate {
     }
     $integrity = Get-CopilotVerifiedIntegrity -Version $Version
     if (-not $integrity) {
-        Write-Error 'copilot-proxy: update requires a verified exact version: 2.3.4, 2.3.0, or 2.1.0.'
+        Write-Error 'copilot-proxy: update requires a verified exact version: 2.5.2, 2.3.4, 2.3.0, or 2.1.0.'
         return $false
     }
 
-    Initialize-CopilotPkgSelection
     $spec = "@jeffreycao/copilot-api@$Version"
-    $livePrefix = Get-CopilotPkgPrefix
-    $previousPrefix = "$livePrefix.previous"
-    $state = Get-CopilotPkgSelectionState
-    $previousState = "$state.previous"
     $stageData = Join-Path (Split-Path -Parent (Get-XdgData)) ".copilot-update-$([guid]::NewGuid())"
     $savedData = $env:XDG_DATA_HOME
     $savedPkg = $env:COPILOT_API_PKG
@@ -659,7 +870,7 @@ function script:Invoke-CopilotPkgUpdate {
     try {
         $env:XDG_DATA_HOME = $stageData
         $env:COPILOT_API_PKG = $spec
-        $staged = (Install-CopilotPkg) -and (Test-CopilotPkgHelp)
+        $staged = (Install-CopilotPkg) -and (Test-CopilotPkgReviewedRuntime) -and (Test-CopilotPkgHelp)
     } finally {
         if ($null -eq $savedData) { Remove-Item env:XDG_DATA_HOME -ErrorAction SilentlyContinue } else { $env:XDG_DATA_HOME = $savedData }
         if ($null -eq $savedPkg) { Remove-Item env:COPILOT_API_PKG -ErrorAction SilentlyContinue } else { $env:COPILOT_API_PKG = $savedPkg }
@@ -670,29 +881,20 @@ function script:Invoke-CopilotPkgUpdate {
         return $false
     }
 
-    $swapBackup = "$livePrefix.swap-$([guid]::NewGuid())"
     try {
-        Remove-Item -LiteralPath $previousPrefix -Recurse -Force -ErrorAction SilentlyContinue
-        if (Test-Path -LiteralPath $livePrefix) { Move-Item -LiteralPath $livePrefix -Destination $swapBackup }
-        Move-Item -LiteralPath $stagePrefix -Destination $livePrefix
-        if (Test-Path -LiteralPath $swapBackup) { Move-Item -LiteralPath $swapBackup -Destination $previousPrefix }
-        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $state) | Out-Null
-        if (Test-Path -LiteralPath $state) { Copy-Item -LiteralPath $state -Destination $previousState -Force }
-        Write-CopilotPkgSelection -Spec $spec -Integrity $integrity
+        if (-not (Set-CopilotPkgGeneration -PreparedPrefix $stagePrefix -Spec $spec -Integrity $integrity)) { return $false }
         Write-Host "copilot-proxy: staged and selected $spec; restart explicitly when ready."
         return $true
-    } catch {
-        Remove-Item -LiteralPath $livePrefix -Recurse -Force -ErrorAction SilentlyContinue
-        if (Test-Path -LiteralPath $swapBackup) { Move-Item -LiteralPath $swapBackup -Destination $livePrefix -ErrorAction SilentlyContinue }
-        Write-Error "copilot-proxy: package swap failed; previous prefix restored ($_)"
-        return $false
     } finally {
         Remove-Item -LiteralPath $stageData -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $swapBackup -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 
 function script:Invoke-CopilotPkgRollback {
+    [CmdletBinding()]
+    param()
+    if ($env:COPILOT_API_PKG) { Write-Error 'copilot-proxy: unset COPILOT_API_PKG before rollback.'; return $false }
+    if (Test-CopilotAlive) { Write-Error 'copilot-proxy: stop the backend and shim before restoring transport settings.'; return $false }
     $livePrefix = Get-CopilotPkgPrefix
     $previousPrefix = "$livePrefix.previous"
     $state = Get-CopilotPkgSelectionState
@@ -702,17 +904,25 @@ function script:Invoke-CopilotPkgRollback {
         Write-Error 'copilot-proxy: no offline package rollback is available.'
         return $false
     }
-    $swapPrefix = "$livePrefix.rollback-$([guid]::NewGuid())"
-    $swapState = "$state.rollback-$([guid]::NewGuid())"
+    $snapshotPath = Join-Path $previousPrefix '.copilot-rollback/transport.json'
+    if (-not (Test-Path -LiteralPath $snapshotPath -PathType Leaf)) {
+        Write-Error 'copilot-proxy: previous package lacks a transport snapshot; use the saved deployment rollback bundle.'
+        return $false
+    }
+    $prepared = "$livePrefix.rollback-$([guid]::NewGuid())"
     try {
-        Move-Item -LiteralPath $livePrefix -Destination $swapPrefix
-        Move-Item -LiteralPath $previousPrefix -Destination $livePrefix
-        Move-Item -LiteralPath $swapPrefix -Destination $previousPrefix
-        Move-Item -LiteralPath $state -Destination $swapState
-        Move-Item -LiteralPath $previousState -Destination $state
-        Move-Item -LiteralPath $swapState -Destination $previousState
-        $selected = Get-CopilotPkgSelection
-        Write-Host "copilot-proxy: rolled back to $($selected.spec); restart explicitly when ready."
+        $selected = Get-Content -LiteralPath $previousState -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        if ($selected.spec -notmatch '^@jeffreycao/copilot-api@(?<version>\d+\.\d+\.\d+)$' -or
+            $selected.integrity -cne (Get-CopilotVerifiedIntegrity -Version $Matches.version)) { throw 'unverified rollback selection' }
+        $snapshot = Get-Content -LiteralPath $snapshotPath -Raw -ErrorAction Stop | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+        $restored = Get-CopilotRestoredTransportText -Snapshot $snapshot
+        Move-Item -LiteralPath $previousPrefix -Destination $prepared -ErrorAction Stop
+        if (-not (Set-CopilotPkgGeneration -PreparedPrefix $prepared -Spec $selected.spec -Integrity $selected.integrity -TransportText $restored)) {
+            if (Test-Path -LiteralPath $prepared) { Move-Item -LiteralPath $prepared -Destination $previousPrefix -ErrorAction Stop }
+            return $false
+        }
+        Write-Host "copilot-proxy: restored $($selected.spec), selection and transport settings; credentials and usage were preserved."
+        Write-Host "  Review retained deployment snapshots at $livePrefix/.copilot-rollback, restore matching wrapper/shim via the selected source if needed, reload, then start explicitly."
         return $true
     } catch {
         Write-Error "copilot-proxy: rollback swap failed ($_)"
@@ -762,8 +972,46 @@ function script:Get-CopilotShimScript { Join-Path (Get-XdgConfig) 'powershell/co
 function script:Get-CopilotShimLog    { Join-Path (Get-CopilotTmp) "copilot-shim-$(Get-CopilotShimPort).log" }
 function script:Get-CopilotShimPid    { Join-Path (Get-CopilotTmp) "copilot-shim-$(Get-CopilotShimPort).pid" }
 function script:Get-CopilotShimState  { Join-Path (Get-XdgState) 'copilot-proxy/shim' }
-function script:Get-CopilotShimMetricsDb { Join-Path (Get-XdgState) 'copilot-proxy/metrics.sqlite' }
-function script:Get-CopilotTokenUsageDb { Join-Path (Get-XdgData) 'copilot-api/copilot-api.sqlite' }
+function script:Get-CopilotShimMetricsDb { if ($env:COPILOT_SHIM_METRICS_DB) { $env:COPILOT_SHIM_METRICS_DB } else { Join-Path (Get-XdgState) 'copilot-proxy/metrics.sqlite' } }
+function script:Get-CopilotTokenUsageDb { if ($env:COPILOT_API_SQLITE_DB_PATH) { $env:COPILOT_API_SQLITE_DB_PATH } else { Join-Path (Get-CopilotApiHome) 'copilot-api.sqlite' } }
+function script:Get-CopilotAdmissionPath { "$(Get-CopilotShimMetricsDb).admission.json" }
+function script:Get-CopilotBackendShimEnv {
+    $result = @{
+        COPILOT_SHIM_BACKEND_VERSION = 'unknown'
+        COPILOT_SHIM_BACKEND_HEADERS_TIMEOUT_MS = '300000'
+        COPILOT_SHIM_BACKEND_INACTIVITY_TIMEOUT_MS = '300000'
+    }
+    # The selected package may already have changed while the old process is
+    # still running. Use that process's launch record, not the current prefix.
+    $pidPath = Get-CopilotPidFile
+    $logPath = Get-CopilotLifecycleLog
+    if ((Test-Path -LiteralPath $pidPath -PathType Leaf) -and (Test-Path -LiteralPath $logPath -PathType Leaf)) {
+        $backendPid = Get-Content -First 1 -LiteralPath $pidPath -ErrorAction SilentlyContinue
+        $rows = @(Get-Content -Tail 200 -LiteralPath $logPath -ErrorAction SilentlyContinue)
+        for ($i = $rows.Count - 1; $i -ge 0; $i--) {
+            try {
+                $row = $rows[$i] | ConvertFrom-Json -ErrorAction Stop
+                if ($row.component -eq 'proxy' -and [string]$row.pid -eq [string]$backendPid -and
+                    $row.event -in 'spawned', 'ready' -and $row.version) {
+                    $result.COPILOT_SHIM_BACKEND_VERSION = [string]$row.version
+                    break
+                }
+            } catch { $null = $_ }
+        }
+    }
+    try {
+        $path = Join-Path (Get-CopilotApiHome) 'config.json'
+        if (Test-Path -LiteralPath $path -PathType Leaf) {
+            $config = Get-Content -LiteralPath $path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+            $headers = if ($config.upstreamTransport) { $config.upstreamTransport.headersTimeoutMs } else { $config.responsesTransport.headersTimeoutMsV2 }
+            $inactivity = if ($config.upstreamTransport) { $config.upstreamTransport.streamInactivityTimeoutMs } else { $config.responsesTransport.streamInactivityTimeoutMs }
+            $value = 0L
+            if ([long]::TryParse([string]$headers, [ref]$value) -and $value -gt 0) { $result.COPILOT_SHIM_BACKEND_HEADERS_TIMEOUT_MS = [string]$value }
+            if ([long]::TryParse([string]$inactivity, [ref]$value) -and $value -gt 0) { $result.COPILOT_SHIM_BACKEND_INACTIVITY_TIMEOUT_MS = [string]$value }
+        }
+    } catch { Write-Warning 'copilot-proxy: backend transport config could not be read; timeout diagnostics use 300000 ms defaults.' }
+    $result
+}
 function script:Get-CopilotLifecycleLog { Join-Path (Get-XdgState) 'copilot-proxy/lifecycle.jsonl' }
 function script:Get-CopilotProcessWatchScript { Join-Path (Get-XdgConfig) 'powershell/copilot-process-watch.ps1' }
 function script:Get-CopilotStopIntent {
@@ -991,10 +1239,15 @@ function script:Get-CopilotPortOwner {
     if (-not (Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue)) {
         return [pscustomobject]@{ Owner = 'unknown'; Pids = @(); Labels = @() }
     }
-    $listenPids = @(
-        Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue |
-            Select-Object -ExpandProperty OwningProcess -Unique | Where-Object { $_ }
-    )
+    try {
+        $listenPids = @(
+            Get-NetTCPConnection -ErrorAction Stop |
+                Where-Object { $_.State -eq 'Listen' -and $_.LocalPort -eq $Port } |
+                Select-Object -ExpandProperty OwningProcess -Unique | Where-Object { $_ }
+        )
+    } catch {
+        return [pscustomobject]@{ Owner = 'unknown'; Pids = @(); Labels = @() }
+    }
     if (-not $listenPids) { return $free }
     $labels = @()
     foreach ($procId in $listenPids) {
@@ -1105,7 +1358,7 @@ function script:Get-CopilotAutoCandidateIds {
 # prompt ceiling, otherwise the default ~95% trigger can occur after Copilot's
 # input limit. Returns $null when metadata is unavailable; throws when the known
 # ceiling is below Claude Code's configurable 100k minimum.
-function script:Get-CopilotClaudeCompactWindow {
+function script:Get-CopilotPromptCeiling {
     param([Parameter(Mandatory)] [string] $Model, $Catalog)
     if (-not $PSBoundParameters.ContainsKey('Catalog')) { $Catalog = Get-CopilotModelCatalog }
     if (-not $Catalog) { return $null }
@@ -1123,11 +1376,35 @@ function script:Get-CopilotClaudeCompactWindow {
               elseif ($hasContext -and $hasOutput -and $context -gt $output) { $context - $output }
               else { 0L }
     if ($window -le 0) { return $null }
-    if ($window -lt 100000) {
-        throw "$raw has a prompt ceiling below Claude Code's 100000-token minimum"
-    }
-    if ($window -gt 1000000) { return 1000000L }
     $window
+}
+
+function script:Get-CopilotCompactBudget {
+    param([Parameter(Mandatory)] [string] $Model, [Parameter(Mandatory)] [long] $PromptCeiling, [long] $Minimum = 1)
+    $window = $PromptCeiling
+    if ((Remove-CopilotContextHint $Model) -match '^gpt-6-astra(?:-fast)?$') {
+        $ratioText = if ([string]::IsNullOrEmpty($env:COPILOT_ASTRA_COMPACT_RATIO)) { '0.70' } else { $env:COPILOT_ASTRA_COMPACT_RATIO }
+        [decimal]$ratio = 0
+        if ($ratioText -notmatch '^(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$' -or
+            -not [decimal]::TryParse($ratioText, [Globalization.NumberStyles]::AllowDecimalPoint, [Globalization.CultureInfo]::InvariantCulture, [ref]$ratio) -or
+            $ratio -le 0 -or $ratio -gt 1) {
+            throw 'COPILOT_ASTRA_COMPACT_RATIO must be a decimal greater than 0 and at most 1'
+        }
+        $window = [long][decimal]::Floor($PromptCeiling * $ratio)
+    }
+    if ($window -lt $Minimum) { throw "$Model compact budget is below the $Minimum-token minimum" }
+    $window
+}
+
+function script:Get-CopilotClaudeCompactWindow {
+    param([Parameter(Mandatory)] [string] $Model, $Catalog, [switch] $CapacityOnly)
+    if (-not $PSBoundParameters.ContainsKey('Catalog')) { $Catalog = Get-CopilotModelCatalog }
+    $ceiling = Get-CopilotPromptCeiling -Model $Model -Catalog $Catalog
+    if ($null -eq $ceiling) { return $null }
+    if ($ceiling -lt 100000) { throw "$Model has a prompt ceiling below Claude Code's 100000-token minimum" }
+    if ($CapacityOnly) { return [math]::Min($ceiling, 1000000L) }
+    $window = Get-CopilotCompactBudget -Model $Model -PromptCeiling $ceiling -Minimum 100000
+    [math]::Min($window, 1000000L)
 }
 
 # Pick exactly one live inference target. The configured main wins when its raw id
@@ -1384,7 +1661,17 @@ function script:Get-CopilotEnvBlock {
     param([switch] $Pinned, [string] $Model = (Get-CopilotDefaultModel), $Catalog)
     if (-not $PSBoundParameters.ContainsKey('Catalog')) { $Catalog = Get-CopilotModelCatalog }
     $modelProfile = Get-CopilotModelProfile -Model $Model -Catalog $Catalog
-    $compactWindow = Get-CopilotClaudeCompactWindow -Model $Model -Catalog $Catalog
+    $compactWindow = $null
+    if ($env:CLAUDE_CODE_AUTO_COMPACT_WINDOW) {
+        $explicitWindow = 0L
+        $capacity = Get-CopilotClaudeCompactWindow -Model $Model -Catalog $Catalog -CapacityOnly
+        if (-not [long]::TryParse($env:CLAUDE_CODE_AUTO_COMPACT_WINDOW, [ref]$explicitWindow) -or
+            $explicitWindow -lt 100000 -or $explicitWindow -gt 1000000 -or
+            ($null -ne $capacity -and $explicitWindow -gt $capacity)) {
+            throw 'CLAUDE_CODE_AUTO_COMPACT_WINDOW must be 100000..1000000 and within the live prompt ceiling'
+        }
+        $compactWindow = $explicitWindow
+    } else { $compactWindow = Get-CopilotClaudeCompactWindow -Model $Model -Catalog $Catalog }
     $block = [ordered]@{
         ANTHROPIC_BASE_URL             = if ($Pinned) { Get-CopilotPinnedBase } else { Get-CopilotClientBase }
         ANTHROPIC_AUTH_TOKEN           = 'dummy'
@@ -1456,7 +1743,8 @@ function script:Start-CopilotProcessWatcher {
         COPILOT_WATCH_INTENT = Get-CopilotStopIntent -Component $Component -ProcessId $Process.Id
         COPILOT_WATCH_READY = Get-CopilotReadyMarker -Component $Component -ProcessId $Process.Id
         COPILOT_WATCH_PACKAGE = if ($metadata) { [string]$metadata.Name } else { '' }
-        COPILOT_WATCH_VERSION = if ($metadata) { [string]$metadata.Version } else { '' }
+        COPILOT_WATCH_VERSION = if ($Component -eq 'shim') { (Get-CopilotBackendShimEnv).COPILOT_SHIM_BACKEND_VERSION }
+                               elseif ($metadata) { [string]$metadata.Version } else { 'unknown' }
         COPILOT_WATCH_PORT = [string]$Port
         COPILOT_WATCH_MODULE = Get-CopilotModuleManifest
         COPILOT_WATCH_PROXY_HEALTH = "$(Get-CopilotBase)/v1/models"
@@ -1549,6 +1837,7 @@ function script:Invoke-CopilotShimStart {
         COPILOT_SHIM_METRICS_DB = Get-CopilotShimMetricsDb
         COPILOT_API_SQLITE_DB_PATH = Get-CopilotTokenUsageDb
     }
+    foreach ($entry in (Get-CopilotBackendShimEnv).GetEnumerator()) { $shimEnv[$entry.Key] = $entry.Value }
     $saved = @{}
     foreach ($k in $shimEnv.Keys) { $saved[$k] = [Environment]::GetEnvironmentVariable($k) }
     $startedAt = [DateTime]::UtcNow
@@ -1628,6 +1917,32 @@ function script:Stop-CopilotShim {
         Set-CopilotStopIntent -Component shim -ProcessId $procId
         Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
     }
+}
+
+function script:Clear-CopilotAdmissionAfterStop {
+    [CmdletBinding()]
+    param([int[]] $ProcessId = @())
+    foreach ($procId in $ProcessId) {
+        if (Get-Process -Id $procId -ErrorAction SilentlyContinue) {
+            Write-Error "copilot-proxy: process $procId has not exited; admission recovery state was preserved."
+            return $false
+        }
+    }
+    if ((Test-CopilotAlive) -or (Test-CopilotShimAlive)) {
+        Write-Error 'copilot-proxy: backend or shim is still responding; admission recovery state was preserved.'
+        return $false
+    }
+    $path = Get-CopilotAdmissionPath
+    if (Test-Path -LiteralPath $path) {
+        foreach ($port in @([int](Get-CopilotPort), [int](Get-CopilotShimPort))) {
+            if ((Get-CopilotPortOwner -Port $port).Owner -ne 'free') {
+                Write-Error "copilot-proxy: cannot confirm port $port is free; admission recovery state was preserved."
+                return $false
+            }
+        }
+        Remove-Item -LiteralPath $path -Force -ErrorAction Stop
+    }
+    $true
 }
 
 function script:Invoke-CopilotShimCli {
@@ -1822,6 +2137,15 @@ function copilot-proxy {
             Write-Error "copilot-proxy: did not come up in time — check 'copilot-proxy logs'."
         }
         'stop' {
+            $script:CopilotLastStopConfirmed = $false
+            $stoppedPids = [System.Collections.Generic.HashSet[int]]::new()
+            foreach ($tracked in @($pidf, (Get-CopilotShimPid))) {
+                if (Test-Path -LiteralPath $tracked -PathType Leaf) {
+                    $trackedId = 0
+                    if ([int]::TryParse((Get-Content -First 1 $tracked), [ref]$trackedId)) { $null = $stoppedPids.Add($trackedId) }
+                }
+            }
+            foreach ($procId in (Get-CopilotPortOwner -Port ([int](Get-CopilotShimPort))).Pids) { $null = $stoppedPids.Add([int]$procId) }
             Stop-CopilotShim
             if (Test-Path $pidf) {
                 $pid_ = Get-Content -First 1 $pidf -ErrorAction SilentlyContinue
@@ -1832,16 +2156,25 @@ function copilot-proxy {
                 Remove-Item $pidf -ErrorAction SilentlyContinue
             }
             Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-                Where-Object { $_.CommandLine -like "*copilot-api*--port $port*" } |
+                Where-Object { $_.CommandLine -match ('copilot-api.*--port\s+' + [regex]::Escape([string]$port) + '(?:\s|$)') } |
                 ForEach-Object {
+                    $null = $stoppedPids.Add([int]$_.ProcessId)
                     Set-CopilotStopIntent -Component proxy -ProcessId $_.ProcessId
                     Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
                 }
             Start-Sleep 1
-            if (Test-CopilotAlive) { Write-Error "copilot-proxy: still answering on $port (another instance?)"; return }
+            if (-not (Clear-CopilotAdmissionAfterStop -ProcessId @($stoppedPids))) { return }
+            $script:CopilotLastStopConfirmed = $true
             Write-Host "copilot-proxy: stopped (port $port free)"
         }
-        'restart' { copilot-proxy stop; copilot-proxy start }
+        'restart' {
+            copilot-proxy stop
+            if (-not $script:CopilotLastStopConfirmed -or (Test-CopilotAlive) -or (Test-CopilotShimAlive) -or (Test-Path -LiteralPath (Get-CopilotAdmissionPath))) {
+                Write-Error 'copilot-proxy: full stop was not confirmed; restart refused.'
+                return
+            }
+            copilot-proxy start
+        }
         'status' {
             if (Test-CopilotAlive) {
                 $catalog = Get-CopilotModelCatalog
@@ -1853,6 +2186,11 @@ function copilot-proxy {
                 if (Get-CopilotShimEnabled) {
                     if (Test-CopilotShimAlive) {
                         Write-Host "  shim:   ON, up on $(Get-CopilotShimBase)  -> clients use this"
+                        try {
+                            $health = Invoke-RestMethod -Uri "$(Get-CopilotShimBase)/_shim/health" -TimeoutSec 2 -ErrorAction Stop
+                            Write-Host "  admission: active=$($health.active), draining=$($health.draining), unknown=$($health.unknown)"
+                            if ($health.recovery_required) { Write-Host '  recovery_required: inspect active work, then perform a controlled backend + shim restart.' }
+                        } catch { $null = $_ }
                         $routing = Get-CopilotFastRouting
                         if ($routing) {
                             $mappingCount = @($routing.mappings.PSObject.Properties).Count
@@ -2579,11 +2917,45 @@ function script:Test-CopilotExplicitCodexModel {
         if ($a -eq '--') { break }
         if ($a -in '-m', '--model' -or $a -match '^(?:-m|--model)=') { return $true }
     }
+    Test-CopilotCodexConfig -Argv $Argv -Key 'model'
+}
+
+function script:Test-CopilotCodexConfig {
+    param([string[]] $Argv, [Parameter(Mandatory)] [string] $Key)
+    for ($i = 0; $i -lt $Argv.Count; $i++) {
+        $a = $Argv[$i]
+        if ($a -eq '--') { break }
+        $setting = $null
+        if ($a -in '-c', '--config') { if ($i + 1 -lt $Argv.Count) { $setting = $Argv[++$i] } }
+        elseif ($a -match '^(?:-c=?|--config=)(.*)$') { $setting = $Matches[1] }
+        if ($setting -match ('^' + [regex]::Escape($Key) + '\s*=')) { return $true }
+    }
     $false
+}
+
+function script:Get-CopilotExplicitCodexModel {
+    param([string[]] $Argv)
+    $model = $null
+    $configModel = $null
+    for ($i = 0; $i -lt $Argv.Count; $i++) {
+        $a = $Argv[$i]
+        if ($a -eq '--') { break }
+        if ($a -in '-m', '--model') { if ($i + 1 -lt $Argv.Count) { $model = $Argv[++$i] }; continue }
+        if ($a -match '^(?:-m|--model)=(.*)$') { $model = $Matches[1]; continue }
+        $setting = $null
+        if ($a -in '-c', '--config') { if ($i + 1 -lt $Argv.Count) { $setting = $Argv[++$i] } }
+        elseif ($a -match '^(?:-c=?|--config=)(.*)$') { $setting = $Matches[1] }
+        if ($setting -match '^model\s*=\s*["'']([^"'']+)["'']\s*$') { $configModel = $Matches[1] }
+        elseif ($setting -match '^model\s*=\s*([A-Za-z0-9._\[\]-]+)\s*$') { $configModel = $Matches[1] }
+    }
+    if ($null -ne $model) { $model } else { $configModel }
 }
 
 function script:Get-CodexCopilotProviderArgs {
     param([Parameter(Mandatory)] [string] $Base)
+    $shimEnabled = Get-CopilotShimEnabled
+    $requestRetries = if ($shimEnabled) { 0 } else { 3 }
+    $streamRetries = if ($shimEnabled) { 0 } else { 1 }
     @(
         '-c', 'model_provider="copilot_api"',
         '-c', 'model_providers.copilot_api.name="OpenAI"',
@@ -2592,8 +2964,8 @@ function script:Get-CodexCopilotProviderArgs {
         '-c', 'model_providers.copilot_api.requires_openai_auth=false',
         '-c', 'model_providers.copilot_api.supports_websockets=false',
         '-c', 'model_providers.copilot_api.wire_api="responses"',
-        '-c', 'model_providers.copilot_api.request_max_retries=3',
-        '-c', 'model_providers.copilot_api.stream_max_retries=1',
+        '-c', "model_providers.copilot_api.request_max_retries=$requestRetries",
+        '-c', "model_providers.copilot_api.stream_max_retries=$streamRetries",
         '-c', 'model_providers.copilot_api.stream_idle_timeout_ms=300000',
         '-c', 'features.remote_compaction_v2=true',
         '-c', 'features.code_mode.excluded_tool_namespaces=["mcp__codex_apps__sites"]'
@@ -2655,20 +3027,14 @@ function codex-copilot {
     }
 
     if (-not (Test-CopilotAlive)) { copilot-proxy start; if (-not (Test-CopilotAlive)) { return } }
-    # Codex always needs the shim's Responses compatibility normalization even
-    # when persistent burst throttling is disabled. This does not change state.
-    # Unconditional (not gated on Test-CopilotShimAlive): that probe cannot tell
-    # our shim from any other HTTP listener on the port, and Start-CopilotShim —
-    # which does the ownership check — is idempotent and returns fast when the
-    # shim is already up.
-    if (-not (Start-CopilotShim)) { return }
+    if (-not (Assert-CopilotShim)) { return }
     $catalog = Get-CopilotModelCatalog
     if (-not (Test-CopilotModelCatalog $catalog)) {
         Write-Error 'codex-copilot: could not read a valid live gateway model catalog'; return
     }
 
     $explicitModel = Test-CopilotExplicitCodexModel -Argv $Argv
-    $model = $null
+    $model = Get-CopilotExplicitCodexModel -Argv $Argv
     if (-not $explicitModel) {
         $models = Get-CopilotAutoCandidateIds -Catalog $catalog
         $model = Select-CopilotBestCodexModel -Model $models -Catalog $catalog
@@ -2679,15 +3045,17 @@ function codex-copilot {
         } else { Write-Host "codex-copilot: --auto -> $model" }
     }
 
-    $base = Get-CopilotShimBase
+    $base = Get-CopilotClientBase
     $providerArgs = @(Get-CodexCopilotProviderArgs -Base $base)
     if ($model) {
         $entry = $catalog.data | Where-Object { $_.id -eq $model } | Select-Object -First 1
         if ($entry.capabilities.limits.max_context_window_tokens) {
             $Argv = @('-c', "model_context_window=$($entry.capabilities.limits.max_context_window_tokens)") + @($Argv)
         }
-        if ($entry.capabilities.limits.max_prompt_tokens) {
-            $Argv = @('-c', "model_auto_compact_token_limit=$($entry.capabilities.limits.max_prompt_tokens)") + @($Argv)
+        $ceiling = Get-CopilotPromptCeiling -Model $model -Catalog $catalog
+        if ($null -ne $ceiling -and -not (Test-CopilotCodexConfig -Argv $Argv -Key 'model_auto_compact_token_limit')) {
+            $budget = Get-CopilotCompactBudget -Model $model -PromptCeiling $ceiling
+            $Argv = @('-c', "model_auto_compact_token_limit=$budget") + @($Argv)
         }
     }
 
@@ -2938,7 +3306,7 @@ function script:Assert-CopilotPinnedCompactSafe {
     $pinned = 0L
     if (-not [long]::TryParse([string]$obj.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW, [ref]$pinned)) { return $true }
     $catalog = Get-CopilotModelCatalog
-    try { $limit = Get-CopilotClaudeCompactWindow -Model $Model -Catalog $catalog } catch { Write-Error $_; return $false }
+    try { $limit = Get-CopilotClaudeCompactWindow -Model $Model -Catalog $catalog -CapacityOnly } catch { Write-Error $_; return $false }
     if ($null -ne $limit -and $pinned -gt $limit) {
         Write-Error "claude-copilot: active copilot-here pin has compact window $pinned, but $Model allows $limit. Run: copilot-model $(Remove-CopilotContextHint $Model), then restart Claude Code."
         return $false

@@ -64,13 +64,20 @@ async function createUpstream({ delayMs = 0, truncate = false, complete = false,
       const headers = request.subarray(0, headerEnd).toString("latin1");
       const length = Number(headers.match(/\r\ncontent-length:\s*(\d+)/i)?.[1] ?? 0);
       if (request.length < headerEnd + 4 + length) return;
+      if (/^GET \/v1\/models(?:\?| )/.test(headers)) {
+        const catalog = '{"data":[]}';
+        socket.write(`HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(catalog)}\r\n\r\n${catalog}`);
+        request = Buffer.alloc(0);
+        return;
+      }
       answered = true;
       setTimeout(() => {
         if (socket.destroyed) return;
         socket.write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n");
-        socket.write(chunk(`event: response.output_text.delta\ndata: ${marker}\n\n`), () => {
+        socket.write(chunk(`event: response.output_text.delta\ndata: ${JSON.stringify({ type: "response.output_text.delta", delta: marker })}\n\n`), () => {
           if (truncate) setTimeout(() => socket.resetAndDestroy(), 25);
           else if (complete) {
+            socket.write(chunk('event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed"}}\n\n'));
             socket.write("0\r\n\r\n", () => {
               answered = false;
               request = Buffer.alloc(0);
@@ -210,22 +217,36 @@ async function runScenario(name, options) {
   const marker = `fixture-${name}`;
   const upstream = await createUpstream({ ...options, marker });
   const shimPort = await reservePort();
+  if ([upstream.port, shimPort].some((port) => port < 1024 || [4141, 4142].includes(port))) {
+    await upstream.close();
+    throw new Error("process fixture must use isolated ephemeral ports");
+  }
   const child = Bun.spawn({
     cmd: [process.execPath, shimPath],
     env: {
       ...process.env,
+      COPILOT_SHIM_HOST: "127.0.0.1",
       COPILOT_SHIM_PORT: String(shimPort),
       COPILOT_SHIM_UPSTREAM: `http://127.0.0.1:${upstream.port}`,
       COPILOT_SHIM_METRICS_DB: join(root, "metrics.sqlite"),
       COPILOT_API_SQLITE_DB_PATH: join(root, "tokens.sqlite"),
       COPILOT_SHIM_RETRIES: "0",
+      COPILOT_SHIM_MIN: "1",
+      COPILOT_SHIM_MAX: "1",
       COPILOT_SHIM_PING_AFTER_MS: "40",
       COPILOT_SHIM_PING_MS: "20",
       COPILOT_SHIM_STALL_MS: "2000",
+      COPILOT_SHIM_BACKEND_HEADERS_TIMEOUT_MS: "1000",
+      COPILOT_SHIM_BACKEND_INACTIVITY_TIMEOUT_MS: "1000",
+      COPILOT_SHIM_BACKEND_VERSION: "2.5.2-fixture",
     },
     stdout: "pipe",
     stderr: "pipe",
   });
+  // Drain only this child's pipes so repeated requests cannot fill an unread
+  // OS pipe and look like a shim transport deadlock.
+  const childStdout = new Response(child.stdout).text();
+  const childStderr = new Response(child.stderr).text();
 
   let observation = {};
   try {
@@ -258,7 +279,7 @@ async function runScenario(name, options) {
     return { name, healthy, ...exited, ...observation };
   } finally {
     if (child.exitCode === null) child.kill();
-    await child.exited;
+    await Promise.all([child.exited, childStdout, childStderr]);
     await upstream.close();
     rmSync(root, { recursive: true, force: true });
   }

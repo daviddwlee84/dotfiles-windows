@@ -103,6 +103,11 @@ if (-not (Test-ShimRecoveryEnabled)) {
     Write-WatchEvent -EventName 'restart_suppressed' -Detail 'shim is disabled' -Attempt $RecoveryAttempt -UptimeSeconds $uptimeSeconds
     return
 }
+$backendVersion = $null
+if (-not [version]::TryParse($Version, [ref]$backendVersion) -or $backendVersion -ge [version]'2.5.2') {
+    Write-WatchEvent -EventName 'recovery_required' -Detail 'backend may retain work after shim exit; inspect active work and use a controlled copilot-proxy restart of both processes; automatic shim-only recovery is disabled' -Attempt $RecoveryAttempt -UptimeSeconds $uptimeSeconds
+    return
+}
 if (Test-WatchHealth -Uri $ShimHealthUri -RequireShimIdentity) {
     Write-WatchEvent -EventName 'restart_suppressed' -Detail 'shim is already healthy' -Attempt $RecoveryAttempt -UptimeSeconds $uptimeSeconds
     return

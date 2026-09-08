@@ -24,7 +24,7 @@ Describe 'Copilot module' {
             InModuleScope Copilot {
                 $env:COPILOT_API_PKG = $null
                 $env:XDG_STATE_HOME = Join-Path $TestDrive 'empty-state'
-                Get-CopilotPkg | Should -BeExactly '@jeffreycao/copilot-api@2.3.4'
+                Get-CopilotPkg | Should -BeExactly '@jeffreycao/copilot-api@2.5.2'
             }
         }
         It 'treats the bare original package as "original"' {
@@ -163,15 +163,17 @@ Describe 'Copilot module' {
             }
         }
 
-        It 'exposes the complete CDN manifest only for the reviewed default pin' {
+        It 'exposes the complete reviewed CDN manifest and retains the previous release' {
             InModuleScope Copilot {
                 $env:COPILOT_API_PKG = $null
                 $env:XDG_STATE_HOME = Join-Path $TestDrive 'manifest-state'
                 $manifest = Get-CopilotPkgCdnManifest
-                $manifest.BaseUrl | Should -Match '@jeffreycao/copilot-api@2\.3\.4'
+                $manifest.BaseUrl | Should -Match '@jeffreycao/copilot-api@2\.5\.2'
                 $manifest.Files.Count | Should -Be 19
-                $manifest.Files['dist/main.js'] | Should -BeExactly 'vaVfZjZeDbPTprzN05FdWTFOrXvpzTGBma4gJ7/wTrA='
-                $manifest.Files['package.json'] | Should -BeExactly 'E4yUXnzcYYCBL714huIHrmTTBz/9Im4/4BvIEJLxsTY='
+                $manifest.Files['dist/main.js'] | Should -BeExactly 'AIfaWjor2eY41dsHM/uJ4BTRDox3MzQjGMYV/Ez7ABQ='
+                $manifest.Files['package.json'] | Should -BeExactly 'rqN5AHpr5vro4G8/+xwvYwBBItCRbPREumHpWs4oUZs='
+                $env:COPILOT_API_PKG = '@jeffreycao/copilot-api@2.3.4'
+                (Get-CopilotPkgCdnManifest).Files['dist/main.js'] | Should -BeExactly 'vaVfZjZeDbPTprzN05FdWTFOrXvpzTGBma4gJ7/wTrA='
                 $env:COPILOT_API_PKG = '@jeffreycao/copilot-api@latest'
                 Get-CopilotPkgCdnManifest | Should -BeNullOrEmpty
             }
@@ -371,6 +373,149 @@ Describe 'Copilot module' {
                 Invoke-CopilotPkgInstallTry -Dir (Get-CopilotPkgPrefix) -BudgetSeconds 1 | Should -BeFalse
                 Test-CopilotPkgInstalled | Should -BeFalse
                 Test-Path -LiteralPath (Get-CopilotPkgStamp) | Should -BeFalse
+            }
+        }
+    }
+
+    Context 'verified package generation transactions' {
+        BeforeEach {
+            $script:transactionEnv = @{}
+            foreach ($key in 'XDG_DATA_HOME', 'XDG_STATE_HOME', 'XDG_CONFIG_HOME', 'COPILOT_API_HOME', 'COPILOT_API_PKG') {
+                $script:transactionEnv[$key] = [Environment]::GetEnvironmentVariable($key)
+            }
+            $env:XDG_DATA_HOME = Join-Path $TestDrive "transaction-$([guid]::NewGuid())"
+            $env:XDG_STATE_HOME = Join-Path $env:XDG_DATA_HOME 'state'
+            $env:XDG_CONFIG_HOME = Join-Path $env:XDG_DATA_HOME 'config'
+            $env:COPILOT_API_HOME = Join-Path $env:XDG_DATA_HOME 'backend'
+            $env:COPILOT_API_PKG = $null
+            InModuleScope Copilot {
+                $script:preparedPackage = Join-Path (Get-XdgData) 'prepared'
+                Write-CopilotAtomicText -Path (Join-Path (Get-CopilotPkgPrefix) 'marker') -Text 'old'
+                Write-CopilotAtomicText -Path (Join-Path $script:preparedPackage 'marker') -Text 'new'
+                Write-CopilotPkgSelection -Spec '@jeffreycao/copilot-api@2.3.4' -Integrity (Get-CopilotVerifiedIntegrity '2.3.4')
+                Write-CopilotAtomicText -Path (Join-Path (Get-CopilotApiHome) 'config.json') -Text '{"responsesTransport":{"headersTimeoutMsV2":12345},"providers":{"keep":{"enabled":true}}}'
+                Mock Test-CopilotAlive { $false }
+            }
+        }
+        AfterEach {
+            foreach ($key in $script:transactionEnv.Keys) {
+                if ($null -eq $script:transactionEnv[$key]) { Remove-Item "env:$key" -ErrorAction SilentlyContinue }
+                else { Set-Item "env:$key" $script:transactionEnv[$key] }
+            }
+        }
+
+        It 'rejects a changed runtime file even when package metadata matches' {
+            InModuleScope Copilot {
+                Mock Get-CopilotPkgCdnManifest { [pscustomobject]@{ Files = @{ 'dist/main.js' = 'not-the-file-hash' } } }
+                Write-CopilotAtomicText -Path (Join-Path (Get-CopilotPkgPrefix) 'node_modules/@jeffreycao/copilot-api/dist/main.js') -Text 'changed'
+                Test-CopilotPkgReviewedRuntime | Should -BeFalse
+            }
+        }
+
+        It 'failed staging does not create selection or alter the live package' {
+            InModuleScope Copilot {
+                Remove-Item -LiteralPath (Get-CopilotPkgSelectionState)
+                Mock Install-CopilotPkg { $false }
+                Invoke-CopilotPkgUpdate -Version '2.5.2' -ErrorAction SilentlyContinue | Should -BeFalse
+                Test-Path -LiteralPath (Get-CopilotPkgSelectionState) | Should -BeFalse
+                Get-Content (Join-Path (Get-CopilotPkgPrefix) 'marker') | Should -BeExactly 'old'
+            }
+        }
+
+        It 'a late selection failure restores current and previous generations' {
+            InModuleScope Copilot {
+                Write-CopilotAtomicText -Path (Join-Path "$(Get-CopilotPkgPrefix).previous" 'marker') -Text 'older'
+                Write-CopilotAtomicText -Path "$(Get-CopilotPkgSelectionState).previous" -Text '{"spec":"older"}'
+                Mock Write-CopilotPkgSelection { throw 'simulated selection failure' }
+                Set-CopilotPkgGeneration -PreparedPrefix $script:preparedPackage -Spec '@jeffreycao/copilot-api@2.5.2' -Integrity (Get-CopilotVerifiedIntegrity '2.5.2') -ErrorAction SilentlyContinue | Should -BeFalse
+                Get-Content (Join-Path (Get-CopilotPkgPrefix) 'marker') | Should -BeExactly 'old'
+                Get-Content (Join-Path "$(Get-CopilotPkgPrefix).previous" 'marker') | Should -BeExactly 'older'
+                (Get-CopilotPkgSelection).spec | Should -BeExactly '@jeffreycao/copilot-api@2.3.4'
+                Get-Content "$(Get-CopilotPkgSelectionState).previous" | Should -BeExactly '{"spec":"older"}'
+                Get-Content (Join-Path $script:preparedPackage 'marker') | Should -BeExactly 'new'
+            }
+        }
+
+        It 'rolls back offline while preserving newer credentials usage and unrelated settings' {
+            InModuleScope Copilot {
+                Set-CopilotPkgGeneration -PreparedPrefix $script:preparedPackage -Spec '@jeffreycao/copilot-api@2.5.2' -Integrity (Get-CopilotVerifiedIntegrity '2.5.2') | Should -BeTrue
+                $configPath = Join-Path (Get-CopilotApiHome) 'config.json'
+                (Get-Content $configPath -Raw | ConvertFrom-Json).responsesTransport.headersTimeoutMsV2 | Should -Be 12345
+                Write-CopilotAtomicText -Path $configPath -Text '{"upstreamTransport":{"headersTimeoutMs":88888},"providers":{"keep":{"enabled":false}},"auth":{"apiKeys":["new-local-fixture-key"]}}'
+                Write-CopilotAtomicText -Path (Join-Path (Get-CopilotApiHome) 'github_token') -Text 'new-fixture-token'
+                Write-CopilotAtomicText -Path (Join-Path (Get-CopilotApiHome) 'copilot-api.sqlite') -Text 'new-fixture-usage'
+                Mock Invoke-WebRequest { throw 'rollback must stay offline' }
+                Invoke-CopilotPkgRollback | Should -BeTrue
+                Get-Content (Join-Path (Get-CopilotPkgPrefix) 'marker') | Should -BeExactly 'old'
+                (Get-CopilotPkgSelection).spec | Should -BeExactly '@jeffreycao/copilot-api@2.3.4'
+                $restored = Get-Content $configPath -Raw | ConvertFrom-Json -AsHashtable
+                $restored.responsesTransport.headersTimeoutMsV2 | Should -Be 12345
+                $restored.Contains('upstreamTransport') | Should -BeFalse
+                $restored.providers.keep.enabled | Should -BeFalse
+                $restored.auth.apiKeys | Should -Contain 'new-local-fixture-key'
+                Get-Content (Join-Path (Get-CopilotApiHome) 'github_token') | Should -BeExactly 'new-fixture-token'
+                Get-Content (Join-Path (Get-CopilotApiHome) 'copilot-api.sqlite') | Should -BeExactly 'new-fixture-usage'
+                Invoke-CopilotPkgRollback | Should -BeTrue
+                (Get-Content $configPath -Raw | ConvertFrom-Json).upstreamTransport.headersTimeoutMs | Should -Be 88888
+                Should -Invoke Invoke-WebRequest -Times 0 -Exactly
+            }
+        }
+
+        It 'retains an existing rollback bundle when committing previous selection fails' {
+            InModuleScope Copilot {
+                $oldBundleMarker = Join-Path (Get-CopilotPkgPrefix) '.copilot-rollback/old.marker'
+                Write-CopilotAtomicText -Path $oldBundleMarker -Text 'keep-original-bundle'
+                $previousState = "$(Get-CopilotPkgSelectionState).previous"
+                Write-CopilotAtomicText -Path $previousState -Text '{"spec":"older"}'
+                $script:previousWriteAttempts = 0
+                Mock Write-CopilotAtomicText {
+                    param($Path, $Text)
+                    $script:previousWriteAttempts++
+                    if ($script:previousWriteAttempts -eq 1) { throw 'simulated previous-selection write failure' }
+                    [IO.File]::WriteAllText($Path, $Text)
+                } -ParameterFilter { $Path -eq $previousState }
+                Set-CopilotPkgGeneration -PreparedPrefix $script:preparedPackage -Spec '@jeffreycao/copilot-api@2.5.2' -Integrity (Get-CopilotVerifiedIntegrity '2.5.2') -ErrorAction SilentlyContinue | Should -BeFalse
+                Get-Content $oldBundleMarker | Should -BeExactly 'keep-original-bundle'
+                Get-Content $previousState | Should -BeExactly '{"spec":"older"}'
+                (Get-CopilotPkgSelection).spec | Should -BeExactly '@jeffreycao/copilot-api@2.3.4'
+            }
+        }
+
+        It 'refuses rollback while a backend is running' {
+            InModuleScope Copilot {
+                Mock Test-CopilotAlive { $true }
+                Invoke-CopilotPkgRollback -ErrorAction SilentlyContinue | Should -BeFalse
+                Get-Content (Join-Path (Get-CopilotPkgPrefix) 'marker') | Should -BeExactly 'old'
+            }
+        }
+
+        It 'preserves post-start settings when the original transport config was absent' {
+            InModuleScope Copilot {
+                $path = Join-Path (Get-CopilotApiHome) 'config.json'
+                Remove-Item $path
+                $snapshot = Get-CopilotTransportSnapshot
+                Write-CopilotAtomicText -Path $path -Text '{"upstreamTransport":{"headersTimeoutMs":300000},"auth":{"adminApiKey":"new-fixture-key"}}'
+                $restored = Get-CopilotRestoredTransportText -Snapshot $snapshot | ConvertFrom-Json -AsHashtable
+                $restored.Contains('upstreamTransport') | Should -BeFalse
+                $restored.auth.adminApiKey | Should -BeExactly 'new-fixture-key'
+            }
+        }
+
+        It 'passes effective backend deadlines and the running version to the shim' {
+            InModuleScope Copilot {
+                $pidPath = Join-Path $TestDrive 'backend-runtime.pid'
+                Mock Get-CopilotPidFile { $pidPath }
+                Write-CopilotAtomicText -Path $pidPath -Text '24680'
+                Write-CopilotAtomicText -Path (Get-CopilotLifecycleLog) -Text '{"component":"proxy","event":"spawned","pid":24680,"version":"2.3.4"}'
+                Write-CopilotPkgSelection -Spec '@jeffreycao/copilot-api@2.5.2' -Integrity (Get-CopilotVerifiedIntegrity '2.5.2')
+                $legacy = Get-CopilotBackendShimEnv
+                $legacy.COPILOT_SHIM_BACKEND_VERSION | Should -BeExactly '2.3.4'
+                $legacy.COPILOT_SHIM_BACKEND_HEADERS_TIMEOUT_MS | Should -BeExactly '12345'
+                $legacy.COPILOT_SHIM_BACKEND_INACTIVITY_TIMEOUT_MS | Should -BeExactly '300000'
+                Write-CopilotAtomicText -Path (Join-Path (Get-CopilotApiHome) 'config.json') -Text '{"upstreamTransport":{"headersTimeoutMs":450000,"streamInactivityTimeoutMs":500000}}'
+                $current = Get-CopilotBackendShimEnv
+                $current.COPILOT_SHIM_BACKEND_HEADERS_TIMEOUT_MS | Should -BeExactly '450000'
+                $current.COPILOT_SHIM_BACKEND_INACTIVITY_TIMEOUT_MS | Should -BeExactly '500000'
             }
         }
     }
@@ -706,7 +851,7 @@ Describe 'Copilot module' {
                 Test-CopilotExplicitCodexModel -Argv @('exec', '--model=gpt-5.6-sol') | Should -BeTrue
                 Test-CopilotExplicitCodexModel -Argv @('exec', '-m=gpt-5.6-terra') | Should -BeTrue
                 Test-CopilotExplicitCodexModel -Argv @('exec', '--model', 'gpt-5.5') | Should -BeTrue
-                Test-CopilotExplicitCodexModel -Argv @('exec', '--config', 'model="gpt-5.4"') | Should -BeFalse
+                Test-CopilotExplicitCodexModel -Argv @('exec', '--config', 'model="gpt-5.4"') | Should -BeTrue
                 Test-CopilotExplicitCodexModel -Argv @('exec', '--', '--model=gpt-prompt') | Should -BeFalse
             }
         }
@@ -749,6 +894,58 @@ Describe 'Copilot module' {
                 $providerArgs | Should -Contain 'model_providers.copilot_api.env_key="GITHUB_COPILOT_API_KEY"'
                 $providerArgs | Should -Contain 'model_providers.copilot_api.requires_openai_auth=false'
                 $providerArgs | Should -Not -Contain 'model_providers.copilot_api.requires_openai_auth=true'
+            }
+        }
+
+        It 'lets the shim own retries and retains bounded direct-mode retries' {
+            InModuleScope Copilot {
+                Mock Get-CopilotShimEnabled { $true }
+                $managed = @(Get-CodexCopilotProviderArgs -Base 'http://127.0.0.1:4142')
+                $managed | Should -Contain 'model_providers.copilot_api.request_max_retries=0'
+                $managed | Should -Contain 'model_providers.copilot_api.stream_max_retries=0'
+                Mock Get-CopilotShimEnabled { $false }
+                $direct = @(Get-CodexCopilotProviderArgs -Base 'http://127.0.0.1:4141')
+                $direct | Should -Contain 'model_providers.copilot_api.request_max_retries=3'
+                $direct | Should -Contain 'model_providers.copilot_api.stream_max_retries=1'
+            }
+        }
+
+        It 'derives explicit Astra metadata while leaving later client overrides authoritative' {
+            InModuleScope Copilot {
+                function script:codex { $script:capturedAstraLaunch = @($args) }
+                $savedRatio = $env:COPILOT_ASTRA_COMPACT_RATIO
+                try {
+                    Mock Test-CopilotAlive { $true }
+                    Mock Assert-CopilotShim { $true }
+                    Mock Get-CopilotShimEnabled { $true }
+                    Mock Get-CopilotClientBase { 'http://127.0.0.1:4142' }
+                    Mock Get-CopilotModelCatalog { [pscustomobject]@{ data = @(
+                        [pscustomobject]@{ id = 'gpt-6-astra'; capabilities = [pscustomobject]@{ limits = [pscustomobject]@{ max_context_window_tokens = 1000000; max_prompt_tokens = 872000 } } }
+                    ) } }
+                    $env:COPILOT_ASTRA_COMPACT_RATIO = '0.70'
+                    codex-copilot --no-specstory -m gpt-6-astra -c 'model_providers.copilot_api.request_max_retries=2'
+                    $script:capturedAstraLaunch | Should -Contain 'model_context_window=1000000'
+                    $script:capturedAstraLaunch | Should -Contain 'model_auto_compact_token_limit=610400'
+                    @($script:capturedAstraLaunch | Where-Object { $_ -like 'model_providers.copilot_api.request_max_retries=*' }) |
+                        Should -BeExactly @('model_providers.copilot_api.request_max_retries=0', 'model_providers.copilot_api.request_max_retries=2')
+                    $env:COPILOT_ASTRA_COMPACT_RATIO = 'invalid'
+                    codex-copilot --no-specstory -c 'model="gpt-6-astra"' -c 'model_auto_compact_token_limit=700000'
+                    @($script:capturedAstraLaunch | Where-Object { $_ -like 'model_auto_compact_token_limit=*' }) |
+                        Should -BeExactly @('model_auto_compact_token_limit=700000')
+                    $script:capturedAstraLaunch | Should -Not -Contain '-m'
+                } finally {
+                    Remove-Item Function:\codex -Force -ErrorAction SilentlyContinue
+                    if ($null -eq $savedRatio) { Remove-Item env:COPILOT_ASTRA_COMPACT_RATIO -ErrorAction SilentlyContinue }
+                    else { $env:COPILOT_ASTRA_COMPACT_RATIO = $savedRatio }
+                }
+            }
+        }
+
+        It 'does not interpret prompt text or arguments after -- as model configuration' {
+            InModuleScope Copilot {
+                Test-CopilotExplicitCodexModel -Argv @('model="gpt-6-astra"') | Should -BeFalse
+                Test-CopilotExplicitCodexModel -Argv @('--', '-c', 'model="gpt-6-astra"') | Should -BeFalse
+                Get-CopilotExplicitCodexModel -Argv @('-c', 'model="gpt-6-astra"', '-m', 'custom-model') | Should -BeExactly 'custom-model'
             }
         }
 
@@ -902,6 +1099,42 @@ Describe 'Copilot module' {
     }
 
     Context 'catalog metadata and Claude Code role profiles' {
+        It 'applies the Astra ratio to the prompt budget without changing capacity' {
+            InModuleScope Copilot {
+                $savedRatio = $env:COPILOT_ASTRA_COMPACT_RATIO
+                $savedWindow = $env:CLAUDE_CODE_AUTO_COMPACT_WINDOW
+                try {
+                    $env:COPILOT_ASTRA_COMPACT_RATIO = $null
+                    $env:CLAUDE_CODE_AUTO_COMPACT_WINDOW = $null
+                    $catalog = [pscustomobject]@{ data = @(
+                        [pscustomobject]@{ id = 'gpt-6-astra'; capabilities = [pscustomobject]@{ limits = [pscustomobject]@{ max_context_window_tokens = 1000000; max_prompt_tokens = 872000 } } }
+                    ) }
+                    Get-CopilotClaudeCompactWindow -Model 'gpt-6-astra[1m]' -Catalog $catalog | Should -Be 610400
+                    Get-CopilotClaudeCompactWindow -Model 'gpt-6-astra[1m]' -Catalog $catalog -CapacityOnly | Should -Be 872000
+                    Get-CopilotCompactBudget -Model 'gpt-6-astra-fast' -PromptCeiling 872001 | Should -Be 610400
+                    Get-CopilotCompactBudget -Model 'gpt-5.6-sol' -PromptCeiling 872000 | Should -Be 872000
+                    $env:COPILOT_ASTRA_COMPACT_RATIO = '0.5'
+                    Get-CopilotClaudeCompactWindow -Model 'gpt-6-astra' -Catalog $catalog | Should -Be 436000
+                    $env:COPILOT_ASTRA_COMPACT_RATIO = '1'
+                    Get-CopilotClaudeCompactWindow -Model 'gpt-6-astra' -Catalog $catalog | Should -Be 872000
+                    foreach ($bad in '0', '-1', '1.1', 'NaN', '0,70') {
+                        $env:COPILOT_ASTRA_COMPACT_RATIO = $bad
+                        { Get-CopilotClaudeCompactWindow -Model 'gpt-6-astra' -Catalog $catalog } | Should -Throw '*COPILOT_ASTRA_COMPACT_RATIO*'
+                    }
+                    $env:COPILOT_ASTRA_COMPACT_RATIO = '0.01'
+                    { Get-CopilotClaudeCompactWindow -Model 'gpt-6-astra' -Catalog $catalog } | Should -Throw '*100000-token minimum*'
+                    $env:COPILOT_ASTRA_COMPACT_RATIO = 'invalid'
+                    $env:CLAUDE_CODE_AUTO_COMPACT_WINDOW = '700000'
+                    (Get-CopilotEnvBlock -Model 'gpt-6-astra' -Catalog $catalog).CLAUDE_CODE_AUTO_COMPACT_WINDOW | Should -BeExactly '700000'
+                    $env:CLAUDE_CODE_AUTO_COMPACT_WINDOW = '900000'
+                    { Get-CopilotEnvBlock -Model 'gpt-6-astra' -Catalog $catalog } | Should -Throw '*live prompt ceiling*'
+                } finally {
+                    if ($null -eq $savedRatio) { Remove-Item env:COPILOT_ASTRA_COMPACT_RATIO -ErrorAction SilentlyContinue } else { $env:COPILOT_ASTRA_COMPACT_RATIO = $savedRatio }
+                    if ($null -eq $savedWindow) { Remove-Item env:CLAUDE_CODE_AUTO_COMPACT_WINDOW -ErrorAction SilentlyContinue } else { $env:CLAUDE_CODE_AUTO_COMPACT_WINDOW = $savedWindow }
+                }
+            }
+        }
+
         It 'adds [1m] only when the live model metadata advertises a 1M context window' {
             InModuleScope Copilot {
                 $catalog = [pscustomobject]@{ data = @(
@@ -1175,7 +1408,7 @@ Describe 'Copilot module' {
                     $saved.env.ANTHROPIC_DEFAULT_SONNET_MODEL | Should -BeExactly 'gpt-5.6-terra[1m]'
                     $saved.env.ANTHROPIC_DEFAULT_HAIKU_MODEL | Should -BeExactly 'gpt-5.6-luna[1m]'
                     $saved.env.ANTHROPIC_SMALL_FAST_MODEL | Should -BeExactly 'gpt-5.6-luna[1m]'
-                    $saved.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW | Should -BeExactly '872000'
+                    $saved.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW | Should -BeExactly '610400'
                     $saved.env.UNRELATED | Should -BeExactly 'keep-me'
                     $saved.permissions.allow | Should -Contain 'Read'
                     (Get-Content -Raw $script:state).Trim() | Should -BeExactly $InitialModel
@@ -1359,7 +1592,7 @@ Describe 'Copilot module' {
                     $modelAt | Should -BeGreaterOrEqual 0
                     $forwarded[$modelAt + 1] | Should -BeExactly 'gpt-6-astra'
                     @($forwarded | Where-Object { $_ -like 'model_context_window=*' }) | Should -BeExactly @('model_context_window=1000000')
-                    @($forwarded | Where-Object { $_ -like 'model_auto_compact_token_limit=*' }) | Should -BeExactly @('model_auto_compact_token_limit=872000')
+                    @($forwarded | Where-Object { $_ -like 'model_auto_compact_token_limit=*' }) | Should -BeExactly @('model_auto_compact_token_limit=610400')
                     $forwarded | Should -Not -Contain 'gpt-6-astra[1m]'
                     Get-CopilotAutoTestSnapshot | Should -BeExactly $snapshot
                     Test-Path $env:CODEX_HOME | Should -BeFalse
@@ -1389,7 +1622,8 @@ Describe 'Copilot module' {
                     $modelAt | Should -BeGreaterOrEqual 0
                     $forwarded[$modelAt + 1] | Should -BeExactly 'gpt-5.6-terra'
                     $forwarded | Should -Not -Contain 'gpt-6-astra'
-                    @($forwarded | Where-Object { $_ -match '^model_(context_window|auto_compact_token_limit)=' }) | Should -HaveCount 0
+                    $forwarded | Should -Contain 'model_context_window=1000000'
+                    $forwarded | Should -Contain 'model_auto_compact_token_limit=872000'
                     Get-CopilotAutoTestSnapshot | Should -BeExactly $snapshot
                 } finally {
                     Remove-Item Function:\codex, Function:\specstory -Force -ErrorAction SilentlyContinue
@@ -1440,7 +1674,7 @@ Describe 'Copilot module' {
                 $saved.env.ANTHROPIC_DEFAULT_SONNET_MODEL | Should -BeExactly 'gpt-5.6-terra[1m]'
                 $saved.env.ANTHROPIC_DEFAULT_HAIKU_MODEL | Should -BeExactly 'gpt-5.6-luna[1m]'
                 $saved.env.ANTHROPIC_SMALL_FAST_MODEL | Should -BeExactly 'gpt-5.6-luna[1m]'
-                $saved.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW | Should -BeExactly '872000'
+                $saved.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW | Should -BeExactly '610400'
                 $saved.env.UNRELATED | Should -BeExactly 'keep-me'
                 $saved.permissions.allow | Should -Contain 'Read'
             }
@@ -2337,7 +2571,43 @@ Describe 'Copilot module' {
             Test-Path $intent | Should -BeFalse
         }
 
-        It 'recovers a previously ready shim and resets the budget after stable uptime' {
+        It 'requires controlled recovery after a shim crash with a draining backend' {
+            $watcher = Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-process-watch.ps1'
+            $log = Join-Path $TestDrive 'draining-backend-lifecycle.jsonl'
+            $ready = Join-Path $TestDrive 'draining-backend.ready'
+            'ready' | Set-Content -LiteralPath $ready
+            Mock Invoke-RestMethod { throw 'no recovery probes should run' }
+            $child = Start-Process -FilePath (Get-Command pwsh).Source -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Milliseconds 100; exit 7') -PassThru
+            & $watcher -ProcessId $child.Id -Component shim -LogPath $log -IntentPath (Join-Path $TestDrive 'draining-backend.intent') `
+                -ReadyPath $ready -Package '@jeffreycao/copilot-api@2.5.2' -Version 2.5.2 -Port 4142
+            $rows = @(Get-Content $log | ForEach-Object { $_ | ConvertFrom-Json })
+            ($rows.event -join ',') | Should -BeExactly 'unexpected_exit,recovery_required'
+            $rows[1].detail | Should -Match 'automatic shim-only recovery is disabled'
+            Should -Invoke Invoke-RestMethod -Times 0 -Exactly
+        }
+
+        It 'clears the shared admission marker only after both processes and ports are gone' {
+            InModuleScope Copilot {
+                $marker = Join-Path $TestDrive 'test-metrics.sqlite.admission.json'
+                Mock Get-CopilotAdmissionPath { $marker }
+                Mock Test-CopilotAlive { $false }
+                Mock Test-CopilotShimAlive { $false }
+                Mock Get-CopilotPortOwner { [pscustomobject]@{ Owner = 'free'; Pids = @() } }
+                Mock Get-Process { [pscustomobject]@{ Id = 24680 } }
+                'opaque shared state' | Set-Content $marker
+                Clear-CopilotAdmissionAfterStop -ProcessId @(24680) -ErrorAction SilentlyContinue | Should -BeFalse
+                Test-Path $marker | Should -BeTrue
+                Mock Get-Process { $null }
+                Mock Get-CopilotPortOwner { [pscustomobject]@{ Owner = 'unknown'; Pids = @() } }
+                Clear-CopilotAdmissionAfterStop -ProcessId @(24680) -ErrorAction SilentlyContinue | Should -BeFalse
+                Test-Path $marker | Should -BeTrue
+                Mock Get-CopilotPortOwner { [pscustomobject]@{ Owner = 'free'; Pids = @() } }
+                Clear-CopilotAdmissionAfterStop -ProcessId @(24680) | Should -BeTrue
+                Test-Path $marker | Should -BeFalse
+            }
+        }
+
+        It 'recovers a previously ready legacy shim and resets the budget after stable uptime' {
             $watcher = Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-process-watch.ps1'
             $log = Join-Path $TestDrive 'recovery-lifecycle.jsonl'
             $intent = Join-Path $TestDrive 'recovery.intent'
@@ -2827,10 +3097,31 @@ $m.Dispose()
     }
 
     Context 'Responses compatibility shim' {
+        BeforeEach {
+            $script:sharedShimEnv = @{}
+            $isolated = @{
+                COPILOT_SHIM_PORT = '0'
+                COPILOT_SHIM_HOST = '127.0.0.1'
+                COPILOT_SHIM_UPSTREAM = 'http://127.0.0.1:0'
+                COPILOT_SHIM_METRICS_DB = (Join-Path $TestDrive "shim-$([guid]::NewGuid()).sqlite")
+                COPILOT_API_SQLITE_DB_PATH = (Join-Path $TestDrive "tokens-$([guid]::NewGuid()).sqlite")
+            }
+            foreach ($key in $isolated.Keys) {
+                $script:sharedShimEnv[$key] = [Environment]::GetEnvironmentVariable($key)
+                Set-Item "env:$key" $isolated[$key]
+            }
+        }
+        AfterEach {
+            foreach ($key in $script:sharedShimEnv.Keys) {
+                if ($null -eq $script:sharedShimEnv[$key]) { Remove-Item "env:$key" -ErrorAction SilentlyContinue }
+                else { Set-Item "env:$key" $script:sharedShimEnv[$key] }
+            }
+        }
+
         It 'matches the reviewed Unix shim artifact without a sibling checkout' {
             $shimContract = [ordered]@{
-                UnixSourceCommit = 'a42be888be2eb5f027f802391709b2d646383844'
-                Sha256 = 'D05632B0863EA8A63E5E78EE50301B188E93896812928F91738147E2C3CED31A'
+                UnixSourceCommit = 'e97e082a72687022ccd286f908f4b5b8c74f07e6'
+                Sha256 = 'D0912C4FEF76D74896E161B03CD64D28A0B1F6597CF7490D5613840EFE014749'
             }
             $windowsShim = Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-throttle-shim.js'
             $shimContract.UnixSourceCommit | Should -Match '^[0-9a-f]{40}$'
@@ -2941,11 +3232,14 @@ console.log(JSON.stringify({
                 [System.IO.File]::WriteAllText($testScript, @'
 import { pathToFileURL } from "node:url";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+if (!process.argv[3]) throw new Error("temporary metrics database is required before importing the shim");
 const upstream = Bun.serve({
+  hostname: "127.0.0.1",
   port: 0,
   idleTimeout: 60,
   async fetch(req) {
     const url = new URL(req.url);
+    if (req.method === "GET") return Response.json({ data: [] });
     await sleep(Number(url.searchParams.get("delay") ?? 0));
     if (url.searchParams.get("mode") === "status") {
       return new Response('{"error":"nope"}', {
@@ -2959,12 +3253,18 @@ const upstream = Bun.serve({
   },
 });
 process.env.COPILOT_SHIM_PORT = "0";
-process.env.COPILOT_SHIM_UPSTREAM = `http://localhost:${upstream.port}`;
+process.env.COPILOT_SHIM_HOST = "127.0.0.1";
+process.env.COPILOT_SHIM_UPSTREAM = `http://127.0.0.1:${upstream.port}`;
+process.env.COPILOT_SHIM_METRICS_DB = process.argv[3];
+process.env.COPILOT_API_SQLITE_DB_PATH = `${process.argv[3]}.tokens`;
+process.env.COPILOT_SHIM_BACKEND_HEADERS_TIMEOUT_MS = "1000";
+process.env.COPILOT_SHIM_BACKEND_INACTIVITY_TIMEOUT_MS = "1000";
 process.env.COPILOT_SHIM_PING_MS = "150";
 process.env.COPILOT_SHIM_PING_AFTER_MS = "100";
 process.env.COPILOT_SHIM_STALL_MS = "5000";
 const { startServer } = await import(pathToFileURL(process.argv[2]).href);
 const shim = startServer();
+if ([upstream.port, shim.port].some((port) => port < 1024 || [4141, 4142].includes(port))) throw new Error("fixture requires isolated ephemeral ports");
 const call = async (query, stream = true) => {
   const response = await fetch(`http://localhost:${shim.port}/v1/messages${query}`, {
     method: "POST",
@@ -2991,7 +3291,7 @@ shim.stop(true);
 upstream.stop(true);
 '@, [System.Text.UTF8Encoding]::new($false))
 
-                $output = & bun $testScript $shim
+                $output = & bun $testScript $shim (Join-Path $TestDrive 'keepalive-metrics.sqlite')
                 $LASTEXITCODE | Should -Be 0
                 $jsonLine = @($output | Where-Object { "$_" -like '{"slow"*' })[-1]
                 $jsonLine | Should -Not -BeNullOrEmpty
@@ -3055,6 +3355,20 @@ upstream.stop(true);
                 ($scenario.completed -eq $false) | Should -BeFalse -Because $scenario.name
             }
             ($result.results | Where-Object name -EQ 'downstream-slow-abort').sawKeepalive | Should -BeTrue
+            ($result.results | Where-Object name -EQ 'downstream-post-complete-close').events | Should -Contain 'response.completed'
+        }
+
+        It 'preserves admission through backend draining and controlled recovery' {
+            if (-not (Get-Command bun -ErrorAction SilentlyContinue)) { Set-ItResult -Skipped -Because 'bun is unavailable'; return }
+            $shim = (Resolve-Path (Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-throttle-shim.js')).Path
+            $fixture = (Resolve-Path (Join-Path $PSScriptRoot 'fixtures' 'copilot-shim-lifecycle.mjs')).Path
+            $prefix = Join-Path $TestDrive 'lifecycle-metrics'
+            $output = & bun $fixture $shim $prefix
+            $LASTEXITCODE | Should -Be 0
+            $jsonLine = @($output | Where-Object { "$_" -like '{"ok":true,"scenarios"*' })[-1]
+            $result = $jsonLine | ConvertFrom-Json
+            $result.ok | Should -BeTrue
+            $result.scenarios.Count | Should -Be 5
         }
     }
 }
