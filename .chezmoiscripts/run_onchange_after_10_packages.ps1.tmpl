@@ -66,6 +66,9 @@ function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 function Have($n) { [bool](Get-Command $n -ErrorAction SilentlyContinue) }
 function Register-Failure($what) { $script:Failures.Add($what); Write-Warning "FAILED (skipped): $what" }
 
+# Minimum versions for runtimes whose older builds have proven native faults.
+{{ include "scripts/scoop-minimum-version.ps1" }}
+
 # Shared with profile.d/12_pueue.ps1: install-time service setup plus the
 # no-admin detached-daemon fallback use the same readiness checks.
 {{ include "scripts/pueue-bootstrap.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
@@ -386,6 +389,11 @@ Scoop-Install @(
 # coherent current pair directly, so PATH shadows cannot select an old version.
 try { $null = Show-UnmanagedPueueShadows }
 catch { Write-Warning "Pueue shadow inspection failed (nonfatal): $_" }
+
+# Bun 1.3.14 on Windows ARM64 can segfault in Bun.serve after a completed
+# streaming response and later keep-alive disconnect. 1.4.0 contains the
+# upstream RequestContext/onAborted lifetime fix used by copilot-proxy.
+$null = Ensure-ScoopMinimumVersion -App bun -MinimumVersion '1.4.0'
 
 # Make the newly installed client immediately usable. Elevated applies install
 # Pueue 4's built-in Windows service (autostart at login); non-elevated applies

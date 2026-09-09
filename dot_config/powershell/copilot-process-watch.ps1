@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory)] [int] $ProcessId,
     [Parameter(Mandatory)] [ValidateSet('proxy', 'shim')] [string] $Component,
     [Parameter(Mandatory)] [string] $LogPath,
+    [string] $FallbackLogPath,
     [Parameter(Mandatory)] [string] $IntentPath,
     [string] $ReadyPath,
     [string] $Package,
@@ -15,6 +16,8 @@ param(
     [string] $ShimHealthUri,
     [string] $ShimStatePath,
     [string] $StartedAt,
+    [string] $StdoutPath,
+    [string] $StderrPath,
     [int] $RecoveryAttempt = 0,
     [int[]] $RecoveryDelaySeconds = @(1, 5, 30)
 )
@@ -26,6 +29,7 @@ function Write-WatchEvent {
         [Parameter(Mandatory)] [string] $EventName,
         [Nullable[int]] $ExitCode,
         [string] $Detail,
+        $CrashSummary,
         [Nullable[int]] $Attempt,
         [Nullable[int]] $UptimeSeconds
     )
@@ -39,17 +43,54 @@ function Write-WatchEvent {
         version = $Version
         exit_code = $ExitCode
         detail = $Detail
+        crash_summary = $CrashSummary
         attempt = $Attempt
         uptime_seconds = $UptimeSeconds
     }
-    $directory = Split-Path -Parent $LogPath
-    [System.IO.Directory]::CreateDirectory($directory) | Out-Null
-    $line = ($row | ConvertTo-Json -Compress) + [Environment]::NewLine
+    $line = ($row | ConvertTo-Json -Compress -Depth 5) + [Environment]::NewLine
+    $written = $false
     for ($writeAttempt = 0; $writeAttempt -lt 10; $writeAttempt++) {
         try {
+            [System.IO.Directory]::CreateDirectory((Split-Path -Parent $LogPath)) | Out-Null
             [System.IO.File]::AppendAllText($LogPath, $line, [System.Text.UTF8Encoding]::new($false))
+            $written = $true
             break
         } catch { Start-Sleep -Milliseconds 100 }
+    }
+    if (-not $written) {
+        $fallback = if ([string]::IsNullOrWhiteSpace($FallbackLogPath)) { "$LogPath.fallback" } else { $FallbackLogPath }
+        try {
+            [System.IO.Directory]::CreateDirectory((Split-Path -Parent $fallback)) | Out-Null
+            [System.IO.File]::AppendAllText($fallback, $line, [System.Text.UTF8Encoding]::new($false))
+        } catch { $null = $_ }
+    }
+}
+
+function Get-NativeCrashSummary {
+    if ($Component -ne 'shim' -or [string]::IsNullOrWhiteSpace($StderrPath) -or -not (Test-Path -LiteralPath $StderrPath -PathType Leaf)) {
+        return $null
+    }
+    try {
+        $lines = @(
+            Get-Content -LiteralPath $StderrPath -Tail 80 -ErrorAction Stop |
+                ForEach-Object { ([string]$_ -replace '\s+', ' ').Trim() } |
+                Where-Object { $_ -match '^(?:Bun v|Windows v|panic\(|oh no: Bun has crashed\.)' -or $_ -match '^https://bun\.report/' } |
+                Select-Object -Last 8
+        )
+        if ($lines.Count -eq 0) { return $null }
+        [pscustomobject]@{
+            stream = 'stderr'
+            generation = 0
+            path = $StderrPath
+            lines = $lines
+        }
+    } catch {
+        [pscustomobject]@{
+            stream = 'stderr'
+            generation = 0
+            path = $StderrPath
+            lines = @("crash log read failed: $($_.Exception.Message -replace '\s+', ' ')")
+        }
     }
 }
 
@@ -92,7 +133,8 @@ try {
 } catch { $null = $_ }
 
 $exitEvent = if ($deliberate) { 'deliberate_stop' } elseif ($observed) { 'unexpected_exit' } else { 'watch_failed' }
-Write-WatchEvent -EventName $exitEvent -ExitCode $exitCode -Attempt $RecoveryAttempt -UptimeSeconds $uptimeSeconds
+$crashSummary = if ($exitEvent -eq 'unexpected_exit') { Get-NativeCrashSummary } else { $null }
+Write-WatchEvent -EventName $exitEvent -ExitCode $exitCode -CrashSummary $crashSummary -Attempt $RecoveryAttempt -UptimeSeconds $uptimeSeconds
 
 if ($deliberate -or -not $observed -or $Component -ne 'shim') { return }
 if (-not $wasReady) {

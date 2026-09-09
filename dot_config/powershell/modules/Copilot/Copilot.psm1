@@ -65,6 +65,7 @@ Set-StrictMode -Off
 
 # ------------------------------------------------------------------ helpers ---
 $script:CopilotDefaultPkg = '@jeffreycao/copilot-api@2.5.2'
+$script:CopilotMinimumShimBunVersion = '1.4.0'
 $script:CopilotVerifiedIntegrities = @{
     '2.5.2' = 'sha512-bMVpuniekbKKq0LMtmZZJKjDVpaOODAHs19akwkP/hyGfgcx+YK0X22jfB46lQb0p9EoywDrJMyTcAfLr18jEQ=='
     '2.3.4' = 'sha512-yRMH3wQAH74a0K/3Gl0S3itSL7Dza/7qOGG32PXV3tKRd4feG3utpuIQf42HhnhIdcBwMz3qhmeWBPQrPxZQMQ=='
@@ -72,6 +73,33 @@ $script:CopilotVerifiedIntegrities = @{
     '2.1.0' = 'sha512-9/Ro1UzrYT/erB7eR/rf61XHFyc5TOwQ94B6ij/Wu91TD1hnmbuqYu/PavKGUQ7YDBVCXFENRRvQSpTkS0X3eA=='
 }
 function script:Get-CopilotPort { if ($env:COPILOT_PROXY_PORT) { $env:COPILOT_PROXY_PORT } else { '4141' } }
+function script:ConvertTo-CopilotSemanticVersion {
+    param([string] $Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $null }
+    $normalized = $Value.Trim()
+    if ($normalized -notmatch '^v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$') { return $null }
+    try { [System.Management.Automation.SemanticVersion]::new($Matches[1]) } catch { $null }
+}
+function script:Get-CopilotBunRuntime {
+    $minimum = ConvertTo-CopilotSemanticVersion $script:CopilotMinimumShimBunVersion
+    $command = Get-Command bun -ErrorAction SilentlyContinue
+    if (-not $command) {
+        return [pscustomobject]@{
+            Available = $false; Path = $null; VersionText = $null; Version = $null
+            Minimum = $script:CopilotMinimumShimBunVersion; Compatible = $false; Reason = 'bun not found'
+        }
+    }
+    $commandPath = if ($command.Source) { [string]$command.Source } elseif ($command.Path) { [string]$command.Path } else { [string]$command.Name }
+    $versionText = $null
+    try { $versionText = [string](@(& $commandPath --version 2>$null | Select-Object -First 1)[0]) } catch { $null = $_ }
+    $version = ConvertTo-CopilotSemanticVersion $versionText
+    $compatible = $null -ne $version -and $version.CompareTo($minimum) -ge 0
+    [pscustomobject]@{
+        Available = $true; Path = $commandPath; VersionText = $versionText; Version = $version
+        Minimum = $script:CopilotMinimumShimBunVersion; Compatible = $compatible
+        Reason = if (-not $version) { 'version could not be parsed' } elseif (-not $compatible) { 'version is below the shim minimum' } else { $null }
+    }
+}
 function script:Get-CopilotPkgSelectionState { Join-Path (Get-XdgState) 'copilot-proxy/package.json' }
 function script:Get-CopilotPkgSelection {
     $path = Get-CopilotPkgSelectionState
@@ -1013,7 +1041,40 @@ function script:Get-CopilotBackendShimEnv {
     $result
 }
 function script:Get-CopilotLifecycleLog { Join-Path (Get-XdgState) 'copilot-proxy/lifecycle.jsonl' }
+function script:Get-CopilotWatcherFallbackLog { Join-Path (Get-XdgState) 'copilot-proxy/watcher-failures.jsonl' }
 function script:Get-CopilotProcessWatchScript { Join-Path (Get-XdgConfig) 'powershell/copilot-process-watch.ps1' }
+function script:Resolve-CopilotShimLogRequest {
+    param([string[]] $Argument = @())
+    $stream = 'stdout'
+    $index = 0
+    if ($Argument.Count -gt 0 -and $Argument[0] -eq 'err') { $stream = 'stderr'; $index++ }
+
+    $tail = 40
+    if ($Argument.Count -gt $index) {
+        $parsed = 0
+        if (-not [int]::TryParse($Argument[$index], [ref]$parsed) -or $parsed -lt 1) {
+            throw 'usage: copilot-proxy logs shim [err] [N] [generation 0..3]'
+        }
+        $tail = $parsed
+        $index++
+    }
+
+    $generation = 0
+    if ($Argument.Count -gt $index) {
+        $parsed = 0
+        if (-not [int]::TryParse($Argument[$index], [ref]$parsed) -or $parsed -lt 0 -or $parsed -gt 3) {
+            throw 'usage: copilot-proxy logs shim [err] [N] [generation 0..3]'
+        }
+        $generation = $parsed
+        $index++
+    }
+    if ($Argument.Count -gt $index) { throw 'usage: copilot-proxy logs shim [err] [N] [generation 0..3]' }
+
+    $path = Get-CopilotShimLog
+    if ($stream -eq 'stderr') { $path = "$path.err" }
+    if ($generation -gt 0) { $path = "$path.$generation" }
+    [pscustomobject]@{ Path = $path; Tail = $tail; Generation = $generation; Stream = $stream }
+}
 function script:Get-CopilotStopIntent {
     param([Parameter(Mandatory)] [string] $Component, [Parameter(Mandatory)] [int] $ProcessId)
     Join-Path (Get-XdgState) "copilot-proxy/stop-$Component-$ProcessId.intent"
@@ -1740,6 +1801,7 @@ function script:Start-CopilotProcessWatcher {
         COPILOT_WATCH_PID = [string]$Process.Id
         COPILOT_WATCH_COMPONENT = $Component
         COPILOT_WATCH_LOG = Get-CopilotLifecycleLog
+        COPILOT_WATCH_FALLBACK_LOG = Get-CopilotWatcherFallbackLog
         COPILOT_WATCH_INTENT = Get-CopilotStopIntent -Component $Component -ProcessId $Process.Id
         COPILOT_WATCH_READY = Get-CopilotReadyMarker -Component $Component -ProcessId $Process.Id
         COPILOT_WATCH_PACKAGE = if ($metadata) { [string]$metadata.Name } else { '' }
@@ -1752,11 +1814,13 @@ function script:Start-CopilotProcessWatcher {
         COPILOT_WATCH_SHIM_STATE = Get-CopilotShimState
         COPILOT_WATCH_STARTED = $StartedAt.ToUniversalTime().ToString('o')
         COPILOT_WATCH_RECOVERY = [string]$RecoveryAttempt
+        COPILOT_WATCH_STDOUT = if ($Component -eq 'shim') { Get-CopilotShimLog } else { '' }
+        COPILOT_WATCH_STDERR = if ($Component -eq 'shim') { "$(Get-CopilotShimLog).err" } else { '' }
     }
     Remove-Item -LiteralPath $watchEnv.COPILOT_WATCH_INTENT, $watchEnv.COPILOT_WATCH_READY -Force -ErrorAction SilentlyContinue
     $saved = @{}
     foreach ($key in $watchEnv.Keys) { $saved[$key] = [Environment]::GetEnvironmentVariable($key) }
-    $command = '& $env:COPILOT_WATCH_SCRIPT -ProcessId ([int]$env:COPILOT_WATCH_PID) -Component $env:COPILOT_WATCH_COMPONENT -LogPath $env:COPILOT_WATCH_LOG -IntentPath $env:COPILOT_WATCH_INTENT -ReadyPath $env:COPILOT_WATCH_READY -Package $env:COPILOT_WATCH_PACKAGE -Version $env:COPILOT_WATCH_VERSION -Port ([int]$env:COPILOT_WATCH_PORT) -ModulePath $env:COPILOT_WATCH_MODULE -ProxyHealthUri $env:COPILOT_WATCH_PROXY_HEALTH -ShimHealthUri $env:COPILOT_WATCH_SHIM_HEALTH -ShimStatePath $env:COPILOT_WATCH_SHIM_STATE -StartedAt $env:COPILOT_WATCH_STARTED -RecoveryAttempt ([int]$env:COPILOT_WATCH_RECOVERY)'
+    $command = '& $env:COPILOT_WATCH_SCRIPT -ProcessId ([int]$env:COPILOT_WATCH_PID) -Component $env:COPILOT_WATCH_COMPONENT -LogPath $env:COPILOT_WATCH_LOG -FallbackLogPath $env:COPILOT_WATCH_FALLBACK_LOG -IntentPath $env:COPILOT_WATCH_INTENT -ReadyPath $env:COPILOT_WATCH_READY -Package $env:COPILOT_WATCH_PACKAGE -Version $env:COPILOT_WATCH_VERSION -Port ([int]$env:COPILOT_WATCH_PORT) -ModulePath $env:COPILOT_WATCH_MODULE -ProxyHealthUri $env:COPILOT_WATCH_PROXY_HEALTH -ShimHealthUri $env:COPILOT_WATCH_SHIM_HEALTH -ShimStatePath $env:COPILOT_WATCH_SHIM_STATE -StartedAt $env:COPILOT_WATCH_STARTED -RecoveryAttempt ([int]$env:COPILOT_WATCH_RECOVERY) -StdoutPath $env:COPILOT_WATCH_STDOUT -StderrPath $env:COPILOT_WATCH_STDERR'
     $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($command))
     try {
         foreach ($key in $watchEnv.Keys) { Set-Item "env:$key" $watchEnv[$key] }
@@ -1808,10 +1872,15 @@ function script:Invoke-CopilotShimStart {
         Write-Error '  free it, or pick a different port with COPILOT_SHIM_PORT.'
         return $false
     }
-    if (Test-CopilotShimAlive) { return $true }
-    if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
-        Write-Error "copilot-proxy: shim needs 'bun' (scoop install bun)"; return $false
+    $runtime = Get-CopilotBunRuntime
+    if (-not $runtime.Compatible) {
+        $found = if ($runtime.Available) { $runtime.VersionText } else { 'not installed' }
+        Write-CopilotLifecycleEvent -Component shim -EventName runtime_blocked -Port $port -Detail "Bun $found; requires >= $($runtime.Minimum)"
+        Write-Error "copilot-proxy: throttle shim requires Bun >= $($runtime.Minimum); found $found."
+        Write-Error '  Bun 1.3.14 can crash in streaming-response teardown; run: scoop update bun'
+        return $false
     }
+    if (Test-CopilotShimAlive) { return $true }
     $script = Get-CopilotShimScript
     if (-not (Test-Path $script)) { Write-Error "copilot-proxy: shim script not found at $script"; return $false }
     if ($holder.Owner -eq 'ours') {
@@ -1846,7 +1915,7 @@ function script:Invoke-CopilotShimStart {
         # Start-Process flattens ArgumentList into one command line. Windows paths
         # cannot contain quotes, so wrapping is sufficient to preserve spaces.
         $scriptArgument = if ($script -match '\s') { "`"$script`"" } else { $script }
-        $p = Start-Process -FilePath 'bun' -ArgumentList @($scriptArgument) -PassThru -WindowStyle Hidden `
+        $p = Start-Process -FilePath $runtime.Path -ArgumentList @($scriptArgument) -PassThru -WindowStyle Hidden `
             -RedirectStandardOutput (Get-CopilotShimLog) -RedirectStandardError "$(Get-CopilotShimLog).err"
     } finally {
         foreach ($k in $shimEnv.Keys) {
@@ -1953,6 +2022,12 @@ function script:Invoke-CopilotShimCli {
         Write-Error "copilot-proxy: shim script not found at $scriptPath"
         return
     }
+    $runtime = Get-CopilotBunRuntime
+    if (-not $runtime.Compatible) {
+        $found = if ($runtime.Available) { $runtime.VersionText } else { 'not installed' }
+        Write-Error "copilot-proxy: shim $Command requires Bun >= $($runtime.Minimum); found $found."
+        return
+    }
     $shimEnv = @{
         COPILOT_SHIM_PORT = Get-CopilotShimPort
         COPILOT_SHIM_METRICS_DB = Get-CopilotShimMetricsDb
@@ -1962,7 +2037,7 @@ function script:Invoke-CopilotShimCli {
     foreach ($key in $shimEnv.Keys) { $saved[$key] = [Environment]::GetEnvironmentVariable($key) }
     try {
         foreach ($key in $shimEnv.Keys) { Set-Item "env:$key" $shimEnv[$key] }
-        & bun $scriptPath $Command @Argument
+        & $runtime.Path $scriptPath $Command @Argument
         if ($LASTEXITCODE -ne 0) { Write-Error "copilot-proxy: shim $Command failed with exit code $LASTEXITCODE" }
     } finally {
         foreach ($key in $shimEnv.Keys) {
@@ -2176,6 +2251,12 @@ function copilot-proxy {
             copilot-proxy start
         }
         'status' {
+            $runtime = Get-CopilotBunRuntime
+            $runtimeText = if ($runtime.Compatible) {
+                "$($runtime.VersionText) ($($runtime.Path)); shim compatible"
+            } else {
+                "$(if ($runtime.Available) { $runtime.VersionText } else { 'not installed' }); shim requires >= $($runtime.Minimum)"
+            }
             if (Test-CopilotAlive) {
                 $catalog = Get-CopilotModelCatalog
                 $rawIds = Get-CopilotCatalogIds $catalog
@@ -2183,6 +2264,7 @@ function copilot-proxy {
                 $claudeText = if ($claude.Count -gt 0) { $claude -join ' ' } else { 'none' }
                 Write-Host "copilot-proxy: RUNNING on $(Get-CopilotBase)"
                 Write-Host "  models: $($rawIds.Count) served; Claude: $claudeText"
+                Write-Host "  bun:    $runtimeText"
                 if (Get-CopilotShimEnabled) {
                     if (Test-CopilotShimAlive) {
                         Write-Host "  shim:   ON, up on $(Get-CopilotShimBase)  -> clients use this"
@@ -2201,18 +2283,23 @@ function copilot-proxy {
                 } else { Write-Host "  shim:   off  (enable: copilot-proxy shim on)" }
             } else {
                 Write-Host "copilot-proxy: not running on port $port  (start: copilot-proxy start)"
+                Write-Host "  bun:    $runtimeText"
             }
         }
         { $_ -in 'doctor', 'test' } { Invoke-CopilotDoctor -Live:($Argv -contains '--live') }
         'logs' {
             if ($Argv.Count -ge 2 -and $Argv[1] -eq 'lifecycle') {
-                $lf = Get-CopilotLifecycleLog; $n = if ($Argv.Count -ge 3) { [int]$Argv[2] } else { 40 }
-            } elseif ($Argv.Count -ge 2 -and $Argv[1] -eq 'shim') {
-                if ($Argv.Count -ge 3 -and $Argv[2] -eq 'err') {
-                    $lf = "$(Get-CopilotShimLog).err"; $n = if ($Argv.Count -ge 4) { [int]$Argv[3] } else { 40 }
-                } else {
-                    $lf = Get-CopilotShimLog; $n = if ($Argv.Count -ge 3) { [int]$Argv[2] } else { 40 }
+                if ($Argv.Count -gt 3) { Write-Error 'usage: copilot-proxy logs lifecycle [N]'; return }
+                $n = 40
+                if ($Argv.Count -eq 3 -and (-not [int]::TryParse($Argv[2], [ref]$n) -or $n -lt 1)) {
+                    Write-Error 'usage: copilot-proxy logs lifecycle [N]'; return
                 }
+                $lf = Get-CopilotLifecycleLog
+            } elseif ($Argv.Count -ge 2 -and $Argv[1] -eq 'shim') {
+                try { $selection = Resolve-CopilotShimLogRequest -Argument @($Argv | Select-Object -Skip 2) }
+                catch { Write-Error $_.Exception.Message; return }
+                $lf = $selection.Path; $n = $selection.Tail
+                Write-Host "copilot-proxy: shim $($selection.Stream) generation $($selection.Generation) -> $lf"
             } elseif ($Argv.Count -ge 2 -and $Argv[1] -eq 'err') {
                 $lf = "$logf.err"; $n = if ($Argv.Count -ge 3) { [int]$Argv[2] } else { 40 }
             } else {
@@ -2220,7 +2307,6 @@ function copilot-proxy {
                 if ($Argv.Count -ge 3 -and $Argv[2] -in '1', '2', '3') { $lf = "$logf.$($Argv[2])" }
             }
             if (Test-Path $lf) { Get-Content -Tail $n $lf }
-            elseif (Test-Path "$lf.err") { Get-Content -Tail $n "$lf.err" }
             else { Write-Error "copilot-proxy: no log file at $lf" }
         }
         { $_ -in 'stats', 'events' } {
@@ -2323,7 +2409,7 @@ function copilot-proxy {
             }
         }
         { $_ -in '-h', '--help', 'help' } {
-            Write-Host "Usage: copilot-proxy [start|stop|restart|status|doctor [--live]|logs [err|shim [err]|lifecycle|N [gen]]|shim [on|off|status]|limiter [status|set|reset]|stats|events|quota|bench|update VERSION|rollback|whoami|auth|reinstall]"
+            Write-Host "Usage: copilot-proxy [start|stop|restart|status|doctor [--live]|logs [err|shim [err] [N] [gen 0..3]|lifecycle|N [gen]]|shim [on|off|status]|limiter [status|set|reset]|stats|events|quota|bench|update VERSION|rollback|whoami|auth|reinstall]"
             Write-Host "  doctor (alias: test)  diagnose prereqs, package, auth, proxy, Claude catalog, Codex Apps"
             Write-Host "                        (direct vs via proxy), upstream. --live costs 1 quota unit."
             Write-Host "  COPILOT_HTTP_PROXY    auto|always|never|http://127.0.0.1:PORT  (default auto)"
@@ -2355,7 +2441,16 @@ function script:Invoke-CopilotDoctor {
     $proxyAlive = $null -ne $catalog
 
     Write-Host 'Prerequisites'
-    foreach ($t in 'bun', 'node', 'uv') {
+    $runtime = Get-CopilotBunRuntime
+    if (-not $runtime.Available) {
+        BAD 'bun' 'not found'; HINT 'scoop install bun'
+    } elseif (-not $runtime.Compatible) {
+        BAD 'bun' "$($runtime.VersionText) at $($runtime.Path) — throttle shim requires >= $($runtime.Minimum)"
+        HINT 'scoop update bun'
+    } else {
+        OK 'bun' "$($runtime.VersionText) at $($runtime.Path) — shim compatible"
+    }
+    foreach ($t in 'node', 'uv') {
         $c = Get-Command $t -ErrorAction SilentlyContinue
         if ($c) { OK $t $c.Source } elseif ($t -eq 'uv') { NOTE $t 'not found — semsearch needs it' } else { BAD $t 'not found' }
     }

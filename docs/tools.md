@@ -29,7 +29,7 @@ read-only CLI provenance and duplicate-installation checks. It requires no extra
 | starship | prompt |
 | node | JS runtime (`nodejs-lts`) |
 | uv | Python package/runtime manager |
-| bun | JS runtime + package manager (backs copilot-proxy) |
+| bun (>= 1.4.0) | JS runtime + package manager (backs copilot-proxy; older installed versions are upgraded during apply) |
 | just | task runner (this repo's `justfile`) |
 | make | GNU make |
 | gcc | C compiler for Neovim tree-sitter parsers (MinGW-w64; nvim-treesitter's `main` branch compiles via `tree-sitter build` → Rust `cc` crate, which needs gcc/clang/MSVC — **not** zig) |
@@ -38,7 +38,10 @@ read-only CLI provenance and duplicate-installation checks. It requires no extra
 | gnupg | `gpg` (git commit signing, verification) |
 
 Runtimes are **native (scoop), not mise** — see [rationale](rationale.md#runtimes-scoop-natives-not-mise-on-windows).
-`node` (`nodejs-lts`) and `bun` come from scoop; `go`, `rust` (rustup), `ruby`
+`node` (`nodejs-lts`) and `bun` come from scoop. Bun is the one intentional
+minimum-version exception to the install-only policy: apply upgrades it when it
+is below 1.4.0 because older `Bun.serve` builds can crash the Copilot streaming
+shim. `go`, `rust` (rustup), `ruby`
 are added when **Extra runtimes** is enabled. A default **Python** is uv-managed:
 `uv python install --default --preview` puts `python`/`python3` in `~/.local/bin`
 (on PATH ahead of the Store's `python.exe` app-alias), so `python`, `uv run`, and

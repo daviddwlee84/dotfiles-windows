@@ -12,6 +12,63 @@ BeforeAll {
 
 Describe 'Copilot module' {
 
+    Context 'shim Bun runtime floor' {
+        It 'orders stable and prerelease runtime versions semantically' {
+            InModuleScope Copilot {
+                (ConvertTo-CopilotSemanticVersion '1.3.14').CompareTo((ConvertTo-CopilotSemanticVersion '1.4.0')) | Should -BeLessThan 0
+                (ConvertTo-CopilotSemanticVersion '1.4.0-canary.1').CompareTo((ConvertTo-CopilotSemanticVersion '1.4.0')) | Should -BeLessThan 0
+                (ConvertTo-CopilotSemanticVersion 'v1.4.0').CompareTo((ConvertTo-CopilotSemanticVersion '1.4.0')) | Should -Be 0
+                (ConvertTo-CopilotSemanticVersion '1.10.0').CompareTo((ConvertTo-CopilotSemanticVersion '1.4.0')) | Should -BeGreaterThan 0
+                ConvertTo-CopilotSemanticVersion '1.4' | Should -BeNullOrEmpty
+            }
+        }
+
+        It 'blocks an outdated Bun before log rotation or child spawn' {
+            InModuleScope Copilot {
+                Mock Get-CopilotPortOwner { [pscustomobject]@{ Owner = 'free'; Pids = @(); Labels = @() } }
+                Mock Get-CopilotBunRuntime {
+                    [pscustomobject]@{ Available = $true; Path = 'old-bun.exe'; VersionText = '1.3.14'; Minimum = '1.4.0'; Compatible = $false }
+                }
+                Mock Write-CopilotLifecycleEvent {}
+                Mock Write-Error {}
+                Mock Rotate-CopilotLog { throw 'must not rotate evidence' }
+                Mock Start-Process { throw 'must not spawn' }
+
+                Invoke-CopilotShimStart | Should -BeFalse
+
+                Should -Invoke Write-CopilotLifecycleEvent -Times 1 -Exactly -ParameterFilter {
+                    $Component -eq 'shim' -and $EventName -eq 'runtime_blocked' -and $Detail -match '1\.3\.14.*1\.4\.0'
+                }
+                Should -Invoke Rotate-CopilotLog -Times 0 -Exactly
+                Should -Invoke Start-Process -Times 0 -Exactly
+            }
+        }
+
+        It 'uses the resolved compatible executable for the shim child' {
+            InModuleScope Copilot {
+                Mock Get-CopilotPortOwner { [pscustomobject]@{ Owner = 'free'; Pids = @(); Labels = @() } }
+                Mock Get-CopilotBunRuntime {
+                    [pscustomobject]@{ Available = $true; Path = 'C:\runtime\bun.exe'; VersionText = '1.4.0'; Minimum = '1.4.0'; Compatible = $true }
+                }
+                Mock Test-CopilotShimAlive { $script:spawned }
+                Mock Test-Path { $true }
+                Mock Rotate-CopilotLog {}
+                Mock Set-Content {}
+                Mock Write-CopilotLifecycleEvent {}
+                Mock Start-CopilotProcessWatcher {}
+                $script:spawned = $false
+                Mock Start-Process {
+                    $script:spawned = $true
+                    [pscustomobject]@{ Id = 9010 }
+                }
+
+                Invoke-CopilotShimStart | Should -BeTrue
+
+                Should -Invoke Start-Process -Times 1 -Exactly -ParameterFilter { $FilePath -eq 'C:\runtime\bun.exe' }
+            }
+        }
+    }
+
     Context 'profile module loading' {
         It 'forces a fresh module import so reload picks up deployed fixes' {
             $loader = Get-Content -Raw (Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'profile.d' '40_copilot.ps1')
@@ -2515,6 +2572,9 @@ Describe 'Copilot module' {
                 ) }
 
                 Mock Get-Command { [pscustomobject]@{ Source = [string]$Name } }
+                Mock Get-CopilotBunRuntime {
+                    [pscustomobject]@{ Available = $true; Path = 'bun'; VersionText = '1.4.0'; Minimum = '1.4.0'; Compatible = $true }
+                }
                 Mock Test-CopilotPkgReady { $true }
                 Mock Get-CopilotPkgMetadata { [pscustomobject]@{ Name = '@jeffreycao/copilot-api'; Version = '2.1.0' } }
                 Mock Get-CopilotPkgStampMetadata {
@@ -2547,6 +2607,31 @@ Describe 'Copilot module' {
                 Should -Invoke Get-CopilotModelCatalog -Times 1 -Exactly
                 Should -Invoke Invoke-WebRequest -Times 1 -Exactly -ParameterFilter { $Uri -eq $directMessagesUri }
                 Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Uri -like 'http://localhost:4999/*' }
+            }
+        }
+
+        It 'reports an outdated Bun as an actionable doctor failure' {
+            InModuleScope Copilot {
+                Mock Get-CopilotModelCatalog { $null }
+                Mock Get-CopilotBunRuntime {
+                    [pscustomobject]@{ Available = $true; Path = 'C:\old\bun.exe'; VersionText = '1.3.14'; Minimum = '1.4.0'; Compatible = $false }
+                }
+                Mock Get-Command { [pscustomobject]@{ Source = [string]$Name } }
+                Mock Get-CopilotPkgMetadata { $null }
+                Mock Get-CopilotPkgStampMetadata { $null }
+                Mock Get-CopilotPkgLaunch { $null }
+                Mock Test-CopilotPkgReady { $false }
+                Mock Get-CopilotToken { Join-Path $TestDrive 'missing-token' }
+                Mock Get-CopilotStaleInstaller { @() }
+                Mock Get-CopilotShimEnabled { $true }
+                Mock Test-CopilotShimAlive { $false }
+                Mock Resolve-CopilotHttpProxy { $null }
+                Mock Get-CopilotUpstreamModel { @() }
+
+                $text = (Invoke-CopilotDoctor 6>&1 | Out-String)
+
+                $text | Should -Match '1\.3\.14.*requires >= 1\.4\.0'
+                $text | Should -Match 'scoop update bun'
             }
         }
     }
@@ -2605,6 +2690,49 @@ Describe 'Copilot module' {
                 Clear-CopilotAdmissionAfterStop -ProcessId @(24680) | Should -BeTrue
                 Test-Path $marker | Should -BeFalse
             }
+        }
+
+        It 'retains only safe Bun crash lines before shim recovery can rotate stderr' {
+            $watcher = Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-process-watch.ps1'
+            $log = Join-Path $TestDrive 'crash-summary-lifecycle.jsonl'
+            $stderr = Join-Path $TestDrive 'shim.log.err'
+            @(
+                'Authorization: Bearer should-not-appear'
+                'prompt text should-not-appear'
+                'Bun v1.3.14 (Windows arm64)'
+                'Windows v.win11'
+                'panic(main thread): Segmentation fault at address 0x1234'
+                'oh no: Bun has crashed. This indicates a bug in Bun, not your code.'
+                'https://bun.report/1.3.14/abc123'
+            ) | Set-Content -LiteralPath $stderr
+            $child = Start-Process -FilePath (Get-Command pwsh).Source -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Milliseconds 100; exit 3') -PassThru
+
+            & $watcher -ProcessId $child.Id -Component shim -LogPath $log -IntentPath (Join-Path $TestDrive 'crash.intent') `
+                -Package pkg -Version 2.3.4 -Port 4142 -StderrPath $stderr
+
+            $row = Get-Content $log | Select-Object -First 1 | ConvertFrom-Json
+            $row.event | Should -BeExactly 'unexpected_exit'
+            $row.exit_code | Should -Be 3
+            $row.crash_summary.stream | Should -BeExactly 'stderr'
+            $row.crash_summary.generation | Should -Be 0
+            ($row.crash_summary.lines -join "`n") | Should -Match 'Segmentation fault'
+            ($row.crash_summary.lines -join "`n") | Should -Not -Match 'Authorization|prompt text'
+        }
+
+        It 'writes a fallback row when the primary lifecycle journal stays unwritable' {
+            $watcher = Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-process-watch.ps1'
+            $blockedDirectory = Join-Path $TestDrive 'not-a-directory'
+            $log = Join-Path $blockedDirectory 'lifecycle.jsonl'
+            $fallback = Join-Path $TestDrive 'watcher-failures.jsonl'
+            'file blocks directory creation' | Set-Content -LiteralPath $blockedDirectory
+            $child = Start-Process -FilePath (Get-Command pwsh).Source -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Milliseconds 100; exit 9') -PassThru
+
+            & $watcher -ProcessId $child.Id -Component proxy -LogPath $log -FallbackLogPath $fallback `
+                -IntentPath (Join-Path $TestDrive 'fallback.intent') -Package pkg -Version 2.3.4 -Port 4141
+
+            $row = Get-Content $fallback | Select-Object -First 1 | ConvertFrom-Json
+            $row.event | Should -BeExactly 'unexpected_exit'
+            $row.exit_code | Should -Be 9
         }
 
         It 'recovers a previously ready legacy shim and resets the budget after stable uptime' {
@@ -2769,6 +2897,36 @@ Export-ModuleMember -Function copilot-proxy
                 $output[-1] | Should -BeLike '*.err'
             }
         }
+
+        It 'selects current and rotated shim stderr generations explicitly' {
+            InModuleScope Copilot {
+                Mock Get-CopilotShimLog { Join-Path $TestDrive 'shim.log' }
+                $current = Resolve-CopilotShimLogRequest -Argument @('err', '80')
+                $rotated = Resolve-CopilotShimLogRequest -Argument @('err', '80', '2')
+                $stdout = Resolve-CopilotShimLogRequest -Argument @('20', '3')
+                $current.Path | Should -BeLike '*shim.log.err'
+                $current.Tail | Should -Be 80
+                $current.Generation | Should -Be 0
+                $rotated.Path | Should -BeLike '*shim.log.err.2'
+                $rotated.Generation | Should -Be 2
+                $stdout.Path | Should -BeLike '*shim.log.3'
+                { Resolve-CopilotShimLogRequest -Argument @('err', '40', '4') } | Should -Throw '*usage:*'
+            }
+        }
+
+        It 'reports Bun compatibility even while the proxy is stopped' {
+            InModuleScope Copilot {
+                Mock Get-Command { [pscustomobject]@{ Source = 'bun' } } -ParameterFilter { $Name -eq 'bun' }
+                Mock Get-CopilotBunRuntime {
+                    [pscustomobject]@{ Available = $true; Path = 'C:\runtime\bun.exe'; VersionText = '1.4.0'; Minimum = '1.4.0'; Compatible = $true }
+                }
+                Mock Test-CopilotAlive { $false }
+
+                $text = (copilot-proxy status 6>&1 | Out-String)
+
+                $text | Should -Match '1\.4\.0.*shim compatible'
+            }
+        }
     }
 
     # Protocol identity comes only from /_shim/health; OS inspection separately
@@ -2830,7 +2988,9 @@ Export-ModuleMember -Function copilot-proxy
                 # Not alive: an OLDER shim build answers nothing we recognise, which
                 # is what used to be misread as "port free" -> EADDRINUSE forever.
                 Mock Test-CopilotShimAlive { $script:ownerCalls -gt 1 }
-                Mock Get-Command { [pscustomobject]@{ Source = 'bun' } } -ParameterFilter { $Name -eq 'bun' }
+                Mock Get-CopilotBunRuntime {
+                    [pscustomobject]@{ Available = $true; Path = 'bun'; VersionText = '1.4.0'; Minimum = '1.4.0'; Compatible = $true }
+                }
                 Mock Test-Path { $true }
                 Mock Stop-Process {}
                 Mock Set-CopilotStopIntent {}
@@ -2917,7 +3077,9 @@ $m.Dispose()
             InModuleScope Copilot {
                 Mock Get-CopilotPortOwner { [pscustomobject]@{ Owner = 'free'; Pids = @(); Labels = @() } }
                 Mock Test-CopilotShimAlive { $script:spawned -eq $true }
-                Mock Get-Command { [pscustomobject]@{ Source = 'bun' } } -ParameterFilter { $Name -eq 'bun' }
+                Mock Get-CopilotBunRuntime {
+                    [pscustomobject]@{ Available = $true; Path = 'bun'; VersionText = '1.4.0'; Minimum = '1.4.0'; Compatible = $true }
+                }
                 Mock Test-Path { $true }
                 Mock Start-CopilotProcessWatcher {}
                 Mock Rotate-CopilotLog {}

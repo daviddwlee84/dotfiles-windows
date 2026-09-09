@@ -6,7 +6,8 @@ fork，讓 **GitHub Copilot 訂閱**可作為 **Claude Code** 與其他 Anthropi
 相容 client 的後端。
 
 模組部署在 `~/.config/powershell/modules/Copilot`，由 PowerShell profile 自動匯入。
-需要 Bun、Node/npm 與 Copilot 訂閱。
+需要 Bun **1.4.0 以上**、Node/npm 與 Copilot 訂閱。`chezmoi apply` 只會針對已安裝但
+過舊的 Bun 自動升級，不會重啟正在執行的 shim。
 
 ## 指令
 
@@ -16,7 +17,7 @@ fork，讓 **GitHub Copilot 訂閱**可作為 **Claude Code** 與其他 Anthropi
 | `copilot-proxy start` / `stop` / `restart` | 管理本機 proxy（port 4141） |
 | `copilot-proxy status` | 顯示 raw served 數量與 Claude 可用性 |
 | `copilot-proxy doctor [--live]` | 診斷套件、認證、proxy、catalog、roles、上游與 Codex Apps |
-| `copilot-proxy logs [N]` / `logs err` / `logs shim [err]` / `logs lifecycle` | 查看proxy/shim stdout、stderr或process lifecycle log |
+| `copilot-proxy logs [N]` / `logs err` / `logs shim [err] [N] [generation]` / `logs lifecycle` | 查看proxy stdout/stderr、目前或輪替後的shim stdout/stderr（generation 0–3），或process lifecycle log |
 | `copilot-proxy shim [on\|off]` | 切換 metrics/節流 shim（port 4142；預設 on） |
 | `copilot-proxy limiter [status\|set\|reset]` | 檢查或暫時調整執行中 shim 的 adaptive concurrency limit |
 | `copilot-proxy stats` / `events` | 查詢本機 metrics DB，process 停止時也可使用 |
@@ -298,9 +299,12 @@ Status 與 doctor 會顯示 routing state。關閉 shim 也會關閉這項轉譯
   `COPILOT_SHIM_MAX=8` 增加；403/429 會立刻降回floor並cooldown五分鐘。
   `copilot-proxy limiter status`、`limiter set --min 4 --max 8 --limit 6`、`limiter reset`
   只改目前process；要持久化range，請在restart前設定 `COPILOT_SHIM_MIN/MAX`。
-- Bun 1.3.14 尚未包含stream-body/peer-abort上游修復 `80729349` 與 `3da09633`。Server會安裝
-  compatibility rejection guard、吸收同步與非同步 cancellation failure，並讓SQLite metrics
-  write保持best-effort，避免單一Codex stream斷線就終止整個4142 process。
+- Bun 1.3.14 的 `Bun.serve` 有上游 use-after-free：streaming response 已完成後仍可能留下
+  stale `onAborted` callback，之後 keep-alive 斷線時再次呼叫。Bun commit
+  [`df4fe1e7`](https://github.com/oven-sh/bun/commit/df4fe1e7b609099d5fa6264e36c37a64932ee3ca)
+  修正 `RequestContext` lifetime，因此 Bun 1.4.0 是最低支援版本。Shim 啟動、離線 shim CLI、
+  `status` 與 `doctor` 都會擋住或回報不相容 runtime。JavaScript cancellation guard 與
+  best-effort SQLite write 仍保留作為縱深防禦；exception handler 無法修復 native memory corruption。
 - `stream:true` 經 grace period 後會收到 keepalive comment；成功 body 必須是 SSE，late
   failure 依 endpoint 送 Anthropic `error` 或 Responses `response.failed`。關掉 ping 不會
   關掉 stall watchdog。Timing/token rows 位於 `$XDG_STATE_HOME/copilot-proxy/metrics.sqlite`
@@ -314,7 +318,11 @@ Status 與 doctor 會顯示 routing state。關閉 shim 也會關閉這項轉譯
 狀態放在 `~/.local/state/copilot-proxy/`；device login 會把 GitHub token 存在
 `~/.local/share/copilot-api/github_token`，預設不印出內容。Detached watcher 會把spawn、ready、
 startup failure、exit code、package/version/PID/port，以及deliberate或unexpected shutdown
-append到`lifecycle.jsonl`。舊 backend 的 shim 曾經ready後意外退出時，最多會在1s/5s/30s後重啟三次，而且僅限
+append到`lifecycle.jsonl`。Shim 意外退出時，watcher 會在 recovery 輪替 log 前，只把 Bun
+version、OS、panic、crash banner 與 `bun.report` URL 等安全的 native crash marker 複製到
+`crash_summary`；不會複製 request、prompt、tool、token 或任意 stderr。Journal 重試後仍無法
+append時，同一筆結構化資料會寫到`watcher-failures.jsonl`。舊 backend 的 shim 曾經
+ready 後意外退出時，最多會在1s/5s/30s後重啟三次，而且僅限
 shim仍啟用、4141健康且4142仍down；穩定運行五分鐘會重置budget。Startup failure與deliberate
 stop不會重啟，watcher也不會重啟4141或fail open。Recovery另記錄`restart_scheduled`、
 `restart_succeeded`、`restart_failed`、`restart_suppressed`、`restart_exhausted`。
@@ -327,9 +335,9 @@ barrier 會阻擋新 inference，health 仍可查。先檢查 active／draining�
 或只重啟 shim 都會保留它。Wrapper 不會自動重啟 backend。
 
 用`copilot-proxy logs lifecycle`查看journal；request-level attempts與stream failure仍由
-`stats`/`events`查詢。Proxy與shim的stdout/stderr各自保留三代；即使stdout存在，`logs err`與
-`logs shim err`仍可直接查看stderr。套用新的shim檔不會reload已在記憶體中的Bun process；等
-active turn結束後仍需明確restart。
+`stats`/`events`查詢。Proxy與shim的stdout/stderr各自保留三代；`logs shim err 80`查看目前
+stderr，`logs shim err 80 1`查看上一代（最多第3代）；stdout 使用相同語法但省略`err`。
+套用新的shim檔或升級Bun都不會reload已在記憶體中的process；等active turn結束後仍需明確restart。
 
 ## Codex 走 gateway
 

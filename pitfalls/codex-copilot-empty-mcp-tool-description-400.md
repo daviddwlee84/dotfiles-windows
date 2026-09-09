@@ -29,6 +29,7 @@ the shim on port 4142; the shim fills only blank tool-definition descriptions.
 
 ## Prevention
 
-- Keep both repositories' `copilot-throttle-shim.js` byte-identical.
+- Keep both repositories' `copilot-throttle-shim.js` aligned, preserving the
+	documented Windows omission of the blanket `unhandledRejection` guard.
 - Never let `codex-copilot` fall back directly to port 4141.
 - The shim logs repaired JSON paths without request content.

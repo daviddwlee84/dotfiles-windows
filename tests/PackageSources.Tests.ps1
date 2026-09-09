@@ -68,6 +68,8 @@ BeforeAll {
         if ($LASTEXITCODE -ne 0) { throw 'failed to render package installer' }
         $rendered -join "`n"
     }
+
+    . (Join-Path $RepoRoot 'scripts/scoop-minimum-version.ps1')
 }
 
 Describe 'shared package-source policy' {
@@ -176,5 +178,66 @@ Describe 'package installer source policy' {
         $script = Render-PackageInstaller -ManagedMachine $true -UseChineseMirror $false -AllowFallback $true
         $script | Should -Match ([regex]::Escape("state delete --bucket=entryState --key='D:/Profiles/ci/.chezmoiscripts/10_packages.ps1'; chezmoi apply"))
         $script | Should -Not -Match 'DOMAIN\\ci.+\.chezmoiscripts/10_packages\.ps1'
+    }
+
+    It 'embeds the Bun minimum-version migration into the package installer' {
+        $script = Render-PackageInstaller -ManagedMachine $false -UseChineseMirror $false -AllowFallback $false
+        $script | Should -Match 'function Ensure-ScoopMinimumVersion'
+        $script | Should -Match "Ensure-ScoopMinimumVersion -App bun -MinimumVersion '1\.4\.0'"
+    }
+}
+
+Describe 'Scoop minimum version helper' {
+    It 'compares stable and prerelease versions semantically' {
+        Test-ScoopMinimumVersion -Version '1.3.14' -MinimumVersion '1.4.0' | Should -BeFalse
+        Test-ScoopMinimumVersion -Version '1.4.0-canary.1' -MinimumVersion '1.4.0' | Should -BeFalse
+        Test-ScoopMinimumVersion -Version 'v1.4.0' -MinimumVersion '1.4.0' | Should -BeTrue
+        Test-ScoopMinimumVersion -Version '1.10.0' -MinimumVersion '1.4.0' | Should -BeTrue
+        Test-ScoopMinimumVersion -Version 'unknown' -MinimumVersion '1.4.0' | Should -BeFalse
+    }
+
+    It 'updates only an installed app below the floor and rechecks it' {
+        $script:metadataCalls = 0
+        $script:info = @()
+        function global:scoop { $global:LASTEXITCODE = 0 }
+        function global:Info($Message) { $script:info += $Message }
+        function global:Register-Failure($Message) { throw "unexpected failure: $Message" }
+        Mock Get-ScoopAppMetadata {
+            $script:metadataCalls++
+            [pscustomobject]@{ Name = 'bun'; Version = if ($script:metadataCalls -eq 1) { '1.3.14' } else { '1.4.0' } }
+        }
+        try {
+            Ensure-ScoopMinimumVersion -App bun -MinimumVersion '1.4.0' | Should -BeTrue
+            $script:metadataCalls | Should -Be 2
+            $script:info[0] | Should -Match 'scoop update bun'
+        } finally {
+            Remove-Item Function:\scoop, Function:\Info, Function:\Register-Failure -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'registers a nonfatal failure when the update remains below the floor' {
+        $script:failure = $null
+        function global:scoop { $global:LASTEXITCODE = 1 }
+        function global:Info($Message) { $null = $Message }
+        function global:Register-Failure($Message) { $script:failure = $Message }
+        Mock Get-ScoopAppMetadata { [pscustomobject]@{ Name = 'bun'; Version = '1.3.14' } }
+        try {
+            Ensure-ScoopMinimumVersion -App bun -MinimumVersion '1.4.0' | Should -BeFalse
+            $script:failure | Should -BeExactly 'scoop:bun'
+        } finally {
+            Remove-Item Function:\scoop, Function:\Info, Function:\Register-Failure -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'registers a missing runtime after the core install attempt' {
+        $script:failure = $null
+        function global:Register-Failure($Message) { $script:failure = $Message }
+        Mock Get-ScoopAppMetadata { $null }
+        try {
+            Ensure-ScoopMinimumVersion -App bun -MinimumVersion '1.4.0' | Should -BeFalse
+            $script:failure | Should -BeExactly 'scoop:bun (requires >= 1.4.0; not installed)'
+        } finally {
+            Remove-Item Function:\Register-Failure -ErrorAction SilentlyContinue
+        }
     }
 }

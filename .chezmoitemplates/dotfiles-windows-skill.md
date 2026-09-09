@@ -48,9 +48,10 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   standalone opt-in, and `just specstory-build` aliases the release upgrade.
 - Herdr and herdr-plus temporarily inherit an enabled Windows system proxy when
   no explicit proxy environment exists; registry/source policy is unchanged.
-- Install ≠ upgrade: `chezmoi apply` only installs what's missing; upgrade the
-  Pi/pia/OMP stack with `just upgrade-agents`, or use the component recipes
-  `upgrade-npm-agents` / `upgrade-omp` / `upgrade-pia`.
+- Install normally ≠ upgrade: `chezmoi apply` installs what's missing; Bun is the
+  narrow exception and is upgraded only when below copilot-proxy's 1.4.0 safety
+  floor. Upgrade the Pi/pia/OMP stack with `just upgrade-agents`, use its component
+  recipes, or use `just upgrade-scoop` / `just upgrade-winget` for general upgrades.
 
 ## copilot-proxy
 - Module at `~/.config/powershell/modules/Copilot`. Commands: `copilot-proxy`
@@ -58,7 +59,8 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   `copilot-run`, `claude-copilot`, `claude-copilot-once`, `codex-copilot`,
   `codex-copilot-once`, `copilot-here`, `copilot-model` (incl. `--auto`),
   `copilot-embed`, `semsearch`.
-- Needs `bun`. Token: `~/.local/share/copilot-api/github_token`. Ports 4141 (proxy) /
+- Needs `bun >= 1.4.0`; apply automatically upgrades only an older installed Bun,
+  while shim startup fails closed below the floor. Token: `~/.local/share/copilot-api/github_token`. Ports 4141 (proxy) /
   4142 (throttle shim). Default main model `gpt-5.6-sol[1m]`; the OpenAI role
   profile maps Fable/Opus to Sol, Sonnet to Terra, and Haiku/background to Luna.
   Automatic selection excludes policy-disabled, picker-hidden and embedding-only
@@ -75,6 +77,9 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   Windows-only recovery attempts (1s/5s/30s) while 4141 remains healthy. Timing
   knobs: `COPILOT_SHIM_PING_AFTER_MS`, `COPILOT_SHIM_PING_MS`,
   `COPILOT_SHIM_STALL_MS`.
+- Shim stdout/stderr keep three rotated generations. Use `copilot-proxy logs shim
+  err 80 1` for the previous stderr; safe Bun native-crash markers are also copied
+  into lifecycle `crash_summary` before recovery rotates the files.
 - `copilot-here` writes only the gitignored `./.claude/settings.local.json`. The
   pinned copilot-api is installed ONCE into `~/.local/share/copilot-api/pkg`
   (never `bunx` at launch); `COPILOT_HTTP_PROXY` (auto|always|never|URL) controls

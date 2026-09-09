@@ -6,7 +6,9 @@ fork so a **GitHub Copilot subscription** can back **Claude Code** and other
 Anthropic/OpenAI-compatible clients.
 
 The module is deployed to `~/.config/powershell/modules/Copilot` and imported by
-the PowerShell profile. It requires Bun, Node/npm and a Copilot subscription.
+the PowerShell profile. It requires Bun **1.4.0 or newer**, Node/npm and a
+Copilot subscription. `chezmoi apply` narrowly upgrades an installed older Bun;
+it does not restart a running shim.
 
 ## Commands
 
@@ -16,7 +18,7 @@ the PowerShell profile. It requires Bun, Node/npm and a Copilot subscription.
 | `copilot-proxy start` / `stop` / `restart` | manage the local proxy (port 4141) |
 | `copilot-proxy status` | show raw served count and Claude availability |
 | `copilot-proxy doctor [--live]` | diagnose package, auth, proxy, catalog, roles, upstream and Codex Apps |
-| `copilot-proxy logs [N]` / `logs err` / `logs shim [err]` / `logs lifecycle` | tail proxy stdout/stderr, shim stdout/stderr, or process-lifecycle logs |
+| `copilot-proxy logs [N]` / `logs err` / `logs shim [err] [N] [generation]` / `logs lifecycle` | tail proxy stdout/stderr, current or rotated shim stdout/stderr (generation 0–3), or process-lifecycle logs |
 | `copilot-proxy shim [on\|off]` | toggle the metrics/throttle shim (port 4142; default on) |
 | `copilot-proxy limiter [status\|set\|reset]` | inspect or temporarily tune the running shim's adaptive concurrency limit |
 | `copilot-proxy stats` / `events` | query the local metrics databases, including while processes are down |
@@ -351,10 +353,15 @@ no automatic paid inference probe is performed.
   it to the floor for a five-minute cooldown. `copilot-proxy limiter status`,
   `limiter set --min 4 --max 8 --limit 6`, and `limiter reset` change only the
   running process; set `COPILOT_SHIM_MIN/MAX` before restart to persist a range.
-- Bun 1.3.14 predates upstream stream-body/peer-abort fixes `80729349` and
-  `3da09633`. The server installs a compatibility rejection guard, consumes both
-  synchronous and asynchronous cancellation failures, and treats SQLite metrics
-  writes as best-effort so one canceled Codex stream cannot terminate port 4142.
+- Bun 1.3.14 has an upstream `Bun.serve` use-after-free: a completed streaming
+  response can retain a stale `onAborted` callback that is invoked on a later
+  keep-alive disconnect. Bun commit
+  [`df4fe1e7`](https://github.com/oven-sh/bun/commit/df4fe1e7b609099d5fa6264e36c37a64932ee3ca)
+  fixes the `RequestContext` lifetime, and Bun 1.4.0 is the supported floor.
+  Shim start, offline shim CLI commands, `status`, and `doctor` all enforce or
+  report this floor. The JavaScript cancellation guards and best-effort SQLite
+  writes remain necessary defense in depth; an exception handler cannot repair
+  native memory corruption.
 - For literal `stream:true`, the shim emits keepalive comments after the grace period,
   requires successful upstream bodies to be SSE, and translates late failures to
   Anthropic `error` or Responses `response.failed` terminal events. The stall
@@ -373,8 +380,13 @@ State lives under `~/.local/state/copilot-proxy/`; device login stores the GitHu
 token at `~/.local/share/copilot-api/github_token` without printing it by default.
 A detached watcher appends process lifecycle records to `lifecycle.jsonl`: spawn,
 ready, startup failure, exit code, package/version/PID/port, and whether shutdown
-was deliberate or unexpected. A shim that had reached ready and then exits
-unexpectedly on a legacy backend is restarted at most three times after 1s/5s/30s, only while the shim
+was deliberate or unexpected. Before recovery rotates the logs, an unexpected
+shim exit also copies only safe Bun native-crash markers (version, OS, panic,
+crash banner and `bun.report` URL) from current stderr into `crash_summary`; it
+never copies requests, prompts, tools, tokens or arbitrary stderr. If the journal
+cannot be appended after retries, the same structured row goes to
+`watcher-failures.jsonl`. A shim that had reached ready and then exits unexpectedly
+on a legacy backend is restarted at most three times after 1s/5s/30s, only while the shim
 remains enabled, port 4141 is healthy, and port 4142 is still down. Five minutes of
 stable uptime resets the budget. Startup failures and deliberate stops never
 restart; the watcher never restarts port 4141 and never fails open to it. Recovery
@@ -392,9 +404,11 @@ restart preserves it. The wrapper never automatically restarts the backend.
 
 Inspect the journal with `copilot-proxy logs lifecycle`; request-level attempts and
 stream failures remain in `stats`/`events`. Proxy and shim stdout/stderr rotate
-independently for three sessions, and `logs err` or `logs shim err` exposes errors
-even when a stdout log also exists. Applying a new shim file does not reload the
-already-running Bun process; restart it deliberately after active turns drain.
+independently for three sessions. `logs shim err 80` reads current stderr, while
+`logs shim err 80 1` reads the previous generation (up to generation 3); stdout
+uses the same syntax without `err`. Applying a new shim file or upgrading Bun does
+not reload the already-running process; restart it deliberately after active turns
+drain.
 
 ## Codex through the gateway
 

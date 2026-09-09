@@ -29,7 +29,7 @@ GUI 應用程式。
 | starship | 提示字元 |
 | node | JS runtime（`nodejs-lts`） |
 | uv | Python 套件/runtime 管理器 |
-| bun | JS runtime + 套件管理器（copilot-proxy 用） |
+| bun（>= 1.4.0） | JS runtime + 套件管理器（copilot-proxy 用；apply 會升級已安裝的舊版本） |
 | just | 任務執行器（本 repo 的 `justfile`） |
 | make | GNU make |
 | gcc | Neovim tree-sitter parser 的 C 編譯器（MinGW-w64；nvim-treesitter `main` 分支透過 `tree-sitter build` → Rust `cc` crate 編譯，需要 gcc/clang/MSVC —— **不是** zig） |
@@ -38,7 +38,9 @@ GUI 應用程式。
 | gnupg | `gpg`（git commit 簽章、驗證） |
 
 Runtime **改用原生（scoop），不用 mise** —— 見 [rationale](rationale.md)。`node`
-（`nodejs-lts`）與 `bun` 由 scoop 安裝；啟用 **Extra runtimes** 時才會加裝 `go`、
+（`nodejs-lts`）與 `bun` 由 scoop 安裝。Bun 是 install-only policy 唯一刻意的最低版本例外：
+低於 1.4.0 時 apply 會自動升級，因為舊版 `Bun.serve` 可能讓 Copilot streaming shim crash。
+啟用 **Extra runtimes** 時才會加裝 `go`、
 `rust`（rustup）、`ruby`。預設 **Python** 由 uv 管理：`uv python install --default --preview`
 會把 `python`/`python3` 放到 `~/.local/bin`（PATH 上排在 Store 的 `python.exe`
 app-alias 前面），所以 `python`、`uv run`、`uv venv`

@@ -4,7 +4,7 @@
 
 **First seen**: 2026-08-27
 **Affects**: Windows, Bun 1.3.14, `copilot-throttle-shim.js`, streamed Codex/Responses clients
-**Status**: contained locally; bounded shim-only recovery added; exact native fault remains unproven
+**Status**: fixed upstream in Bun 1.4.0; runtime floor and automatic migration enforced
 
 ## Symptom
 
@@ -27,11 +27,19 @@ The lifecycle journal captured a real process death rather than a bad health pro
 {"component":"shim","event":"unexpected_exit","port":4142,"exit_code":3}
 ```
 
-The independent port-4141 proxy remained alive. Shim stderr was empty, so the process exit did not identify which native or Promise path failed.
+The independent port-4141 proxy remained alive. The current shim stderr looked
+empty because each supervised restart rotated it. Older generations contained
+four Bun-native segmentation faults, including the Bun crash banner and report URL.
 
 ## Root cause
 
-Bun 1.3.14 predates two directly relevant `Bun.serve` fixes:
+Bun 1.3.14 contains a `Bun.serve` use-after-free fixed by upstream commit
+[`df4fe1e7`](https://github.com/oven-sh/bun/commit/df4fe1e7b609099d5fa6264e36c37a64932ee3ca):
+a completed streaming response did not clear its `RequestContext` `onAborted`
+callback, so a later keep-alive disconnect could invoke stale native state and
+segfault. Bun 1.4.0 includes that lifetime fix.
+
+Two earlier fixes are also relevant to the surrounding cancellation paths:
 
 - [`80729349`](https://github.com/oven-sh/bun/commit/80729349a71adac9dcc4dbaae26441db3d2910bf): an error from a streamed `Response` body must not become an unhandled rejection that terminates the server.
 - [`3da09633`](https://github.com/oven-sh/bun/commit/3da09633125a1dc63bd3e602e27ccf1b39c44356): when the peer aborts mid-stream, mark the internal `readableStreamCancel()` Promise as handled.
@@ -42,7 +50,10 @@ The shim exposed the same class of failure in three ways:
 2. Its fast and post-keepalive downstream `cancel()` callbacks discarded the Promise returned by `reader.cancel()`; synchronous `try/catch` cannot catch a later Promise rejection.
 3. SQLite metric initialization/finalization could throw from inside a stream callback.
 
-The production exit code and timing are consistent with this class of Bun stream-lifecycle failure, but the raw TCP truncation/abort fixture did **not** make this exact Bun 1.3.14 build exit. It therefore does not prove which production callback or native path supplied the fatal fault. The local fix closes the shim's known rejected-cancellation paths, while bounded recovery contains any remaining Bun process fault.
+The observed native crash signature and completed-stream/later-disconnect timing
+match the upstream stale-callback bug. The JavaScript fixes still close known
+rejected-cancellation paths, but cannot repair native use-after-free; the supported
+runtime must include the upstream fix.
 
 This is separate from a startup race or a foreign process owning port 4142. Those have different lifecycle timing and are covered by [`copilot-proxy-shim-port-held-by-another-process.md`](copilot-proxy-shim-port-held-by-another-process.md).
 
@@ -64,11 +75,18 @@ Windows adds a second layer. A per-port named mutex serializes shim startup, and
 
 Quick failures receive at most three attempts after 1s, 5s, and 30s. Five minutes of stable uptime resets that budget. Startup failures, deliberate stops, and port-4141 exits never trigger this recovery; managed clients remain fail-closed.
 
+The package run-onchange upgrades only Bun when its installed version is below
+1.4.0 and rechecks the result without aborting the rest of `chezmoi apply`.
+Shim startup independently refuses Bun below 1.4.0 before rotating logs or spawning
+a process. `status` and `doctor` report the resolved executable, version and
+compatibility.
+
 Inspect evidence before manually restarting:
 
 ```powershell
 copilot-proxy logs lifecycle 40
 copilot-proxy logs shim err 80
+copilot-proxy logs shim err 80 1   # previous stderr generation
 copilot-proxy events --limit 40 --json
 copilot-proxy status
 ```
@@ -77,8 +95,10 @@ A source-file apply does not reload an already-running Bun process. Wait for act
 
 ## Prevention
 
-- Keep the parent and Windows shim files byte-identical and pin the exact parent commit/SHA-256 in `tests/Copilot.Tests.ps1`.
+- Keep the parent and Windows shim files byte-identical and pin the exact parent
+  commit/SHA-256 in `tests/Copilot.Tests.ps1`.
 - Run `tests/fixtures/copilot-shim-process-survival.mjs` against the supported Bun version. It verifies upstream truncation, fast and post-keepalive downstream aborts, post-completion closes, and subsequent health on the same process.
+- Keep Bun 1.4.0 as the minimum until a newer reviewed floor supersedes it; do not weaken the shim startup gate.
 - Keep rejecting-cancellation and throwing-metrics-backend cases in `copilot-shim-hardening.mjs`.
 - Do not replace `settleCancellation()` with bare `reader.cancel()` inside a synchronous `try/catch`.
 - Do not broaden recovery to the port-4141 proxy or remove the ready/intent/state/health gates.
