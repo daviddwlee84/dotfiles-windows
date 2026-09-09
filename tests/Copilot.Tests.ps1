@@ -12,6 +12,35 @@ BeforeAll {
 
 Describe 'Copilot module' {
 
+    Context 'shim IPv4 loopback address' {
+        It 'uses the listening address for health, clients and pins on port <Port>' -ForEach @(
+            @{ Port = '4142' }
+            @{ Port = '4999' }
+        ) {
+            InModuleScope Copilot -Parameters @{ Port = $Port } {
+                Mock Get-CopilotShimPort { $Port }
+                Mock Get-CopilotShimEnabled { $true }
+                Mock Invoke-RestMethod { [pscustomobject]@{ ok = $true } }
+
+                $expected = "http://127.0.0.1:$Port"
+                Get-CopilotShimBase | Should -BeExactly $expected
+                Get-CopilotClientBase | Should -BeExactly $expected
+                Get-CopilotPinnedBase | Should -BeExactly $expected
+                Test-CopilotShimAlive | Should -BeTrue
+                Should -Invoke Invoke-RestMethod -Times 1 -Exactly -ParameterFilter {
+                    $Uri -eq "http://127.0.0.1:$Port/_shim/health" -and $TimeoutSec -eq 2
+                }
+            }
+        }
+
+        It 'still rejects a loopback response without the shim identity' {
+            InModuleScope Copilot {
+                Mock Invoke-RestMethod { [pscustomobject]@{ data = @() } }
+                Test-CopilotShimAlive | Should -Not -BeTrue
+            }
+        }
+    }
+
     Context 'profile module loading' {
         It 'forces a fresh module import so reload picks up deployed fixes' {
             $loader = Get-Content -Raw (Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'profile.d' '40_copilot.ps1')

@@ -182,6 +182,15 @@ budget：872,000 ceiling 對應 610,400。可設 `$env:COPILOT_ASTRA_COMPACT_RAT
 刻意 refresh managed pin 並重啟 client。這是減少大型 compact 上傳的保守實驗，不代表已
 修好遠端 body-read 408。
 
+Astra 的 **1,000,000 total context**、**872,000 input ceiling** 與
+**610,400 Codex auto-compact trigger** 是三個不同值。Input ceiling 已扣掉 128,000
+output allowance，不要再扣一次。預設保留 261,600 input tokens 給 tool result、估算誤差
+與 compaction 開銷；Claude 再套自己的約 95% trigger，約為 579,880。
+這些是 launcher 設定，不會修改 VS Code 的 context picker。舊 Sol session 若帶著
+`model_auto_compact_token_limit=922000`，不能沿用到 Astra，因為已超過其 input limit
+50,000 tokens。應針對所選模型重新啟動 wrapper，不要假設 session 內換模型會更新
+啟動時的 command-line override。
+
 ### Selection、retry 與 failover 是不同概念
 
 - **Catalog auto-selection** 會在 launch/inference 前排序 eligible models：
@@ -311,6 +320,12 @@ Status 與 doctor 會顯示 routing state。關閉 shim 也會關閉這項轉譯
   HTTP200 而算成功。Metrics 只記 kind/size、attempts、timeout owner 與 drain outcome，
   不記 request/response body 或憑證。
 
+共用 shim 只監聽 IPv4 loopback，因此 Windows 的 health check、watcher 與新啟動的 managed
+client 使用 `http://127.0.0.1:4142`（或 `COPILOT_SHIM_PORT` 指定的 port）。`localhost`
+可能先嘗試 IPv6，超過兩秒 health timeout，導致 Bun 已在監聽卻被誤報為
+`shim did not come up`。Apply module 並 reload shell；既有 client 與 project pin 需刻意
+重新啟動／refresh 才會換 URL。不要為此停用 shim 或擴大監聽範圍。
+
 狀態放在 `~/.local/state/copilot-proxy/`；device login 會把 GitHub token 存在
 `~/.local/share/copilot-api/github_token`，預設不印出內容。Detached watcher 會把spawn、ready、
 startup failure、exit code、package/version/PID/port，以及deliberate或unexpected shutdown
@@ -344,7 +359,7 @@ embedding-only 與 `-fast` main candidates。此選擇不受舊 model state 或 
 pin 影響，raw model id 與 context/prompt limits 皆來自同一份 catalog snapshot，且不會
 持久化該次選擇。
 
-Codex 使用啟用中的 `localhost:4142` shim；明確 `copilot-proxy shim off` 則直連 backend。
+Codex 使用啟用中的 `127.0.0.1:4142` shim；明確 `copilot-proxy shim off` 則直連 backend。
 有 shim 時 Codex request／stream retries 預設 `0/0`，由 shim 負責 replay；direct mode
 保留 `3/1`。後方明確 `-c` 在直接與 SpecStory launch 都優先。
 這一層除了限流，也會正規化 Codex `mcp_list_tools` Responses item 裡的空白
@@ -373,7 +388,7 @@ Launcher 也會啟用 gateway-backed remote compaction，並排除依賴不可�
 
 `codex_apps` 本身不是 localhost service，也不是 Apple-Silicon-only Codex Desktop
 bridge；它是 `https://chatgpt.com/backend-api/wham/apps` 的遠端 MCP。因此即使
-`localhost:4142` inference 正常，它仍可能啟動失敗。保留 Apps 啟用，並以
+`127.0.0.1:4142` inference 正常，它仍可能啟動失敗。保留 Apps 啟用，並以
 `copilot-proxy doctor --live` 獨立診斷這條路由。
 
 刻意不做 Codex 版 `copilot-here`：project `.codex/config.toml` 不能覆寫 provider

@@ -967,7 +967,10 @@ function script:Get-CopilotStaleInstaller {
 
 # --- shim paths ---
 function script:Get-CopilotShimPort   { if ($env:COPILOT_SHIM_PORT) { $env:COPILOT_SHIM_PORT } else { '4142' } }
-function script:Get-CopilotShimBase   { "http://localhost:$(Get-CopilotShimPort)" }
+# The shared shim binds IPv4 loopback. On Windows, localhost can try ::1 first
+# and exhaust the health timeout before falling back to IPv4. Use the listener's
+# address for health, watchers, managed clients and newly generated project pins.
+function script:Get-CopilotShimBase   { "http://127.0.0.1:$(Get-CopilotShimPort)" }
 function script:Get-CopilotShimScript { Join-Path (Get-XdgConfig) 'powershell/copilot-throttle-shim.js' }
 function script:Get-CopilotShimLog    { Join-Path (Get-CopilotTmp) "copilot-shim-$(Get-CopilotShimPort).log" }
 function script:Get-CopilotShimPid    { Join-Path (Get-CopilotTmp) "copilot-shim-$(Get-CopilotShimPort).pid" }

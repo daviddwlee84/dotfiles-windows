@@ -91,6 +91,7 @@ Pitfalls owned by this folder. Keep alphabetical.
 |---|---|---|
 | [`bun-serve-stream-abort-kills-copilot-shim`](bun-serve-stream-abort-kills-copilot-shim.md) | `stream disconnected before completion`, `localhost:4142/responses`, `shim: ON but DOWN`, lifecycle `unexpected_exit`, exit code `3`, 4141 remains healthy | contained locally; bounded recovery added |
 | [`clickfix-defender-flags-cmd-irm-iex`](clickfix-defender-flags-cmd-irm-iex.md) | `Trojan:Win32/ClickFix.R!ml`, `Trojan:Win32/Commando.A!ml`, `exec request failed on channel 0`, cmd/SSH `powershell -c "irm\|iex"` blocked, file itself clean | workaround verified |
+| [`codex-ebadplatform-or-missing-arm64-after-npm-update`](codex-ebadplatform-or-missing-arm64-after-npm-update.md) | `EBADPLATFORM`, `Missing optional dependency @openai/codex-win32-arm64`, npm exit 0 but no executable, `ENOTCACHED` rollback | original version restored; native download timeout unresolved |
 | [`codex-modify-config-empty-key-line-1-col-0`](codex-modify-config-empty-key-line-1-col-0.md) | `modify_config.toml: invalid TOML`, `Empty key at line 1 col 0`, valid/empty-looking `.codex/config.toml`, UTF-8 BOM at byte 0, status line not applied | fixed |
 | [`copilot-api-connectionrefused-stale-bun-only-module`](copilot-api-connectionrefused-stale-bun-only-module.md) | `error: ConnectionRefused downloading package manifest @jeffreycao/copilot-api`, `Resolved, downloaded and extracted [6]`, copilot-proxy install fails both with and without proxy env, but plain `npm view` works, `chezmoi status` shows a modified `Copilot.psm1` | fixed |
 | [`copilot-proxy-e401-with-defender-npm-url-block`](copilot-proxy-e401-with-defender-npm-url-block.md) | `npm error code E401`, `always-auth`, `ERR_SSL_SSL/TLS_ALERT_HANDSHAKE_FAILURE`, Defender event `1126`, `[TE] NPM URL Block`, `registry.npmmirror.com`, parent `.npmrc` selects authenticated Azure Artifacts | fixed |
@@ -120,4 +121,5 @@ if their original location stops being a natural reading flow.
 
 | Trap | Lives in | Why not here |
 |---|---|---|
+| `shim did not come up` / `shim: ON but DOWN` although Bun logs `listening on :4142`; `localhost` health times out but IPv4 succeeds | [Copilot proxy](../docs/copilot-proxy.md) → IPv4 loopback health/client URL | The normal runtime guide documents the fix and existing-client refresh requirement |
 | (example: Tool X version Y bug) | `docs/tool-x.md` → "Known issues" | Already part of the tool's normal config narrative |

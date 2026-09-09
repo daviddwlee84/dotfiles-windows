@@ -211,6 +211,17 @@ takes precedence. Existing sessions and project pins are not rewritten; refresh
 managed pins and restart clients deliberately. This is a conservative experiment
 to reduce large compact uploads, not a claimed fix for remote body-read 408s.
 
+For Astra, distinguish the **1,000,000 total context**, **872,000 input ceiling**
+and **610,400 Codex auto-compact trigger**. The 128,000 output allowance is already
+excluded from the input ceiling; do not subtract it twice. The default leaves
+261,600 input tokens for tool results, estimation error and compaction overhead.
+Claude applies its own roughly-95% trigger to that budget (about 579,880).
+These are launcher settings, not VS Code's context-picker configuration. An old
+Sol session launched with `model_auto_compact_token_limit=922000` must not reuse
+that value for Astra: it exceeds Astra's input limit by 50,000 tokens. Relaunch
+the wrapper for the selected model rather than assuming an in-session model
+switch updates command-line overrides.
+
 ### Selection, retry and failover are different
 
 - **Catalog auto-selection** ranks eligible models before launch/inference:
@@ -369,6 +380,14 @@ no automatic paid inference probe is performed.
   success merely because HTTP status was 200. Metrics record kind/size, attempts,
   timeout owner and drain outcome, not request/response bodies or credentials.
 
+The shared shim binds IPv4 loopback, so Windows health checks, watchers and newly
+launched managed clients use `http://127.0.0.1:4142` (or `COPILOT_SHIM_PORT`).
+Using `localhost` can try IPv6 first and exceed the two-second health timeout,
+incorrectly reporting `shim did not come up` despite a listening Bun process.
+Apply the module and reload the shell; existing clients and project pins keep
+their old URL until deliberately relaunched/refreshed. Do not disable the shim
+or widen its bind address to work around this mismatch.
+
 State lives under `~/.local/state/copilot-proxy/`; device login stores the GitHub
 token at `~/.local/share/copilot-api/github_token` without printing it by default.
 A detached watcher appends process lifecycle records to `lifecycle.jsonl`: spawn,
@@ -411,7 +430,7 @@ is independent of any previous model state or Claude project pin; raw model id
 and context/prompt limits come from the same catalog snapshot, without persisting
 the selection.
 
-Codex uses the enabled shim on `localhost:4142`; explicit `copilot-proxy shim off`
+Codex uses the enabled shim on `127.0.0.1:4142`; explicit `copilot-proxy shim off`
 uses the backend directly. With the shim enabled, Codex request/stream retries
 default to `0/0`, leaving replay ownership with the shim. Direct mode retains
 `3/1`; later explicit `-c` arguments retain precedence in direct and SpecStory
@@ -447,7 +466,7 @@ later explicit `-c` arguments can override either setting per invocation.
 `codex_apps` itself is not a localhost service and not an Apple-Silicon-only
 Codex Desktop bridge. It is a remote MCP at
 `https://chatgpt.com/backend-api/wham/apps`, so startup can fail even while
-Copilot inference on `localhost:4142` works. Keep Apps enabled and use
+Copilot inference on `127.0.0.1:4142` works. Keep Apps enabled and use
 `copilot-proxy doctor --live` to diagnose that route independently.
 
 There is deliberately no Codex equivalent of `copilot-here`: project
