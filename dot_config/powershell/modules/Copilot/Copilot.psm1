@@ -2185,6 +2185,11 @@ function copilot-proxy {
                 $claude = @($rawIds | Where-Object { $_ -like 'claude-*' })
                 $claudeText = if ($claude.Count -gt 0) { $claude -join ' ' } else { 'none' }
                 Write-Host "copilot-proxy: RUNNING on $(Get-CopilotBase)"
+                # Installed backend version (on disk; a warm start runs exactly this).
+                # The spec tail makes a version/spec mismatch visible.
+                $pkgMeta = Get-CopilotPkgMetadata
+                $verText = if ($pkgMeta) { $pkgMeta.Version } else { 'unknown' }
+                Write-Host "  version: $verText  (spec: $(Get-CopilotPkg))"
                 Write-Host "  models: $($rawIds.Count) served; Claude: $claudeText"
                 if (Get-CopilotShimEnabled) {
                     if (Test-CopilotShimAlive) {
