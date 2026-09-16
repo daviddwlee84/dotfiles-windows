@@ -27,7 +27,7 @@ if (Get-Command lazygit -ErrorAction SilentlyContinue) {
 # Microsoft-managed machines may already reserve `dev` for the unrelated
 # DevTool. Keep that PATH-selected command intact and expose our repository/task
 # CLI under its package name instead.
-$devCliExe = Join-Path $HOME '.local\bin\dev.exe'
+$devCliExe = Join-Path $HOME '.local\bin\dev-cli.exe'
 if (Test-Path -LiteralPath $devCliExe) {
     Set-Alias -Name dev-cli -Value $devCliExe -Scope Global
 }

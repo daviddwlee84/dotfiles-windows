@@ -31,6 +31,8 @@ Describe 'dev-cli Windows install and Herdr alignment' {
     }
 
     It 'exposes the owned binary as dev-cli and completes that name' {
+        $aliases | Should -Match '\.local\\bin\\dev-cli\.exe'
+        $tools | Should -Match '\.local\\bin\\dev-cli\.exe'
         $aliases | Should -Match 'Set-Alias -Name dev-cli -Value \$devCliExe -Scope Global'
         $tools | Should -Match 'Import-CachedInit -Name ''dev-cli'' -Exe \$devCliExe'
         $tools | Should -Match '-CommandName ''dev-cli'''

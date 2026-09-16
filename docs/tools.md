@@ -237,6 +237,20 @@ and probes the binary before placing it in `~/.local/bin`. No Go build is needed
 The legacy `installSpecstoryBuild` key remains a standalone opt-in;
 `just upgrade-specstory` upgrades it, and `just specstory-build` is a compatibility alias.
 
+The SpecStory/dev-cli installer retries transient Windows file locks for up to five
+seconds. Upgrades rename the previous binary aside, then publish the verified
+release, restoring the previous binary if publication fails. Running sessions
+keep their old version; new launches use the update. A locked
+`*.exe.previous-<id>` backup stays beside the executable until a later successful
+upgrade can clean it up. Persistent locks report the affected paths and fail the
+explicit upgrade; package apply still records the failure and continues.
+
+The repository/task dashboard installs as `~/.local/bin/dev-cli.exe`; PowerShell's
+`dev-cli` alias and completion use that exact path. Bare `dev` keeps its existing
+command resolution for internal DevTool. Older installations may have left a
+`~/.local/bin/dev.exe`; the installer preserves it because the name alone does
+not prove ownership. Inspect `Get-Command dev, dev-cli -All` after `reload`.
+
 
 Herdr and herdr-plus temporarily inherit an enabled Windows static system proxy
 when explicit proxy environment variables are absent. This makes native curl/Go
@@ -377,7 +391,7 @@ just upgrade-npm-agents # Pi/OpenCode/Codex/Copilot; close them first (Windows l
 just upgrade-omp       # rerun the official -Binary installer, then verify omp.exe
 just upgrade-pia       # refresh the chezmoi external checkout
 just upgrade-agents    # aggregate the three commands above
-just upgrade-dev       # go install .../dev@latest (installed with the Herdr stack)
+just upgrade-dev       # verified official Windows dev-cli release (Herdr stack)
 just upgrade-herdr     # verified official installer + matching global skill (run outside Herdr)
 just upgrade-yazi-plugins # scoop update yazi, then ya pkg upgrade
 just upgrade-translate # scoop update translate (opt-in tool; not in `just upgrade`)

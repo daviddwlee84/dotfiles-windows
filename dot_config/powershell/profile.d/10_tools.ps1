@@ -103,7 +103,7 @@ Import-CachedInit -Name 'tv' -Exe 'tv' -RetainScope -Generate {
 # Microsoft-managed machine may expose its unrelated DevTool as `dev`. The
 # generated completer is retargeted to the collision-free `dev-cli` alias from
 # 20_aliases.ps1.
-$devCliExe = Join-Path $HOME '.local\bin\dev.exe'
+$devCliExe = Join-Path $HOME '.local\bin\dev-cli.exe'
 Import-CachedInit -Name 'dev-cli' -Exe $devCliExe -RetainScope -Generate {
     (& $devCliExe completion powershell) -replace "-CommandName 'dev'", "-CommandName 'dev-cli'"
 }

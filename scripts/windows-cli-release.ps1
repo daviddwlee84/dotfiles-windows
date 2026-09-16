@@ -44,6 +44,55 @@ function Get-WindowsCliVersion {
     return ($output -join "`n").Trim()
 }
 
+function Move-WindowsCliFile {
+    param([string]$Source, [string]$Destination)
+    # A just-exited version probe (or a scanner) can briefly retain an image
+    # handle. Retry Windows sharing/access errors for at most five seconds.
+    for ($attempt = 0; ; $attempt++) {
+        try {
+            [IO.File]::Move($Source, $Destination)
+            return
+        } catch {
+            $cause = $_.Exception.GetBaseException()
+            $code = $cause.HResult -band 0xffff
+            if ($code -notin 5, 32, 33 -or $attempt -ge 20) {
+                throw "Cannot move '$Source' to '$Destination': $($cause.Message) Close processes using that file and retry."
+            }
+            Start-Sleep -Milliseconds 250
+        }
+    }
+}
+
+function Set-WindowsCliExecutable {
+    param([string]$Source, [string]$Target)
+    $backup = $null
+    if ([IO.File]::Exists($Target)) {
+        # Windows cannot overwrite a running image, but can rename it when its
+        # handles permit delete sharing. Keep the old image for rollback and
+        # let existing sessions finish; never terminate a process to upgrade.
+        $backup = $Target + '.previous-' + [guid]::NewGuid().ToString('N')
+        Move-WindowsCliFile -Source $Target -Destination $backup
+    }
+    try {
+        Move-WindowsCliFile -Source $Source -Destination $Target
+    } catch {
+        $installError = $_
+        if ($backup) {
+            try { Move-WindowsCliFile -Source $backup -Destination $Target }
+            catch { throw "Install failed: $installError Rollback failed: $_ Previous binary retained at '$backup'." }
+        }
+        throw $installError
+    }
+    # Only prune our uniquely named sibling backups. Live images remain until
+    # their sessions exit and a later successful upgrade can remove them.
+    $pattern = '^' + [regex]::Escape([IO.Path]::GetFileName($Target)) + '\.previous-[a-f0-9]{32}$'
+    Get-ChildItem -LiteralPath ([IO.Path]::GetDirectoryName($Target)) -File -Force |
+        Where-Object { $_.Name -cmatch $pattern } | ForEach-Object {
+            try { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop }
+            catch { Write-Warning "Previous binary still in use or inaccessible: $($_.TargetObject). Existing sessions keep their old version; a later upgrade retries cleanup." }
+        }
+}
+
 function Install-WindowsCliRelease {
     [CmdletBinding()]
     param(
@@ -52,7 +101,10 @@ function Install-WindowsCliRelease {
         [string]$BinDirectory = (Join-Path $HOME '.local\bin')
     )
     $exe = if ($Name -eq 'dev-cli') { 'dev.exe' } else { 'specstory.exe' }
-    $target = Join-Path $BinDirectory $exe
+    # The archive uses dev.exe, but that name belongs to internal DevTool on
+    # managed machines. Use a distinct filename as well as a profile alias.
+    $targetName = if ($Name -eq 'dev-cli') { 'dev-cli.exe' } else { $exe }
+    $target = Join-Path $BinDirectory $targetName
     if ((Test-Path -LiteralPath $target -PathType Leaf) -and -not $Upgrade) {
         $version = Get-WindowsCliVersion -Path $target
         $recipe = if ($Name -eq 'dev-cli') { 'upgrade-dev' } else { 'upgrade-specstory' }
@@ -61,7 +113,7 @@ function Install-WindowsCliRelease {
     }
     $release = Get-WindowsCliRelease -Name $Name
     New-Item -ItemType Directory -Force -Path $BinDirectory -ErrorAction Stop | Out-Null
-    # Same-volume staging allows a single atomic replacement after verification.
+    # Same-volume staging allows renaming the verified image into place.
     $stage = Join-Path $BinDirectory ('.' + $Name + '-install-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $stage -ErrorAction Stop | Out-Null
     try {
@@ -87,7 +139,7 @@ function Install-WindowsCliRelease {
         if ($version -notmatch ('(?<![\d.])' + [regex]::Escape($release.Tag.Substring(1)) + '(?![\d.])')) {
             throw "Release version mismatch: expected $($release.Tag), got $version"
         }
-        [IO.File]::Move($binaries[0].FullName, $target, $true)
+        Set-WindowsCliExecutable -Source $binaries[0].FullName -Target $target
         Write-Host "==> verified $Name`: $version"
     } finally {
         # Only remove the exact generated staging directory inside this bin root.

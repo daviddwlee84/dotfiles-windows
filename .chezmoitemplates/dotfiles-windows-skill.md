@@ -46,6 +46,11 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 - SpecStory uses the official Windows release with SHA-256 verification; it is
   included with coding agents. The legacy `installSpecstoryBuild` key is a
   standalone opt-in, and `just specstory-build` aliases the release upgrade.
+- SpecStory/dev-cli upgrades retry transient file locks and rename the old image
+  aside with rollback. Active sessions keep the old version; retained
+  `*.exe.previous-<id>` backups are cleaned on a later successful upgrade.
+  The dashboard installs as `~/.local/bin/dev-cli.exe`; its `dev-cli` alias and
+  completion use that exact path, leaving internal DevTool's `dev` resolution intact.
 - Herdr and herdr-plus temporarily inherit an enabled Windows system proxy when
   no explicit proxy environment exists; registry/source policy is unchanged.
 - Install ≠ upgrade: `chezmoi apply` only installs what's missing; upgrade the

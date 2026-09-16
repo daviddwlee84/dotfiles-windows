@@ -217,6 +217,18 @@ Windows 凍結**的 chezmoi 指令，把跨平台 dotfiles（`daviddwlee84/dotfi
 舊的 `installSpecstoryBuild` key 保留為獨立安裝開關；以 `just upgrade-specstory`
 升級，`just specstory-build` 則保留為相容指令。
 
+SpecStory/dev-cli 安裝器會針對 Windows 暫時性檔案鎖重試，最長五秒。
+升級先將舊 binary 改名保留，再放入已驗證的 release；若放入失敗則還原舊版。
+執行中的 session 繼續使用舊版，新啟動的程序使用新版。若舊 binary 仍被鎖定，
+同目錄的 `*.exe.previous-<id>` 備份會保留，等日後成功升級時再嘗試清理。
+持續鎖定會回報相關路徑，並讓明確的升級指令失敗；package apply 仍會記錄失敗並繼續。
+
+Repository/task dashboard 安裝為 `~/.local/bin/dev-cli.exe`；PowerShell 的
+`dev-cli` alias 與 completion 都指向這個確切路徑。單獨輸入 `dev` 仍依原有方式
+解析 internal DevTool。舊安裝可能留下 `~/.local/bin/dev.exe`；檔名本身不足以
+證明歸屬，因此安裝器會保留它。執行 `reload` 後可用
+`Get-Command dev, dev-cli -All` 檢查。
+
 
 Herdr 與 herdr-plus 在沒有明確 proxy 環境變數時，會暫時沿用 Windows 已啟用的
 靜態系統代理，讓原生 curl/Go 與 PowerShell 下載走相同連線；不會修改套件來源、
@@ -343,7 +355,7 @@ just upgrade-npm-agents # Pi/OpenCode/Codex/Copilot；請先關閉（Windows 會
 just upgrade-omp       # 重跑官方 -Binary installer，再驗證 omp.exe
 just upgrade-pia       # refresh chezmoi external checkout
 just upgrade-agents    # 聚合上面三個命令
-just upgrade-dev       # go install .../dev@latest（隨 Herdr stack 安裝）
+just upgrade-dev       # 驗證官方 Windows dev-cli release（Herdr stack）
 just upgrade-herdr     # 驗證過的官方 installer + 對應版本全域 skill（需在 Herdr 外執行）
 just upgrade-yazi-plugins # scoop update yazi，再執行 ya pkg upgrade
 just upgrade-translate # go install …/translate@latest（選用工具，不含在 `just upgrade` 裡）
