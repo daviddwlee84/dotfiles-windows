@@ -134,6 +134,47 @@ Describe 'Editor configuration' {
             Should -Invoke Find-EditorExecutable -ModuleName EditorConfig -Times 1 -Exactly
         }
 
+        It 'recognizes Codex in the caller process chain' {
+            InModuleScope EditorConfig {
+                Mock Get-EditorProcessInfo {
+                    switch ($ProcessId) {
+                        $PID { [pscustomobject]@{ Name = 'pwsh.exe'; ParentProcessId = 42 } }
+                        42 { [pscustomobject]@{ Name = 'cmd.exe'; ParentProcessId = 43 } }
+                        43 { [pscustomobject]@{ Name = 'codex.exe'; ParentProcessId = 1 } }
+                    }
+                }
+                Test-EditorCodexCaller | Should -BeTrue
+                Mock Get-EditorProcessInfo {
+                    [pscustomobject]@{ Name = 'node.exe'; ParentProcessId = 0
+                        CommandLine = 'node C:\Users\me\AppData\Roaming\npm\node_modules\@openai\codex\bin\codex.js' }
+                }
+                Test-EditorCodexCaller | Should -BeTrue
+            }
+        }
+
+        It 'sets quick edit only for a Codex single-file Neovim child and honors override' {
+            $capture = Join-Path $TestDrive 'quick-edit.txt'
+            $fixture = Join-Path $TestDrive 'capture-quick-edit.ps1'
+            [IO.File]::WriteAllText($fixture, '[IO.File]::WriteAllText($env:EDITOR_TEST_QUICK_CAPTURE, [string]$env:NVIM_QUICK_EDIT)')
+            $saved = $env:NVIM_QUICK_EDIT
+            $env:EDITOR_TEST_QUICK_CAPTURE = $capture
+            try {
+                Remove-Item Env:NVIM_QUICK_EDIT -ErrorAction SilentlyContinue
+                Mock Resolve-ConfiguredEditor -ModuleName EditorConfig {
+                    [pscustomobject]@{ Preferred = 'nvim'; Selected = 'nvim'; Executable = $script:Pwsh; Arguments = @() }
+                }
+                Mock Test-EditorCodexCaller -ModuleName EditorConfig { $true }
+                Invoke-ConfiguredEditor -EditorArguments @($fixture) | Should -Be 0
+                [IO.File]::ReadAllText($capture) | Should -BeExactly '1'
+                $env:NVIM_QUICK_EDIT = '0'
+                Invoke-ConfiguredEditor -EditorArguments @($fixture) | Should -Be 0
+                [IO.File]::ReadAllText($capture) | Should -BeExactly '0'
+            } finally {
+                $env:NVIM_QUICK_EDIT = $saved
+                Remove-Item Env:EDITOR_TEST_QUICK_CAPTURE -ErrorAction SilentlyContinue
+            }
+        }
+
         It 'retains commands and completion after sourcing a fragment inside reload scope' {
             function Test-EditorReload {
                 . (Join-Path $script:Repo 'dot_config/powershell/profile.d/09_editor.ps1')

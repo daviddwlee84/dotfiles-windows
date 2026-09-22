@@ -1499,6 +1499,19 @@ function script:Classify-CopilotInferenceError {
     $detail = $detailParts -join ': '
     if (-not $detail) { $detail = $errorInfo.Raw }
 
+    if ($detail -match 'admission is quarantined|unclean shim generation') {
+        return [pscustomobject]@{ Kind = 'AdmissionQuarantined'; Summary = $detail
+            Action = 'Wait for tracked streams to settle, then run copilot-proxy restart. Re-authentication is not required.' }
+    }
+    if ($detail -match 'ide.?token.*expir|token.*expir') {
+        return [pscustomobject]@{ Kind = 'IdeTokenExpired'; Summary = $detail
+            Action = 'Run copilot-proxy restart to refresh the short-lived IDE token, then retry.' }
+    }
+    if ($detail -match 'bad credentials|invalid.*github.*token') {
+        return [pscustomobject]@{ Kind = 'BadCredentials'; Summary = $detail
+            Action = 'Run copilot-proxy auth, then copilot-proxy restart.' }
+    }
+
     if ($StatusCode -eq 402 -and $code -eq 'billing_not_configured') {
         return [pscustomobject]@{
             Kind        = 'BillingNotConfigured'
@@ -1948,6 +1961,24 @@ function script:Clear-CopilotAdmissionAfterStop {
     $true
 }
 
+function script:Get-CopilotAuthSummary {
+    param($Health)
+    $evidence = $Health.last_auth
+    if ($evidence.state -eq 'ok') { return "last inference: authenticated at $($evidence.at)" }
+    if ($evidence.state -eq 'failed') { return "last inference: authentication failed at $($evidence.at) ($($evidence.reason))" }
+    'unverified (no recent inference evidence)'
+}
+
+function script:Show-CopilotAdmission {
+    param($Health, [switch] $Doctor)
+    $available = $Health.admission_available -eq $true -and -not $Health.recovery_required
+    $message = if ($available) { 'available' } else { 'QUARANTINED — wait for tracked streams, then copilot-proxy restart (no re-auth)' }
+    if ($Doctor) { Write-Host "  admission: $message" }
+    else { Write-Host "  admit:  $message" }
+    if (-not $Doctor) { Write-Host "  auth:   $(Get-CopilotAuthSummary -Health $Health)" }
+    return $available
+}
+
 function script:Invoke-CopilotShimCli {
     param([Parameter(Mandatory)] [ValidateSet('stats', 'events', 'bench')] [string] $Command,
           [string[]] $Argument = @())
@@ -2039,6 +2070,10 @@ function copilot-proxy {
     switch ($action) {
         'start' {
             if (Test-CopilotAlive) { Write-Host "copilot-proxy: already running on port $port"; return }
+            if (Test-Path -LiteralPath (Get-CopilotAdmissionPath)) {
+                Write-Error 'copilot-proxy: retained admission requires a controlled copilot-proxy restart before start.'
+                return
+            }
             if (-not (Test-Path (Get-CopilotToken))) {
                 Write-Error "copilot-proxy: not authenticated yet — run 'copilot-proxy auth' first."; return
             }
@@ -2196,19 +2231,32 @@ function copilot-proxy {
                         Write-Host "  shim:   ON, up on $(Get-CopilotShimBase)  -> clients use this"
                         try {
                             $health = Invoke-RestMethod -Uri "$(Get-CopilotShimBase)/_shim/health" -TimeoutSec 2 -ErrorAction Stop
-                            Write-Host "  admission: active=$($health.active), draining=$($health.draining), unknown=$($health.unknown)"
-                            if ($health.recovery_required) { Write-Host '  recovery_required: inspect active work, then perform a controlled backend + shim restart.' }
-                        } catch { $null = $_ }
+                            $null = Show-CopilotAdmission -Health $health
+                            Write-Host "  leases: active=$($health.active), draining=$($health.draining), unknown=$($health.unknown)"
+                        } catch {
+                            Write-Host "  admit:  health unavailable ($_)"
+                            if (Test-Path -LiteralPath (Get-CopilotAdmissionPath)) {
+                                Write-Host '  admit:  retained marker; run copilot-proxy restart for controlled recovery'
+                            }
+                        }
                         $routing = Get-CopilotFastRouting
                         if ($routing) {
                             $mappingCount = @($routing.mappings.PSObject.Properties).Count
                             Write-Host "  fast:   $($routing.state), $mappingCount route(s) from the live catalog"
                         } else { Write-Host '  fast:   unavailable (restart the shim to refresh its routing endpoint)' }
                     }
-                    else { Write-Host "  shim:   ON but DOWN (managed clients fail closed; break glass: copilot-proxy shim off)" }
+                    else {
+                        Write-Host "  shim:   ON but DOWN (managed clients fail closed; break glass: copilot-proxy shim off)"
+                        if (Test-Path -LiteralPath (Get-CopilotAdmissionPath)) {
+                            Write-Host '  admit:  retained marker; run copilot-proxy restart for controlled recovery'
+                        }
+                    }
                 } else { Write-Host "  shim:   off  (enable: copilot-proxy shim on)" }
             } else {
                 Write-Host "copilot-proxy: not running on port $port  (start: copilot-proxy start)"
+                if (Test-Path -LiteralPath (Get-CopilotAdmissionPath)) {
+                    Write-Host '  admit:  retained marker; run copilot-proxy restart for controlled recovery'
+                }
             }
         }
         { $_ -in 'doctor', 'test' } { Invoke-CopilotDoctor -Live:($Argv -contains '--live') }
@@ -2347,6 +2395,7 @@ function copilot-proxy {
 function script:Invoke-CopilotDoctor {
     param([switch] $Live)
     $port = Get-CopilotPort; $pkg = Get-CopilotPkg
+    $admissionBlocked = $false
     $fail = 0; $warn = 0
     function OK   ($n, $m) { Write-Host ("  " + [char]0x2713 + " {0,-16} {1}" -f $n, $m) -ForegroundColor Green }
     function BAD  ($n, $m) { Write-Host ("  " + [char]0x2717 + " {0,-16} {1}" -f $n, $m) -ForegroundColor Red; $script:fail++ }
@@ -2430,6 +2479,19 @@ function script:Invoke-CopilotDoctor {
     if (Get-CopilotShimEnabled) {
         if (Test-CopilotShimAlive) {
             OK 'throttle shim' "up on $(Get-CopilotShimBase)"
+            try {
+                $health = Invoke-RestMethod -Uri "$(Get-CopilotShimBase)/_shim/health" -TimeoutSec 2 -ErrorAction Stop
+                if (-not (Show-CopilotAdmission -Health $health -Doctor)) {
+                    $admissionBlocked = $true
+                    BAD 'admission' 'shim is quarantined; inference is blocked locally'
+                    HINT 'wait for tracked streams to settle, then copilot-proxy restart'
+                }
+                if ($health.last_auth.state -eq 'failed') {
+                    BAD 'auth evidence' (Get-CopilotAuthSummary -Health $health)
+                    if ($health.last_auth.reason -eq 'ide_token_expired') { HINT 'copilot-proxy restart' }
+                    elseif ($health.last_auth.reason -eq 'bad_credentials') { HINT 'copilot-proxy auth; copilot-proxy restart' }
+                } else { SKIP 'auth evidence' (Get-CopilotAuthSummary -Health $health) }
+            } catch { $admissionBlocked = $true; BAD 'admission' "health endpoint unavailable: $_" }
             $fastRouting = Get-CopilotFastRouting
             if ($fastRouting) {
                 $mappingCount = @($fastRouting.mappings.PSObject.Properties).Count
@@ -2443,7 +2505,13 @@ function script:Invoke-CopilotDoctor {
                 BAD 'fast routing' 'routing endpoint unavailable; the running shim is stale or unhealthy'
                 HINT 'copilot-proxy restart'
             }
-        } else { BAD 'throttle shim' 'enabled but DOWN'; HINT 'copilot-proxy shim on' }
+        } else {
+            $admissionBlocked = $true
+            BAD 'throttle shim' 'enabled but DOWN'
+            if (Test-Path -LiteralPath (Get-CopilotAdmissionPath)) {
+                BAD 'admission' 'retained marker; run copilot-proxy restart'
+            } else { HINT 'copilot-proxy shim on' }
+        }
     } else { SKIP 'throttle shim' 'off' }
 
     Write-Host "`nModels"
@@ -2607,6 +2675,7 @@ function script:Invoke-CopilotDoctor {
         -SelectableModel $selectableIds -Catalog $catalog
     if (-not $Live) { SKIP 'skipped' 'pass --live to send one real request (consumes 1 quota unit)' }
     elseif (-not $proxyAlive) { SKIP 'skipped' 'proxy is not running' }
+    elseif ($admissionBlocked) { SKIP 'skipped' 'shim admission unavailable; recover before sending inference' }
     elseif ($probeTarget.Label -eq 'MissingConfiguredMain') { SKIP 'skipped' $probeTarget.Reason }
     elseif (-not $probeTarget.Model) { SKIP 'skipped' 'the catalog has no usable inference model' }
     else {
@@ -2628,7 +2697,7 @@ function script:Invoke-CopilotDoctor {
                 if ($classified.Kind -eq 'BillingNotConfigured') {
                     HINT $classified.Action
                     HINT $classified.Guidance
-                } elseif ($classified.Kind -eq 'ModelUnsupported') {
+                } elseif ($classified.Kind -in @('ModelUnsupported', 'AdmissionQuarantined', 'IdeTokenExpired', 'BadCredentials')) {
                     HINT $classified.Action
                 } else {
                     HINT 'copilot-proxy logs 40'

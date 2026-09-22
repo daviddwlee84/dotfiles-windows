@@ -340,6 +340,10 @@ metrics DB 旁保存 admission barrier（`metrics.sqlite.admission.json`）；�
 barrier 會阻擋新 inference，health 仍可查。先檢查 active／draining／unknown，再做受控的
 `copilot-proxy restart` 同時重啟兩個 process；只有確認兩者已停止才清除 barrier，停機失敗
 或只重啟 shim 都會保留它。Wrapper 不會自動重啟 backend。
+Admission 隔離表示後端執行狀態未知，不代表 GitHub 憑證過期。`status` 不送請求，
+會顯示 admission 與最近的推理認證證據；`doctor --live` 只送一次請求，
+可區分隔離、短效 IDE token 過期、與儲存憑證遭拒。只有最後一種需要
+`copilot-proxy auth`。Codex 的通用「high demand」訊息可能伴隨本機隔離 503。
 
 用`copilot-proxy logs lifecycle`查看journal；request-level attempts與stream failure仍由
 `stats`/`events`查詢。Proxy與shim的stdout/stderr各自保留三代；即使stdout存在，`logs err`與

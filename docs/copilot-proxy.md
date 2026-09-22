@@ -408,6 +408,12 @@ blocks new inference while health stays inspectable. Inspect active/draining/
 unknown work, then use a controlled `copilot-proxy restart` of both processes.
 Only a confirmed full stop clears that barrier; a failed stop or shim-only
 restart preserves it. The wrapper never automatically restarts the backend.
+Admission quarantine means backend execution is unknown; it does not mean the
+GitHub credential expired. `status` reports admission and the most recent
+inference authentication evidence without sending a request. `doctor --live`
+sends one request and distinguishes quarantine, an expired short-lived IDE token,
+and rejected stored credentials. Only the last case calls for `copilot-proxy auth`.
+Codex's generic "high demand" message can accompany the local quarantine 503.
 
 Inspect the journal with `copilot-proxy logs lifecycle`; request-level attempts and
 stream failures remain in `stats`/`events`. Proxy and shim stdout/stderr rotate

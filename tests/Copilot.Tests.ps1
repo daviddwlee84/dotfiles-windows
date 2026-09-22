@@ -2463,6 +2463,19 @@ Describe 'Copilot module' {
     }
 
     Context 'doctor inference error parsing and classification' {
+        It 'distinguishes shim quarantine from credential expiration' {
+            InModuleScope Copilot {
+                $result = Classify-CopilotInferenceError -StatusCode 503 `
+                    -Body '{"error":"shim admission is quarantined: backend execution is unknown"}'
+                $result.Kind | Should -BeExactly 'AdmissionQuarantined'
+                $result.Action | Should -Match 'restart'
+                $result.Action | Should -Match 'not required'
+                (Classify-CopilotInferenceError -StatusCode 401 -Body 'IDE token expired').Kind |
+                    Should -BeExactly 'IdeTokenExpired'
+                (Classify-CopilotInferenceError -StatusCode 401 -Body 'Bad credentials').Kind |
+                    Should -BeExactly 'BadCredentials'
+            }
+        }
         It 'classifies a direct billing error as account-wide and nonretryable' {
             InModuleScope Copilot {
                 $result = Classify-CopilotInferenceError -StatusCode 402 `
@@ -2556,6 +2569,13 @@ Describe 'Copilot module' {
                 Mock Get-CopilotShimEnabled { $true }
                 Mock Test-CopilotShimAlive { $true }
                 Mock Get-CopilotShimBase { 'http://localhost:4999' }
+                Mock Invoke-RestMethod {
+                    [pscustomobject]@{
+                        admission_available = $true
+                        recovery_required = $false
+                        last_auth = [pscustomobject]@{ state = 'unknown' }
+                    }
+                } -ParameterFilter { $Uri -like '*/_shim/health' }
                 Mock Resolve-CopilotHttpProxy { $null }
                 Mock Get-CopilotUpstreamModel { @('gpt-5.6-sol') }
                 Mock Get-CopilotModelCatalog { $catalog }
@@ -3149,8 +3169,8 @@ $m.Dispose()
 
         It 'matches the reviewed Unix shim artifact without a sibling checkout' {
             $shimContract = [ordered]@{
-                UnixSourceCommit = 'e97e082a72687022ccd286f908f4b5b8c74f07e6'
-                Sha256 = 'D0912C4FEF76D74896E161B03CD64D28A0B1F6597CF7490D5613840EFE014749'
+                UnixSourceCommit = 'a18d49a3cbc9bac56c4552b86b69f6b0b4da7ff0'
+                Sha256 = '1E88B80FEC22A815703B0A1A430FEA7757955CE61831D561DC8DF7FE66A1476B'
             }
             $windowsShim = Join-Path $PSScriptRoot '..' 'dot_config' 'powershell' 'copilot-throttle-shim.js'
             $shimContract.UnixSourceCommit | Should -Match '^[0-9a-f]{40}$'

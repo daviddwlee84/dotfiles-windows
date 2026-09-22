@@ -55,6 +55,28 @@ function Resolve-ConfiguredEditor {
     throw "No usable editor for $($preference.Preset); install micro with scoop install micro, then retry"
 }
 
+function Get-EditorProcessInfo {
+    param([int] $ProcessId)
+    try {
+        Get-CimInstance -ClassName Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction Stop
+    } catch { $null }
+}
+
+function Test-EditorCodexCaller {
+    $processId = [int]$PID
+    $seen = [System.Collections.Generic.HashSet[int]]::new()
+    for ($depth = 0; $depth -lt 8 -and $processId -gt 0; $depth++) {
+        if (-not $seen.Add($processId)) { break }
+        $process = Get-EditorProcessInfo -ProcessId $processId
+        if (-not $process) { break }
+        if ($process.Name -match '^codex(?:\.exe)?$') { return $true }
+        if ($process.Name -match '^node(?:\.exe)?$' -and
+            $process.CommandLine -match '[/\\]@openai[/\\]codex[/\\]') { return $true }
+        $processId = [int]$process.ParentProcessId
+    }
+    $false
+}
+
 function Invoke-ConfiguredEditor {
     param([string[]] $EditorArguments = @())
     try { $editor = Resolve-ConfiguredEditor }
@@ -68,6 +90,12 @@ function Invoke-ConfiguredEditor {
     $start.UseShellExecute = $false
     $start.WorkingDirectory = (Get-Location).ProviderPath
     $start.FileName = $editor.Executable
+    if ($editor.Selected -eq 'nvim' -and $EditorArguments.Count -eq 1 -and
+        $EditorArguments[0] -notlike '-*' -and
+        $null -eq [Environment]::GetEnvironmentVariable('NVIM_QUICK_EDIT', 'Process') -and
+        (Test-EditorCodexCaller)) {
+        $start.Environment['NVIM_QUICK_EDIT'] = '1'
+    }
     if ([IO.Path]::GetExtension($editor.Executable) -in @('.cmd', '.bat')) {
         # Batch launchers need an interpreter. A separate pwsh -File keeps the
         # native invocation out of this function's success-output pipeline.
