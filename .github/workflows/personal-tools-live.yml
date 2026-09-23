@@ -35,7 +35,9 @@ jobs:
           New-Item -ItemType Directory -Path $config -Force | Out-Null
           @{last_update=(Get-Date).ToString('o');'aria2-enabled'=$false;scoop_branch='master'} | ConvertTo-Json | Set-Content (Join-Path $config 'config.json')
           # Use Scoop's exact checked-out script; child functions resolve it via PATH.
-          New-Item -ItemType Directory -Path (Join-Path $env:SCOOP 'shims') -Force | Out-Null
+          foreach ($directory in @('shims', 'buckets', 'cache', 'persist')) {
+            New-Item -ItemType Directory -Path (Join-Path $env:SCOOP $directory) -Force | Out-Null
+          }
           $env:PATH = (Join-Path $manager 'bin') + ';' + (Join-Path $env:SCOOP 'shims') + ';' + (Join-Path $homeDir '.local/bin') + ';' + $env:PATH
           "PERSONAL_TOOLS_LIVE_ROOT=$root" >> $env:GITHUB_ENV
           & pwsh -NoLogo -NoProfile -File tests/PersonalTools.Live.ps1 -Root $root
