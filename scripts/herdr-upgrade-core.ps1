@@ -67,7 +67,7 @@ function Get-HerdrVersion {
 
 function Invoke-HerdrUpgrade {
     [CmdletBinding()]
-    param([ValidateSet('stable', 'preview')][string]$Channel = 'stable')
+    param([ValidateSet('stable', 'preview')][string]$Channel)
 
     $herdr = Resolve-HerdrExecutable
     if (-not $herdr) {
@@ -81,6 +81,7 @@ function Invoke-HerdrUpgrade {
 
     Write-Host '==> Upgrading Herdr with verified official installer'
     try {
+        if (-not $Channel) { $Channel = Get-HerdrChannel -HerdrPath $herdr }
         Invoke-HerdrOfficialInstaller -Channel $Channel
         $herdr = Resolve-HerdrExecutable
         if (-not $herdr -or -not (Test-Path -LiteralPath $herdr -PathType Leaf)) {
@@ -99,4 +100,14 @@ function Invoke-HerdrUpgrade {
     Write-Host '==> Herdr binary and global agent skill updated'
     Write-Warning 'Restart Herdr deliberately to load the new binary; check `herdr integration status` for integrations that need reinstalling.'
     return 0
+}
+
+function Get-HerdrChannel {
+    param([Parameter(Mandatory)][string]$HerdrPath)
+    $output = @(& $HerdrPath channel show 2>$null)
+    $channel = ($output -join "`n").Trim()
+    if ($LASTEXITCODE -ne 0 -or $channel -notin @('stable', 'preview')) {
+        throw 'Could not verify the installed Herdr update channel; no channel was changed.'
+    }
+    $channel
 }

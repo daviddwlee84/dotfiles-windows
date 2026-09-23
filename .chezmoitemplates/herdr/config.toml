@@ -25,7 +25,7 @@
 # Prefix is ctrl+b (herdr default, same as tmux).
 
 [update]
-# This machine intentionally follows the stable channel.
+# New installations default to stable; the overlay preserves a live channel.
 # Re-asserted by the overlay as a single key while any other live/user-owned
 # [update] subkeys remain available for current or future Herdr releases.
 channel = "stable"

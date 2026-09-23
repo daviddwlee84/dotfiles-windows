@@ -176,10 +176,10 @@ Scoop download cache and temporary staging. See [Disk space](disk-space.md).
 | Tunnel tools | off | ngrok, cloudflared |
 | IaC tools | off | Azure CLI, Terraform, OpenTofu |
 | OpenSSH server | off | install + enable sshd (needs admin; opens inbound TCP 22) |
-| herdr multiplexer | off | native Windows terminal multiplexer (preview beta) |
+| herdr multiplexer | on (workstation) | native Windows multiplexer; new installs use stable and existing channels are preserved |
 | Clink (cmd.exe) | off | starship + zoxide + fzf in `cmd.exe` via Clink (opt-in secondary shell) |
 | try (ephemeral workspaces) | off | Ruby CLI (`gem try-cli`): dated trial dirs + fuzzy selector; pwsh command is `tri` |
-| translate | on (workstation) | terminal translator CLI + TUI, built from source with `go install` (first build takes minutes) |
+| Personal CLI tools | on (workstation) | dev-cli, translate, exp and four lazy tools; independent of Herdr |
 | Rime input method (Weasel) | off | Traditional Chinese IME. Machine-scope installer — expect a UAC prompt; deploys the shared Rime `*.custom.yaml` to `%APPDATA%\Rime` |
 | China mirrors | off | pip/uv, npm, RubyGems, Go, and rustup via GFW mirrors |
 | Managed machine | off | use company PyPI/npm registries and skip apps org policy usually blocks (Tailscale, Grammarly) |

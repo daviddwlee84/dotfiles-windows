@@ -58,7 +58,7 @@ upgrade-pia:
 # Deliberately not part of `just upgrade`: live executables may be locked.
 upgrade-agents: upgrade-npm-agents upgrade-omp upgrade-pia
 
-# Upgrade the official Windows dev CLI (installed with the optional Herdr stack).
+# Upgrade the official Windows dev CLI (selected by the personal tools suite).
 # Deliberately not in `just upgrade`: on a host without Herdr this would install it.
 upgrade-dev:
     pwsh -NoProfile -File ./scripts/upgrade-windows-cli.ps1 -Name dev-cli
@@ -144,3 +144,11 @@ docs-serve:
 # build the docs site (strict)
 docs-build:
     pwsh -NoProfile -File ./scripts/run-package-source-command.ps1 -Action DocsBuild
+
+# Upgrade only selected, installed personal tools through their current owners.
+upgrade-personal:
+    pwsh -NoProfile -File ./scripts/upgrade-personal-tools.ps1
+
+# Read-only preview of the same selected and installed set.
+upgrade-personal-check:
+    pwsh -NoProfile -File ./scripts/upgrade-personal-tools.ps1 -WhatIf

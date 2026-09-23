@@ -82,9 +82,11 @@ AppData/Local/clink/**
 {{ end }}
 
 # The translate history picker is only useful with the translate binary present
-# (opt-in installTranslate). Without the gate it would show up in `tv`'s channel
+# (installPersonalTools; legacy installTranslate when the new key is absent). Without the gate it would show up in `tv`'s channel
 # list and return nothing — same reasoning as the herdr-* channels above.
-{{ if not .installTranslate }}
+{{ $translateEnabled := get . "installTranslate" | default false }}
+{{ if hasKey . "installPersonalTools" }}{{ $translateEnabled = .installPersonalTools }}{{ end }}
+{{ if not $translateEnabled }}
 AppData/Roaming/television/cable/translate.toml
 # The herdr pane translator and its Quick Actions are dead without the binary.
 # The prefix+t keybind stays in config.toml either way — it reports the missing

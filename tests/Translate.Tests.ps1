@@ -12,6 +12,8 @@ BeforeAll {
     $PackageTemplate = Join-Path $RepoRoot '.chezmoiscripts' 'run_onchange_after_10_packages.ps1.tmpl'
     $ToolsProfile    = Join-Path $RepoRoot 'dot_config' 'powershell' 'profile.d' '10_tools.ps1'
     $Justfile        = Join-Path $RepoRoot 'justfile'
+    . (Join-Path $RepoRoot 'scripts' 'personal-tools.ps1')
+    function Scoop-Install { param([string[]]$apps) }
     $DocPath         = Join-Path $RepoRoot 'docs' 'translate.md'
 }
 
@@ -24,8 +26,8 @@ Describe 'translate install path' {
     }
 
     It 'installs from the personal scoop bucket, not from source' {
-        $package | Should -Match 'scoop bucket add daviddwlee84 https://github\.com/daviddwlee84/scoop-bucket'
-        $package | Should -Match "Scoop-Install @\('daviddwlee84/translate'\)"
+        (Get-Content -Raw (Join-Path $RepoRoot 'scripts' 'personal-tools.ps1')) | Should -Match 'scoop bucket add daviddwlee84 https://github\.com/daviddwlee84/scoop-bucket'
+        (Get-SelectedPersonalTools @{installPersonalTools=$true} | Where-Object Id -EQ 'translate').Manager | Should -BeExactly 'scoop'
     }
 
     It 'no longer go-installs translate or pins a version for it' {
@@ -33,15 +35,11 @@ Describe 'translate install path' {
         $package | Should -Not -Match '\$translateVersion'
     }
 
-    It 'removes the shadowing go-install binary only once the scoop shim exists' {
-        # ~\.local\bin precedes ~\scoop\shims on PATH, so the stale copy wins
-        # forever if left behind — but deleting it before the shim lands would
-        # leave the box with no translate at all.
-        $package | Should -Match '\$trOld\s*=\s*Join-Path'
-        $package | Should -Match 'local\\bin\\translate\.exe'
-        $package | Should -Match 'shims\\translate\.exe'
-        $package | Should -Match 'Remove-Item -LiteralPath \$trOld'
-        $package | Should -Match '\$env:SCOOP'
+    It 'preserves an unverified legacy PATH shadow without executing or deleting it' {
+        Mock Get-PersonalToolOwner { [pscustomobject]@{Kind='unmanaged';Path='legacy-copy';Id='translate'} }
+        Mock Scoop-Install {}
+        Install-SelectedPersonalTools @{installTranslate=$true}
+        Should -Invoke Scoop-Install -Times 0 -Exactly
     }
 
     It 'still generates pwsh completions, cached against the binary mtime' {

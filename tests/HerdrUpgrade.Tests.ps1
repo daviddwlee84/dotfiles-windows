@@ -15,6 +15,7 @@ Describe 'Herdr verified upgrade orchestration' {
     }
 
     BeforeEach {
+        Mock Get-HerdrChannel { 'stable' }
         $script:SavedHerdrEnv = $env:HERDR_ENV
         $script:SavedPaneId = $env:HERDR_PANE_ID
         Remove-Item env:HERDR_ENV, env:HERDR_PANE_ID -ErrorAction SilentlyContinue
@@ -57,6 +58,17 @@ Describe 'Herdr verified upgrade orchestration' {
         Should -Invoke Invoke-HerdrOfficialInstaller -Times 1 -Exactly -ParameterFilter { $Channel -eq 'stable' }
         Should -Invoke Get-HerdrVersion -Times 1 -Exactly
         Should -Invoke Sync-HerdrSkill -Times 1 -Exactly -ParameterFilter { $HerdrPath -eq 'C:\fake\herdr.exe' }
+    }
+
+    It 'preserves the installed preview channel' {
+        Mock Resolve-HerdrExecutable { 'C:\fake\herdr.exe' }
+        Mock Get-HerdrChannel { 'preview' }
+        Mock Invoke-HerdrOfficialInstaller {}
+        Mock Test-Path { $true } -ParameterFilter { $LiteralPath -eq 'C:\fake\herdr.exe' }
+        Mock Get-HerdrVersion { 'herdr preview' }
+        Mock Sync-HerdrSkill { $true }
+        Invoke-HerdrUpgrade | Should -Be 0
+        Should -Invoke Invoke-HerdrOfficialInstaller -Times 1 -Exactly -ParameterFilter { $Channel -eq 'preview' }
     }
 
     It 'does not synchronize after installer failure' {
@@ -150,7 +162,7 @@ Describe 'Herdr verified upgrade orchestration' {
     It 'does not call the legacy manifest parser path' {
         $entry = Get-Content -Raw (Join-Path $RepoRoot 'scripts' 'upgrade-herdr.ps1')
         $entry | Should -Not -Match 'update\s+--handoff'
-        $entry | Should -Match 'Invoke-HerdrUpgrade -Channel stable'
+        $entry | Should -Match 'Invoke-HerdrUpgrade'
     }
 
     It 'retries one interrupted curl download without changing its source' {

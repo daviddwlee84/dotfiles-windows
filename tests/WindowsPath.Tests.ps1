@@ -103,7 +103,7 @@ Describe 'profile and no-profile package integration' {
         $source = Get-Content -Raw -LiteralPath $ProfileTemplate
         $include = $source.IndexOf('{{ include "scripts/windows-path-precedence.ps1" | replace ')
         $call = $source.IndexOf('Set-WindowsPathPrecedence -ManagedPaths $ProfilePaths')
-        $commandLookup = $source.IndexOf('Get-Command nvim')
+        $commandLookup = $source.IndexOf('Get-Command pi')
         $profilePaths = $source.IndexOf('$ProfilePaths = @(')
         $scoopShims = $source.IndexOf("Join-Path `$HOME 'scoop/shims'", $profilePaths)
         $localBin = $source.IndexOf("Join-Path `$HOME '.local/bin'", $profilePaths)

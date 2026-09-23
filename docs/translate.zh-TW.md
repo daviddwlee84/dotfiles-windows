@@ -5,9 +5,10 @@
 LLM provider、免費的網頁 API，以及離線雙語辭典。
 
 跨平台的 [dotfiles](https://github.com/daviddwlee84/dotfiles) 在 macOS（Homebrew tap）
-與 Linux（`go install`）都已經裝了同一個工具，這個 repo 從 Scoop bucket 裝它。
+與 Linux（驗證過的 release；舊 Go 安裝保留原來源）都已經裝了同一個工具，這個 repo 從 Scoop bucket 裝它。
 
-用 **translate** 這個 init 提問開啟（`workstation` role 預設開）。
+用 **Personal CLI tools**（`installPersonalTools`）開啟，workstation 預設開。
+只有缺少新開關的舊設定才沿用 `installTranslate`。
 
 ## 安裝方式
 
@@ -19,7 +20,7 @@ scoop bucket add daviddwlee84 https://github.com/daviddwlee84/scoop-bucket
 scoop install daviddwlee84/translate
 ```
 
-打開 **translate** 開關後，`.chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl`
+個人工具組選取 translate 後，`.chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl`
 會替你做完這兩步。
 
 - 上游 repo 的 release workflow 每打一個 tag 就交叉編譯 **windows/amd64** 與
@@ -32,9 +33,9 @@ scoop install daviddwlee84/translate
     2026-08 之前，這個 repo 是用 `go install` 從原始碼編到 `~\.local\bin`，而
     `~\.local\bin` 在 `PATH` 上**排在** `~\scoop\shims` **前面**。所以殘留的
     `~\.local\bin\translate.exe` 會永遠遮蔽 scoop 那份：`scoop update translate`
-    顯示成功，但 `translate --version` 印的還是舊的。packages 腳本會自動移除舊檔
-    —— 但只在 scoop shim 確實存在之後才動手，這樣就算安裝失敗也不會讓你連
-    `translate` 都沒得用。可以這樣確認：
+    顯示成功，但 `translate --version` 印的還是舊的。個人工具安裝器會保留並回報
+    未驗證的副本，不會僅依檔名刪除。確認原安裝來源後，再明確備份舊副本或
+    透過原管理器更新。可以這樣確認命令優先序：
 
     ```powershell
     Get-Command translate -All | Select-Object -ExpandProperty Source

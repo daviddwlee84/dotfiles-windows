@@ -20,7 +20,7 @@
 #   installHerdr         = {{ .installHerdr }}
 #   installClink         = {{ .installClink }}
 #   installTry           = {{ .installTry }}
-#   installTranslate     = {{ .installTranslate }}
+#   installPersonalTools = {{ if hasKey . "installPersonalTools" }}{{ .installPersonalTools }}{{ else }}legacy{{ end }}
 #   installInputMethod   = {{ .installInputMethod }}
 #   useChineseMirror     = {{ .useChineseMirror }}
 #   managedMachine       = {{ .managedMachine }}
@@ -60,6 +60,7 @@ $allowPublicPackageFallback = {{ if (get . "allowPublicPackageFallback") }}$true
 {{ include "scripts/windows-cli-release.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 {{ include "scripts/windows-system-proxy.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 {{ include "scripts/herdr-upgrade-core.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
+{{ include "scripts/personal-tools.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 {{ template "weasel-core.ps1" . }}
 
 function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
@@ -272,7 +273,7 @@ function Install-Herdr {
     }
 }
 
-# Keep the owned ~/.local/bin/dev.exe path: Microsoft's unrelated DevTool may
+# Keep the owned ~/.local/bin/dev-cli.exe path: Microsoft's unrelated DevTool may
 # also be named dev.exe. The profile exposes this executable as dev-cli.
 function Install-DevCli {
     try { Install-WindowsCliRelease -Name dev-cli }
@@ -669,7 +670,6 @@ if (Have az) {
 # Herdr-plus still builds from source on Windows, so the stack owns its Go
 # dependency even though dev-cli now uses a prebuilt release.
 Scoop-Install @('go')
-Install-DevCli
 Install-Herdr
 Install-HerdrPlus
 {{ end -}}
@@ -721,41 +721,17 @@ if (Have gem) {
 } else { Register-Failure 'gem:try-cli (ruby/gem unavailable)' }
 {{ end -}}
 
-{{ if .installTranslate -}}
-# translate -- terminal translator CLI+TUI (github.com/daviddwlee84/translate).
-# Installed from the author's own scoop bucket. Since 2026-08 that repo's release
-# workflow cross-compiles windows/{amd64,arm64} on every tag and GoReleaser pushes
-# the manifest here, so this is now a seconds-long download of a prebuilt binary.
-#
-# It used to be `go install` from source: no manifest and no prebuilt Windows
-# artifact existed, so a fresh box spent several minutes compiling (embedded
-# swagger-ui + sqlite) and needed a whole Go toolchain for one CLI. That is also
-# why this block used to `Scoop-Install @('go')` unconditionally; it no longer
-# does. The optional Herdr stack still source-builds herdr-plus and
-# therefore installs Go itself; dev-cli and SpecStory use official binaries.
-#
-# Upgrades are `scoop update translate` (see `just upgrade-translate`); there is
-# no version pin to bump here any more.
-scoop bucket add daviddwlee84 https://github.com/daviddwlee84/scoop-bucket *> $null
-Scoop-Install @('daviddwlee84/translate')
-
-# Migration off the go-install era: that path put translate.exe in ~\.local\bin,
-# which precedes ~\scoop\shims on PATH. A leftover copy therefore shadows the
-# scoop one permanently -- `scoop update translate` reports success while
-# `translate --version` keeps printing the old build. Drop it, but only once the
-# shim is genuinely in place, so a failed scoop install never leaves the box with
-# no translate at all.
-$trOld = Join-Path $HOME '.local\bin\translate.exe'
-if (Test-Path -LiteralPath $trOld) {
-    $scoopRoot = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $HOME 'scoop' }
-    if (Test-Path -LiteralPath (Join-Path $scoopRoot 'shims\translate.exe')) {
-        Info 'removing stale ~\.local\bin\translate.exe (it shadows the scoop shim)'
-        Remove-Item -LiteralPath $trOld -Force -ErrorAction SilentlyContinue
-    } else {
-        Info 'translate: keeping ~\.local\bin\translate.exe until the scoop shim exists'
-    }
-}
+# Explicit false overrides both historical install selectors.
+$personalToolData = @{
+{{ if hasKey . "installPersonalTools" -}}
+    installPersonalTools = {{ if .installPersonalTools }}$true{{ else }}$false{{ end }}
+{{ else -}}
+    installHerdr = {{ if .installHerdr }}$true{{ else }}$false{{ end }}
+    installTranslate = {{ if (get . "installTranslate") }}$true{{ else }}$false{{ end }}
 {{ end -}}
+}
+Install-SelectedPersonalTools -Data $personalToolData
+
 
 {{ if .installInputMethod -}}
 # Rime input method. The managed YAML under %APPDATA%\Rime is deployed by chezmoi

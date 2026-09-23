@@ -6,10 +6,10 @@ local LLM providers, a free web API, and an offline bilingual dictionary.
 
 It is the same tool the cross-platform
 [dotfiles](https://github.com/daviddwlee84/dotfiles) install on macOS (Homebrew tap) and
-Linux (`go install`). This repo installs it from a Scoop bucket.
+Linux (verified releases; legacy Go installs keep their owner). This repo installs it from a Scoop bucket.
 
-Enable it with the **translate** init prompt (on by default for the `workstation`
-role).
+Enable it with **Personal CLI tools** (`installPersonalTools`, on for workstation).
+The old `installTranslate` selection is consulted only when the new key is absent.
 
 ## How it gets installed
 
@@ -22,7 +22,7 @@ scoop install daviddwlee84/translate
 ```
 
 `.chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl` does both for you when
-the **translate** toggle is on.
+the personal-tools suite selects translate.
 
 - The upstream repo's release workflow cross-compiles **windows/amd64** and
   **windows/arm64** on every tag (it's pure Go — `modernc.org/sqlite`, no cgo)
@@ -35,9 +35,10 @@ the **translate** toggle is on.
     `~\.local\bin`, which comes **before** `~\scoop\shims` on `PATH`. A leftover
     `~\.local\bin\translate.exe` therefore shadows the scoop one forever:
     `scoop update translate` reports success while `translate --version` keeps
-    printing the old build. The packages script removes the stale copy
-    automatically — but only once the scoop shim exists, so a failed install never
-    leaves you with no `translate` at all. Check with:
+    printing the old build. The personal-tools installer preserves and reports
+    unverified copies instead of deleting a same-named executable. Verify its
+    original owner, then deliberately back it up or update through that owner.
+    Inspect command precedence with:
 
     ```powershell
     Get-Command translate -All | Select-Object -ExpandProperty Source

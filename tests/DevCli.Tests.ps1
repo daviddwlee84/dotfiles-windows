@@ -23,7 +23,11 @@ Describe 'dev-cli Windows install and Herdr alignment' {
     It 'installs official Windows releases and retains Go for Herdr Plus' {
         $package | Should -Match 'Install-WindowsCliRelease -Name dev-cli'
         $package | Should -Not -Match 'go install.*dev-cli'
-        $package | Should -Match '(?s)\{\{ if \.installHerdr -\}\}.*Scoop-Install @\(''go''\)\s*Install-DevCli\s*Install-Herdr\s*Install-HerdrPlus'
+        $herdrBlock = [regex]::Match($package, '(?s)\{\{ if \.installHerdr -\}\}(.*?)\{\{ end -\}\}').Groups[1].Value
+        $herdrBlock | Should -Match "Scoop-Install @\('go'\)"
+        $herdrBlock | Should -Match 'Install-HerdrPlus'
+        $herdrBlock | Should -Not -Match 'Install-DevCli'
+        $package | Should -Match 'Install-SelectedPersonalTools -Data'
     }
 
     It 'exposes the explicit binary-release upgrade recipe' {

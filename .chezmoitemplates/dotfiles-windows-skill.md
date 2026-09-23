@@ -98,7 +98,7 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 - **External editor** — init default `{{ get . "preferredEditor" | default "nvim" }}` (independent of `enableVimMode`); `editorcfg status/list/use/reset/doctor` manages the local override. `EDITOR`/`VISUAL` name the blocking `dotfiles-editor` launcher. Micro is baseline Scoop; code/cursor presets add `--wait`. `local.ps1` runs last; see `docs/editor.md`.
 - role: **{{ .role }}**
 - Coding agents (Pi/pia/OMP included): {{ .installCodingAgents }} · Agent sounds: {{ .agentSounds }} · Standalone SpecStory (also bundled with coding agents): {{ .installSpecstoryBuild }} · GUI apps: {{ .installWindowsApps }} · WSL2 (Docker backend): {{ .installWsl }} · WSL Ubuntu: {{ .installWslUbuntu }} · Utility apps: {{ .installUtilityApps }} · Gaming: {{ .installGamingApps }}
-- Extra runtimes: {{ .installExtraRuntimes }} · Media: {{ .installMediaTools }} · LLM: {{ .installLlmTools }} · summarize: {{ .installSummarize }} · Tunnel: {{ .installTunnelTools }} · IaC: {{ .installIacTools }} · OpenSSH: {{ .installSshServer }} · herdr: {{ .installHerdr }} · Clink(cmd): {{ .installClink }} · try: {{ .installTry }} · translate: {{ .installTranslate }} · Rime/Weasel: {{ .installInputMethod }}
+- Extra runtimes: {{ .installExtraRuntimes }} · Media: {{ .installMediaTools }} · LLM: {{ .installLlmTools }} · summarize: {{ .installSummarize }} · Tunnel: {{ .installTunnelTools }} · IaC: {{ .installIacTools }} · OpenSSH: {{ .installSshServer }} · herdr: {{ .installHerdr }} · Clink(cmd): {{ .installClink }} · try: {{ .installTry }} · Personal tools: {{ if hasKey . "installPersonalTools" }}{{ .installPersonalTools }}{{ else }}legacy selection{{ end }} · Rime/Weasel: {{ .installInputMethod }}
 - China mirrors: {{ .useChineseMirror }} · Managed machine: {{ .managedMachine }} · Public package fallback: {{ get . "allowPublicPackageFallback" | default false }} · Backup mode: {{ .backupMode }} · Vim mode: {{ .enableVimMode }}
 
 ## just recipes
@@ -140,10 +140,10 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   `~/.config/powershell/bin/pia-pi.ps1` with an argument array or use `pia`.
 - tmux / zellij are Unix-only and intentionally absent; **WezTerm** (installed) is
   the stable native tmux-like multiplexer, or use Windows Terminal panes. **herdr**
-  is an opt-in (`installHerdr`) native-Windows multiplexer on stable 0.9.1+ —
+  is enabled by default for workstation (`installHerdr`) native-Windows multiplexer on stable 0.9.1+ —
   installed via the hash-verified official herdr.dev installer, config at `~/.config/herdr/config.toml`,
   with its official global skill exported from the installed binary on each apply.
-  The same toggle installs the latest verified Windows `dev` release (`prefix+d`)
+  The personal-tools toggle installs the latest verified Windows `dev` release (`prefix+d`)
   and Scoop Go for herdr-plus (`prefix+y` holds six copy helpers; `prefix+p` stays interactive),
   while `prefix+Y` opens a Yazi popup and `prefix+t` opens the interactive translate TUI.
   `Alt+g` aliases the LazyGit temporary pane; scratch (`prefix+backtick`) and
@@ -174,7 +174,7 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   prompt parity for **prompt + navigation only** (no pwsh funcs/aliases/modules).
   `starship.lua` is chezmoi-managed at `%LocalAppData%\clink`; the zoxide/fzf Clink
   bridges are fetched from upstream at apply. pwsh stays the default shell.
-- **`translate`** (`installTranslate`, on for workstation) installs from the author's
+- **`translate`** (`installPersonalTools`, on for workstation) installs from the author's
   own scoop bucket (`scoop bucket add daviddwlee84 …` + `Scoop-Install
   @('daviddwlee84/translate')`) — prebuilt, no version pin in this repo. It used to
   be a version-pinned `go install` into `~\.local\bin`; a leftover
@@ -183,3 +183,31 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   Upgrade with `just upgrade-translate` (= `scoop update translate`).
 - This skill body is shared: `dot_agents/skills/dotfiles-windows/` and
   `dot_claude/skills/dotfiles-windows/` both render `.chezmoitemplates/dotfiles-windows-skill.md`.
+
+## Personal CLI suite
+
+`installPersonalTools` is authoritative when present: true installs dev-cli,
+translate, exp, lazychezmoi, lazyclash, lazymlflow and lazypueue; false installs
+none of them, even when Herdr is enabled. Missing keys retain the historical
+Herdr/dev-cli and installTranslate selection until reinitialization. Disabling
+does not uninstall existing tools or disable already-installed completions.
+
+New workstation installs enable both personal tools and Herdr; minimal enables
+neither. Dev remains `dev-cli.exe` to avoid Microsoft's `dev`; translate and the
+five additional CLIs use the personal Scoop bucket. The suite installs no Go
+toolchain or backend service. Existing independent Pueue/Herdr configuration is
+unchanged. `just upgrade-personal-check` previews selected installed packages;
+`just upgrade-personal` updates through their verified owners and skips missing
+or unmanaged copies. `chezmoi apply` only installs missing packages.
+
+The five new Scoop CLIs support `upgrade --check` and an explicit upgrade that
+exits the app before Scoop runs in a separate helper. `handed-off` is not success;
+use `upgrade --status OPERATION` (optionally `--json`) for the final result.
+Herdr upgrades preserve its selected stable/preview channel; fresh installs
+default to stable.
+
+During an active Scoop upgrade, use the returned `status_command` (the private
+helper outside the installed package). Starting the installed executable to
+poll can make Scoop classify it as running and defer the update. Once complete,
+`<tool> upgrade --status <operation-id>` is also available. If the host disallows
+process breakaway, keep the launching terminal open until a final result.

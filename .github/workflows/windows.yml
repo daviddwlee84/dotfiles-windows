@@ -49,7 +49,8 @@ jobs:
               './tests/PowerShellInitCache.Tests.ps1', './tests/Bootstrap.Tests.ps1',
               './tests/GitAliases.Tests.ps1', './tests/HerdrLazyGit.Tests.ps1',
               './tests/EditorConfig.Tests.ps1', './tests/WindowsCliRelease.Tests.ps1',
-              './tests/DevCli.Tests.ps1'
+              './tests/DevCli.Tests.ps1', './tests/PersonalTools.Tests.ps1',
+              './tests/Translate.Tests.ps1', './tests/HerdrUpgrade.Tests.ps1'
             )
             if ($result.FailedCount -or $result.FailedContainersCount) { exit 1 }
           }
@@ -187,14 +188,14 @@ jobs:
             '--promptBool','Install tunnel tools (ngrok, cloudflared)=false',
             '--promptBool','Install Infrastructure-as-Code tools (Azure CLI, Terraform, OpenTofu)=false',
             '--promptBool','Install and enable the OpenSSH server / sshd (needs admin, opens inbound port 22)=false',
-            '--promptBool','Install herdr (native Windows terminal multiplexer, preview beta)=false',
+            '--promptBool','Install herdr (native Windows terminal multiplexer)=false',
             '--promptBool','Install Clink + starship/zoxide/fzf for cmd.exe (DOS prompt)=false',
             '--promptBool','Install try (Ruby ephemeral-workspace CLI, needs Ruby)=false',
             # true (unlike the other install toggles) so the render+parse step
             # exercises the go-install block and the apply step deploys the
             # translate tv channel; `chezmoi apply --exclude scripts` means the
             # multi-minute `go install` never actually runs in CI.
-            '--promptBool','Install translate (terminal translator CLI and TUI)=true',
+            '--promptBool','Install personal CLI tools (dev-cli, translate, exp, lazychezmoi, lazyclash, lazymlflow, lazypueue)=true',
             # true so the render+parse step exercises the Install-Weasel block and
             # the rime redeploy script, and the apply step deploys the
             # AppData/Roaming/Rime YAML; --exclude scripts means winget never runs.

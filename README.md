@@ -155,3 +155,8 @@ Backward-looking knowledge — past traps and non-obvious debugging — lives in
 message and land on the root cause + workaround instead of re-debugging from
 scratch.
 <!-- project-knowledge-harness:readme-roadmap --> (end)
+
+Personal CLI tools (`installPersonalTools`) and Herdr default on for workstation,
+off for minimal. The personal suite has seven CLIs and installs no backend
+services; `just upgrade-personal-check` previews upgrades and
+`just upgrade-personal` preserves each installed owner. See [personal tools](docs/tools.md#personal-tools).

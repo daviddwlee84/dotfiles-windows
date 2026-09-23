@@ -109,9 +109,16 @@ Import-CachedInit -Name 'dev-cli' -Exe $devCliExe -RetainScope -Generate {
 }
 
 # translate — cobra tab-completion for the terminal translator (opt-in
-# installTranslate; built by run_onchange_after_10_packages). The pwsh
+# installPersonalTools; built by run_onchange_after_10_packages). The pwsh
 # counterpart of the parent repo's scripts/generate_completions.sh entry.
 Import-CachedInit -Name 'translate' -Exe 'translate' -RetainScope -Generate { translate completion powershell }
+
+# Installed personal tools use retained Cobra completion scopes. No downloads.
+Import-CachedInit -Name 'exp' -Exe 'exp' -RetainScope -Generate { exp completion powershell }
+Import-CachedInit -Name 'lazychezmoi' -Exe 'lazychezmoi' -RetainScope -Generate { lazychezmoi completion powershell }
+Import-CachedInit -Name 'lazyclash' -Exe 'lazyclash' -RetainScope -Generate { lazyclash completion powershell }
+Import-CachedInit -Name 'lazymlflow' -Exe 'lazymlflow' -RetainScope -Generate { lazymlflow completion powershell }
+Import-CachedInit -Name 'lazypueue' -Exe 'lazypueue' -RetainScope -Generate { lazypueue completion powershell }
 
 # pia — PowerShell completion for commands, flags, and Git-managed combo IDs.
 # The launcher itself rarely changes, so include the checkout commit in the
