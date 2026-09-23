@@ -367,12 +367,12 @@ just upgrade-summarize # npm update -g @steipete/summarize（選用工具，不�
 
 ## 個人工具組
 
-`installPersonalTools` 統一管理 dev-cli、translate、exp、lazychezmoi、
+`installPersonalTools` 統一管理 dev-cli、translate、lazychezmoi、
 lazyclash、lazymlflow、lazypueue；workstation 預設開啟，minimal 關閉。
 明確設定 false 後，舊 Herdr/dev-cli 與 translate 安裝選擇不再生效，但不卸載
 既有工具。尚無此鍵的舊機保持舊選擇，直到 `chezmoi init --prompt` 記錄新選擇。
 
-Dev 保留已驗證官方 release 安裝器與 `dev-cli.exe` 名稱；translate 及新增五個
+Dev 保留已驗證官方 release 安裝器與 `dev-cli.exe` 名稱；translate 及新增四個
 工具使用 `daviddwlee84/scoop-bucket`。Apply 只安裝缺少的套件，保留未知來源
 執行檔，不建立後端服務。Herdr 保持獨立，workstation 預設開啟、minimal 關閉，
 已有選擇不變。Herdr 新安裝使用 stable，升級與設定合併保留既有 channel。
@@ -382,7 +382,7 @@ just upgrade-personal-check # 預覽選定且已安裝的工具
 just upgrade-personal       # 透過原管理器升級
 ```
 
-五個新增 Scoop 工具提供 `upgrade --check`。執行升級會退出工具，再由獨立
+四個新增 Scoop 工具提供 `upgrade --check`。執行升級會退出工具，再由獨立
 進度視窗更新，因為 Scoop 會跳過仍在執行的程式。`handed-off` 只表示已交接，
 不是升級成功；以 `<tool> upgrade --status <operation-id> --json` 查看最終結果
 與實際版本。非互動呼叫遵循各工具原有確認旗標。PowerShell 補全依已安裝
@@ -392,3 +392,6 @@ Scoop 更新尚在進行時，請使用回傳的 `status_command`；它在安裝
 避免查詢本身被 Scoop 判定為工具仍在執行。完成後可用原工具的
 `upgrade --status <operation-id>`。若主機不允許程序脫離 job，請保留啟動它的
 終端，直到結果成為完成、失敗或阻擋等最終狀態。
+
+`exp` 暫緩 Windows 發布與預設安裝，待 canonical storage 與原生 runtime
+驗證完成；既有手動安裝副本保持不動，也不納入此套件升級。

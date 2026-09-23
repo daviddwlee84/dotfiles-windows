@@ -1,11 +1,11 @@
 #Requires -Version 7.4
 #Requires -PSEdition Core
 # Shared selection/ownership policy for install-only apply and explicit upgrades.
+# exp is deferred until its native Windows canonical-storage contract is complete.
 function Get-PersonalTools {
     @(
         [pscustomobject]@{ Id = 'dev-cli'; Binary = 'dev-cli'; Manager = 'release'; VersionName = 'dev' }
         [pscustomobject]@{ Id = 'translate'; Binary = 'translate'; Manager = 'scoop'; VersionName = 'translate' }
-        [pscustomobject]@{ Id = 'exp-cli'; Binary = 'exp'; Manager = 'scoop'; VersionName = 'exp' }
         [pscustomobject]@{ Id = 'lazychezmoi'; Binary = 'lazychezmoi'; Manager = 'scoop'; VersionName = 'lazychezmoi' }
         [pscustomobject]@{ Id = 'lazyclash'; Binary = 'lazyclash'; Manager = 'scoop'; VersionName = 'lazyclash' }
         [pscustomobject]@{ Id = 'lazymlflow'; Binary = 'lazymlflow'; Manager = 'scoop'; VersionName = 'lazymlflow' }

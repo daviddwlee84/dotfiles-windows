@@ -11,10 +11,10 @@ BeforeAll {
 }
 
 Describe 'Authoritative personal suite selection' {
-    It 'selects all seven independently of Herdr and the old translation switch' {
+    It 'selects all six independently of Herdr and the old translation switch' {
         $tools = @(Get-SelectedPersonalTools @{ installPersonalTools = $true; installHerdr = $false; installTranslate = $false })
-        $tools.Count | Should -Be 7
-        $tools.Id | Should -Contain 'exp-cli'
+        $tools.Count | Should -Be 6
+        $tools.Id | Should -Not -Contain 'exp-cli'
         $tools.Id | Should -Contain 'lazychezmoi'
         ($tools | Where-Object Id -EQ 'dev-cli').Binary | Should -BeExactly 'dev-cli'
     }
@@ -47,7 +47,7 @@ Describe 'Install and upgrade boundaries' {
         Mock Get-PersonalToolVersion { throw 'must not execute an unknown binary' }
         Install-SelectedPersonalTools @{ installPersonalTools=$true }
         $results=@(Update-SelectedPersonalTools @{ installPersonalTools=$true })
-        $results.Count | Should -Be 7
+        $results.Count | Should -Be 6
         @($results | Where-Object Status -NE 'skipped').Count | Should -Be 0
         Should -Invoke Get-PersonalToolVersion -Times 0 -Exactly
         Should -Invoke Install-DevCli -Times 0 -Exactly
@@ -56,7 +56,7 @@ Describe 'Install and upgrade boundaries' {
     It 'never installs a missing tool during an explicit aggregate upgrade' {
         Mock Get-PersonalToolOwner { [pscustomobject]@{Kind='missing';Path='missing';Id=$Tool.Id} }
         $results=@(Update-SelectedPersonalTools @{ installPersonalTools=$true })
-        $results.Count | Should -Be 7
+        $results.Count | Should -Be 6
         Should -Invoke Install-WindowsCliRelease -Times 0 -Exactly
         Should -Invoke Scoop-Install -Times 0 -Exactly
         Should -Invoke scoop -Times 0 -Exactly
@@ -75,7 +75,7 @@ Describe 'Install and upgrade boundaries' {
         Mock Install-WindowsCliRelease { throw 'fixture download failed' }
         $results=@(Update-SelectedPersonalTools @{ installPersonalTools=$true })
         ($results | Where-Object Tool -EQ 'dev-cli').Status | Should -Be 'failed'
-        @($results | Where-Object Status -EQ 'unchanged').Count | Should -Be 6
+        @($results | Where-Object Status -EQ 'unchanged').Count | Should -Be 5
         Should -Invoke scoop -Times 6 -Exactly
     }
     It 'captures Scoop host-stream errors even when the script exits zero' {

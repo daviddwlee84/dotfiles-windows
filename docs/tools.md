@@ -404,14 +404,14 @@ combo revision in the middle of an active session.
 
 ## Personal tools
 
-`installPersonalTools` manages dev-cli, translate, exp, lazychezmoi, lazyclash,
+`installPersonalTools` manages dev-cli, translate, lazychezmoi, lazyclash,
 lazymlflow and lazypueue. It defaults on for workstation and off for minimal.
 An explicit false overrides the old Herdr/dev-cli and translate installation
 selectors; no existing package is uninstalled. Machines without the key retain
 the old selection until `chezmoi init --prompt` records the new choice.
 
 Dev uses the existing verified release installer and remains `dev-cli.exe`;
-translate and the five added tools use `daviddwlee84/scoop-bucket`. Apply installs
+translate and the four added tools use `daviddwlee84/scoop-bucket`. Apply installs
 missing packages only, preserves unmanaged copies, and creates no backend
 services. Herdr remains independent: its default is now on for workstation, off
 for minimal, with stored choices preserved. New Herdr installs use stable;
@@ -422,7 +422,7 @@ just upgrade-personal-check # preview selected and installed packages
 just upgrade-personal       # upgrade them through the existing owner
 ```
 
-The five added Scoop tools expose `upgrade --check`. Applying an upgrade exits
+The four added Scoop tools expose `upgrade --check`. Applying an upgrade exits
 the tool and starts an independent progress helper, because Scoop skips running
 applications. A `handed-off` result records acceptance, not completion; query
 `<tool> upgrade --status <operation-id> --json` for the final installed version
@@ -435,3 +435,6 @@ helper outside the installed package). Starting the installed executable to
 poll can make Scoop classify it as running and defer the update. Once complete,
 `<tool> upgrade --status <operation-id>` is also available. If the host disallows
 process breakaway, keep the launching terminal open until a final result.
+
+`exp` is deferred on Windows pending its canonical storage and native runtime
+contract. Existing manual copies are preserved and excluded from this suite.

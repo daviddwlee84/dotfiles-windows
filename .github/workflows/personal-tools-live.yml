@@ -9,7 +9,7 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - name: Install seven CLIs in isolated runner state
+      - name: Install six CLIs in isolated runner state
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}

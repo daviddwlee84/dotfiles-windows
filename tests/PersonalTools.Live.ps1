@@ -45,11 +45,10 @@ $records = foreach ($tool in Get-PersonalTools) {
     $parseErrors = $null
     [Management.Automation.Language.Parser]::ParseInput($completion,[ref]$null,[ref]$parseErrors) | Out-Null
     if ($parseErrors.Count) { throw "PowerShell completion parse failed: $($tool.Id)" }
-    if ($tool.Id -in @('exp-cli','lazyclash','lazypueue','lazychezmoi','lazymlflow')) {
+    if ($tool.Id -in @('lazyclash','lazypueue','lazychezmoi','lazymlflow')) {
         $check = @(& $owner.Path upgrade --check --json) -join "`n"
         if ($LASTEXITCODE -ne 0) { throw "Upgrade check failed: $($tool.Id)" }
         $report = $check | ConvertFrom-Json
-        if ($tool.Id -eq 'exp-cli') { $report = $report.data }
         if ($report.manager -ne 'scoop' -or $report.package -ne $tool.Id -or -not $report.can_upgrade) { throw "Upgrade owner mismatch: $($tool.Id)" }
     }
     [pscustomobject]@{tool=$tool.Id;owner=$owner.Kind;version=$version;help='passed';completion='passed';sha256=(Get-FileHash $owner.Path -Algorithm SHA256).Hash}
@@ -62,4 +61,4 @@ $after = @(Get-PersonalTools | ForEach-Object { (Get-FileHash (Get-PersonalToolO
 if (Compare-Object $before $after) { throw 'Install-only reapply changed binaries' }
 Update-SelectedPersonalTools -Data @{installPersonalTools=$true} -WhatIf | Out-Host
 $records | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $Root 'personal-tools-live.json') -Encoding utf8
-Write-Host 'PASS: seven tools, verified owners, native version/help/completion, Scoop check, false gate and install-only reapply'
+Write-Host 'PASS: six tools, verified owners, native version/help/completion, Scoop check, false gate and install-only reapply'

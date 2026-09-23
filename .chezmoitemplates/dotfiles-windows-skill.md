@@ -187,7 +187,7 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
 ## Personal CLI suite
 
 `installPersonalTools` is authoritative when present: true installs dev-cli,
-translate, exp, lazychezmoi, lazyclash, lazymlflow and lazypueue; false installs
+translate, lazychezmoi, lazyclash, lazymlflow and lazypueue; false installs
 none of them, even when Herdr is enabled. Missing keys retain the historical
 Herdr/dev-cli and installTranslate selection until reinitialization. Disabling
 does not uninstall existing tools or disable already-installed completions.
@@ -200,7 +200,7 @@ unchanged. `just upgrade-personal-check` previews selected installed packages;
 `just upgrade-personal` updates through their verified owners and skips missing
 or unmanaged copies. `chezmoi apply` only installs missing packages.
 
-The five new Scoop CLIs support `upgrade --check` and an explicit upgrade that
+The four new Scoop CLIs support `upgrade --check` and an explicit upgrade that
 exits the app before Scoop runs in a separate helper. `handed-off` is not success;
 use `upgrade --status OPERATION` (optionally `--json`) for the final result.
 Herdr upgrades preserve its selected stable/preview channel; fresh installs

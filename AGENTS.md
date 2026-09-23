@@ -229,7 +229,7 @@ invariant.
 
 ## Personal CLI selection
 
-`installPersonalTools` is the authoritative seven-tool gate when present, including
+`installPersonalTools` is the authoritative six-tool gate when present, including
 explicit false. Missing keys alone retain the old Herdr/dev-cli and installTranslate
 selection. `scripts/personal-tools.ps1` shares selection and ownership between
 install-only apply and explicit upgrades. Preserve dev-cli.exe and Microsoft dev

@@ -164,7 +164,7 @@ shell 的開發 baseline，**不是**極小安裝：它仍會安裝核心 CLI／
 | herdr multiplexer | 開（workstation） | 原生 Windows 多工器；新安裝 stable，既有 channel 保留 |
 | Clink (cmd.exe) | 關 | 透過 Clink 在 `cmd.exe` 提供 starship + zoxide + fzf（選用的次要 shell） |
 | try（暫時性 workspace） | 關 | Ruby CLI（`gem try-cli`）：以日期命名的試驗目錄 + 模糊選擇器；pwsh 指令為 `tri` |
-| Personal CLI tools | 開（workstation） | dev-cli、translate、exp 與四個 lazy 工具；獨立於 Herdr |
+| Personal CLI tools | 開（workstation） | dev-cli、translate 與四個 lazy 工具；獨立於 Herdr |
 | Rime 輸入法（小狼毫） | 關 | 繁體中文輸入法。安裝程式是 machine scope —— 會跳 UAC；並把共用的 Rime `*.custom.yaml` 部署到 `%APPDATA%\Rime` |
 | China mirrors | 關 | pip/uv、npm、RubyGems、Go 與 rustup 走 GFW 鏡像 |
 | Managed machine | 關 | 使用公司 PyPI/npm registry，並略過 org 政策常擋的 app（Tailscale、Grammarly） |

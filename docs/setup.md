@@ -179,7 +179,7 @@ Scoop download cache and temporary staging. See [Disk space](disk-space.md).
 | herdr multiplexer | on (workstation) | native Windows multiplexer; new installs use stable and existing channels are preserved |
 | Clink (cmd.exe) | off | starship + zoxide + fzf in `cmd.exe` via Clink (opt-in secondary shell) |
 | try (ephemeral workspaces) | off | Ruby CLI (`gem try-cli`): dated trial dirs + fuzzy selector; pwsh command is `tri` |
-| Personal CLI tools | on (workstation) | dev-cli, translate, exp and four lazy tools; independent of Herdr |
+| Personal CLI tools | on (workstation) | dev-cli, translate and four lazy tools; independent of Herdr |
 | Rime input method (Weasel) | off | Traditional Chinese IME. Machine-scope installer — expect a UAC prompt; deploys the shared Rime `*.custom.yaml` to `%APPDATA%\Rime` |
 | China mirrors | off | pip/uv, npm, RubyGems, Go, and rustup via GFW mirrors |
 | Managed machine | off | use company PyPI/npm registries and skip apps org policy usually blocks (Tailscale, Grammarly) |
