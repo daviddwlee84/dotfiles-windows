@@ -14,6 +14,6 @@ Describe 'PowerShell profile host compatibility' {
 
     It 'does not deploy the root Pester result artifact into HOME' {
         $ignore = Get-Content -Raw -LiteralPath (Join-Path $RepoRoot '.chezmoiignore')
-        $ignore | Should -Match '(?m)^/testResults\.xml$'
+        $ignore | Should -Match '(?m)^/testResults\.xml\r?$'
     }
 }

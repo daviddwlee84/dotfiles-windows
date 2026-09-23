@@ -20,7 +20,7 @@ BeforeAll {
         throw 'rendered Codex modifier lost its double-mojibake repair signature'
     }
 
-    $brokenOverlayText = $renderedText.Replace("[tui]`n#", "[tui`n#")
+    $brokenOverlayText = [regex]::new('(?m)^\[tui\](\r?\n)#').Replace($renderedText, '[tui$1#', 1)
     if ($brokenOverlayText -eq $renderedText) { throw 'failed to construct broken Codex overlay fixture' }
     [System.IO.File]::WriteAllText($BrokenOverlayPath, $brokenOverlayText, [System.Text.UTF8Encoding]::new($false))
 
