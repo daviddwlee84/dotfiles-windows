@@ -143,10 +143,10 @@ translate dict reindex         # 用既有的下載重建 SQLite 索引（不用
 
 ## 翻譯 herdr pane {#herdr-pane}
 
-裝了 [herdr](https://herdr.dev)（`installHerdr`）之後，`prefix + t` 會把焦點 pane 的
-內容送進 `translate -2 --bilingual-mode doc`，並把結果顯示在一個暫時的 command pane
-裡：原文逐行保留，每個區塊的譯文以 `  ↳ …` 交錯在下方。`prefix + y`（herdr-plus Quick
-Actions）另外提供三個變體——範圍選單、目標語言輸入，以及複製到剪貼簿。
+裝了 [herdr](https://herdr.dev) 0.9.1+（`installHerdr`）後，`prefix + t`
+在 80% × 80% popup 開啟與 Unix 相同的互動式 `translate` TUI，供輸入或貼上文字，
+不擷取焦點 pane。`prefix + y`（herdr-plus Quick Actions）透過下方 helper 提供
+pane 擷取、範圍選擇、目標語言與複製譯文功能。
 
 Helper：`~\.config\herdr\pane-translate.ps1`，是母 repo `pane-translate.sh` 的
 PowerShell 移植版。兩者行為保持一致；共用的擷取規則寫在 superproject 的
@@ -173,14 +173,12 @@ shell、log、codex 這類 pane 才有意義；1000 是 herdr 每次讀取的硬
 pwsh -NoProfile -File "$HOME\.config\herdr\pane-translate.ps1" recent:500 --dry-run
 ```
 
-**Windows 特有差異。** `prefix + t` 是 `type = "pane"`，不是 unix 端的 `popup`——Windows
-preview 不接受 `popup`。它也不傳 `"$HERDR_ACTIVE_PANE_ID"` 參數，因為 herdr 在這個平台
-不會展開命令字串裡的 `$VAR`；helper 改讀 herdr 注入的環境變數。`prefix+y` 的變體需要
-herdr-plus plugin，而它在 Windows 上要從原始碼建置（因此需要 Go），至今尚未在真實 Windows
-主機上驗證過——`prefix + t` 才是不依賴它也能用的路徑。參見
-[`backlog/herdr-windows-port-verification.md`](https://github.com/daviddwlee84/dotfiles-windows/blob/main/backlog/herdr-windows-port-verification.md)。
+**Windows 特有差異。** 直接開 TUI 的 popup 不需要 plugin。Pane 擷取
+Quick Actions 仍需以 Go 建置的 herdr-plus，也可以手動呼叫 helper。Windows
+命令字串不會像 Unix shell 展開 `$HERDR_ACTIVE_PANE_ID`，因此 helper 讀取 Herdr
+注入的環境變數。Popup 焦點／輸入與 plugin 行為仍需原生 Windows 實機驗證。
 
-環境變數：`HERDR_TRANSLATE_MAX_CHARS`（12000）、`HERDR_TRANSLATE_TO`（預設目標語言；未設定
+Pane helper 環境變數（不適用於直接開啟的 TUI）：`HERDR_TRANSLATE_MAX_CHARS`（12000）、`HERDR_TRANSLATE_TO`（預設目標語言；未設定
 時由 translate 自己的 `[general]` 設定決定）、`HERDR_RUN_HOLD`。
 
 ## 其他前端

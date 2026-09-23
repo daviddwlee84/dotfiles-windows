@@ -7,4 +7,4 @@ if (Test-Path variable:PSNativeCommandUseErrorActionPreference) { $PSNativeComma
 . (Join-Path $PSScriptRoot 'windows-system-proxy.ps1')
 . (Join-Path $PSScriptRoot 'herdr-upgrade-core.ps1')
 
-exit (Invoke-HerdrUpgrade -Channel preview)
+exit (Invoke-HerdrUpgrade -Channel stable)

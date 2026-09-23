@@ -140,12 +140,14 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   `~/.config/powershell/bin/pia-pi.ps1` with an argument array or use `pia`.
 - tmux / zellij are Unix-only and intentionally absent; **WezTerm** (installed) is
   the stable native tmux-like multiplexer, or use Windows Terminal panes. **herdr**
-  is an opt-in (`installHerdr`) native-Windows multiplexer in preview beta —
+  is an opt-in (`installHerdr`) native-Windows multiplexer on stable 0.9.1+ —
   installed via the hash-verified official herdr.dev installer, config at `~/.config/herdr/config.toml`,
   with its official global skill exported from the installed binary on each apply.
   The same toggle installs the latest verified Windows `dev` release (`prefix+d`)
   and Scoop Go for herdr-plus (`prefix+y` holds six copy helpers; `prefix+p` stays interactive),
-  while `prefix+Y` opens Yazi in a temporary pane at the focused pane cwd.
+  while `prefix+Y` opens a Yazi popup and `prefix+t` opens the interactive translate TUI.
+  `Alt+g` aliases the LazyGit temporary pane; scratch (`prefix+backtick`) and
+  command runner (`prefix+E`) use popups on the 0.9.1+ baseline.
   `prefix+alt+e` edits the existing `HERDR_CONFIG_PATH` target (default
   `~/.config/herdr/config.toml`) directly, validates that exact file, then reloads
   the current server; it never invokes chezmoi. `$env:EDITOR` must name one blocking

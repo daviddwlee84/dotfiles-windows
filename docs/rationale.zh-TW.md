@@ -75,7 +75,7 @@ WSL 裡跑）。這點正在改變：**herdr** 推出了實驗性的原生 Windo
 | 選項 | 分割/分頁 | 卸離+保留 | 備註 |
 |---|---|---|---|
 | **WezTerm** | 有（panes/tabs、Lua `wezterm.mux`） | 有（mux server + `wezterm connect`） | 原生 Windows；穩定預設 |
-| **herdr** | 有（滑鼠優先的 panes/splits） | 有（常駐 session、卸離/重連） | 原生 Windows、**preview beta**；最接近 tmux/zellij —— 透過 `installHerdr` 選用 |
+| **herdr** | 有（滑鼠優先的 panes/splits） | 有（常駐 session、卸離/重連） | 原生 Windows、**stable 0.9.1+**；最接近 tmux/zellij —— 透過 `installHerdr` 選用 |
 | Windows Terminal | 有（panes/tabs） | 無 | 很好的終端，但無 session 保留 |
 | Alacritty | 無 | 無 | 快、極簡；搭配多工器用 |
 | tmux / zellij | — | — | 只有 Unix；在 WSL 裡用 |
@@ -86,13 +86,12 @@ API 腳本化版面。它不是 1:1 的 tmux（session/保留模型不同），�
 
 **herdr**（選用，`installHerdr`）是更新、最接近 tmux/zellij 的答案：滑鼠優先的原生多工器
 （ConPTY），有 panes、splits、常駐 session 與卸離/重連。它沒有 scoop/winget manifest ——
-透過驗證過雜湊的 herdr.dev 官方安裝器安裝（Windows 僅有 preview channel），設定則受管於
-`~/.config/herdr/config.toml`（以 pwsh 為預設 shell）。Windows build 仍是 beta，
-所以預設關閉。
+透過驗證過雜湊的 herdr.dev 官方安裝器安裝（使用 stable channel，基準為 0.9.1+），設定則受管於
+`~/.config/herdr/config.toml`（以 pwsh 為預設 shell）。仍預設關閉；受管 keymap 需要 Herdr 0.9.1 以上。
 啟用此套件也會把經過 SHA-256 驗證的最新 Windows `dev` release 安裝到 `~\.local\bin`，並以
 `dev-cli` 名稱提供，避開 Microsoft DevTool 的同名 `dev.exe`：Herdr 的
 `prefix+d` 開啟 task/worktree dashboard；`prefix+Y` 會從聚焦 cwd 開啟 Yazi
-temporary pane（Windows preview 仍不支援 popup）；低頻剪貼簿操作集中在 `prefix+y`
+popup（Herdr 0.9.1+）；低頻剪貼簿操作集中在 `prefix+y`
 herdr-plus 清單中（互動式 path picker 保留 `prefix+p`）。此套件仍自行安裝 Scoop Go
 來編譯 herdr-plus；dev-cli 本身不再需要 Go toolchain。Windows Terminal 保留給
 panes/tabs；Alacritty 保留為快速極簡選項。

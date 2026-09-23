@@ -253,7 +253,7 @@ function Install-PiCodingAgent {
     }
 }
 
-# --- herdr (native Windows terminal multiplexer, preview beta) --------------
+# --- herdr (native Windows terminal multiplexer, stable 0.9.1+) --------------
 # First install and explicit upgrades share the audited official installer.
 function Install-Herdr {
     $herdrBin = Join-Path $env:LOCALAPPDATA 'Programs\Herdr\bin\herdr.exe'
@@ -261,8 +261,8 @@ function Install-Herdr {
         if (Test-Path -LiteralPath $herdrBin -PathType Leaf) {
             Info "herdr already installed: $(Get-HerdrVersion -HerdrPath $herdrBin)"
         } else {
-            Info 'installing herdr (preview) with verified official installer'
-            Invoke-HerdrOfficialInstaller -Channel preview
+            Info 'installing herdr (stable) with verified official installer'
+            Invoke-HerdrOfficialInstaller -Channel stable
             Info "herdr verified: $(Get-HerdrVersion -HerdrPath $herdrBin)"
         }
         Set-WindowsPathPrecedence

@@ -46,15 +46,15 @@ Describe 'Herdr verified upgrade orchestration' {
         Should -Invoke Invoke-HerdrOfficialInstaller -Times 0 -Exactly
     }
 
-    It 'uses the preview installer, probes the new binary, and synchronizes once' {
+    It 'uses the stable installer, probes the new binary, and synchronizes once' {
         Mock Resolve-HerdrExecutable { 'C:\fake\herdr.exe' }
         Mock Invoke-HerdrOfficialInstaller {}
         Mock Test-Path { $true } -ParameterFilter { $LiteralPath -eq 'C:\fake\herdr.exe' }
-        Mock Get-HerdrVersion { 'herdr 0.8.2-preview.test' }
+        Mock Get-HerdrVersion { 'herdr 0.9.1' }
         Mock Sync-HerdrSkill { $true }
 
         Invoke-HerdrUpgrade | Should -Be 0
-        Should -Invoke Invoke-HerdrOfficialInstaller -Times 1 -Exactly -ParameterFilter { $Channel -eq 'preview' }
+        Should -Invoke Invoke-HerdrOfficialInstaller -Times 1 -Exactly -ParameterFilter { $Channel -eq 'stable' }
         Should -Invoke Get-HerdrVersion -Times 1 -Exactly
         Should -Invoke Sync-HerdrSkill -Times 1 -Exactly -ParameterFilter { $HerdrPath -eq 'C:\fake\herdr.exe' }
     }
@@ -97,14 +97,14 @@ Describe 'Herdr verified upgrade orchestration' {
         Mock Resolve-HerdrExecutable { 'C:\fake\herdr.exe' }
         Mock Invoke-HerdrOfficialInstaller {}
         Mock Test-Path { $true } -ParameterFilter { $LiteralPath -eq 'C:\fake\herdr.exe' }
-        Mock Get-HerdrVersion { 'herdr 0.8.2-preview.test' }
+        Mock Get-HerdrVersion { 'herdr 0.9.1' }
         Mock Sync-HerdrSkill { $false }
 
         Invoke-HerdrUpgrade -ErrorAction SilentlyContinue | Should -Be 1
         Should -Invoke Sync-HerdrSkill -Times 1 -Exactly
     }
 
-    It 'verifies installer bytes, passes preview, and removes the temporary script' {
+    It 'verifies installer bytes, passes stable, and removes the temporary script' {
         $content = "param([string]`$Channel)`n"
         $expected = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($content)))
         $script:DownloadedInstaller = $null
@@ -114,9 +114,9 @@ Describe 'Herdr verified upgrade orchestration' {
         }
         Mock Invoke-HerdrInstallerProcess { 0 }
 
-        Invoke-HerdrOfficialInstaller -Channel preview -InstallerUri 'https://example.invalid/install.ps1' -ExpectedSha256 $expected
+        Invoke-HerdrOfficialInstaller -Channel stable -InstallerUri 'https://example.invalid/install.ps1' -ExpectedSha256 $expected
 
-        Should -Invoke Invoke-HerdrInstallerProcess -Times 1 -Exactly -ParameterFilter { $Channel -eq 'preview' }
+        Should -Invoke Invoke-HerdrInstallerProcess -Times 1 -Exactly -ParameterFilter { $Channel -eq 'stable' }
         Test-Path -LiteralPath $script:DownloadedInstaller | Should -BeFalse
     }
 
@@ -150,7 +150,7 @@ Describe 'Herdr verified upgrade orchestration' {
     It 'does not call the legacy manifest parser path' {
         $entry = Get-Content -Raw (Join-Path $RepoRoot 'scripts' 'upgrade-herdr.ps1')
         $entry | Should -Not -Match 'update\s+--handoff'
-        $entry | Should -Match 'Invoke-HerdrUpgrade -Channel preview'
+        $entry | Should -Match 'Invoke-HerdrUpgrade -Channel stable'
     }
 
     It 'retries one interrupted curl download without changing its source' {
@@ -160,10 +160,10 @@ Describe 'Herdr verified upgrade orchestration' {
             $script:attempts++
             if ($script:attempts -eq 1) {
                 $global:LASTEXITCODE = 1
-                'Failed to download https://herdr.dev/preview.json (curl exit code 56).'
+                'Failed to download https://herdr.dev/stable.json (curl exit code 56).'
             } else { $global:LASTEXITCODE = 0 }
         }
-        Invoke-HerdrInstallerProcess -InstallerPath 'verified.ps1' -Channel preview | Should -Be 0
+        Invoke-HerdrInstallerProcess -InstallerPath 'verified.ps1' -Channel stable | Should -Be 0
         Should -Invoke pwsh -Times 2 -Exactly
     }
 
@@ -171,9 +171,9 @@ Describe 'Herdr verified upgrade orchestration' {
         Mock Invoke-WithWindowsSystemProxy { & $Command }
         Mock pwsh {
             $global:LASTEXITCODE = 1
-            'Failed to download https://herdr.dev/preview.json (curl exit code 60).'
+            'Failed to download https://herdr.dev/stable.json (curl exit code 60).'
         }
-        Invoke-HerdrInstallerProcess -InstallerPath 'verified.ps1' -Channel preview | Should -Be 1
+        Invoke-HerdrInstallerProcess -InstallerPath 'verified.ps1' -Channel stable | Should -Be 1
         Should -Invoke pwsh -Times 1 -Exactly
     }
 }

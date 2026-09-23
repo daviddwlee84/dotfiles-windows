@@ -255,7 +255,10 @@ cmdlet 時請用完整名稱。
 
 ## herdr workspace 輔助指令（`hvibe` / `hcode` / …）
 
-`prefix+G` 透過專用的 `pwsh -NoProfile -File` helper 開啟 LazyGit。
+0.9.1+ keymap 固定使用 Catppuccin Mocha 與 distinct symbols，第二行顯示 machine／agent，第三行顯示 `terminal_title_stripped`。`prefix+Y`、``prefix+` ``、`prefix+E`、`prefix+t` 使用與 Unix 相同的 popup；先前拒絕 popup 的紀錄限於七月的 0.7.5 preview，升級後仍需在原生 Windows 做實機操作驗證。
+
+
+`prefix+G` 與 `Alt+g` 透過專用的 `pwsh -NoProfile -File` helper 開啟 LazyGit。
 Herdr 的 Windows custom command 原本使用 `cmd /d /c`，不受
 `terminal.default_shell = "pwsh"` 控制，且會繼承長期運行 server 的 PATH。
 helper 只載入受管環境片段，在套用既有 PATH 政策後解析 LazyGit／Git，
@@ -284,8 +287,8 @@ pane 在其指令結束後的行為；`--session NAME` 指向執行中的 `herdr
 包裝是一段 pwsh 腳本，以 `pwsh -EncodedCommand …` 傳入，而非 bash 的 `trap`；且
 SpecStory 自動包裝只有在 PATH 上真的有 `specstory` CLI 時才啟用（coding-agent bundle 會安裝官方 Windows 版本）。
 
-!!! warning "herdr 仍是 preview/beta"
-    herdr 的 Windows 版本是可選的（`installHerdr`）且僅 preview；這些輔助指令驅動它的
+!!! note "Herdr 實機驗證"
+    herdr 的 Windows 版本是可選的（`installHerdr`），使用 stable 0.9.1+；這些輔助指令驅動它的
     CLI scripting 介面（`herdr workspace|tab|pane`），只能在真正的 Windows 機器上驗證，
     CI 不涵蓋。
 

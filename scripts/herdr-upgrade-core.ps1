@@ -37,7 +37,7 @@ function Invoke-HerdrInstallerProcess {
 
 function Invoke-HerdrOfficialInstaller {
     param(
-        [ValidateSet('preview')][string]$Channel = 'preview',
+        [ValidateSet('stable', 'preview')][string]$Channel = 'stable',
         [string]$InstallerUri = $script:HerdrInstallerUri,
         [string]$ExpectedSha256 = $script:HerdrInstallerSha256
     )
@@ -67,7 +67,7 @@ function Get-HerdrVersion {
 
 function Invoke-HerdrUpgrade {
     [CmdletBinding()]
-    param([ValidateSet('preview')][string]$Channel = 'preview')
+    param([ValidateSet('stable', 'preview')][string]$Channel = 'stable')
 
     $herdr = Resolve-HerdrExecutable
     if (-not $herdr) {

@@ -25,9 +25,8 @@
 #   - Managed tables are enforced wholesale (template wins).
 #   - FORCED single keys are re-asserted INTO a pulled-through table while other
 #     live/user-owned subkeys remain intact. Windows needs exactly one:
-#     update.channel must stay "preview" (the installer rejects "stable" on
-#     Windows builds). This sub-key merge is the one deliberate divergence from
-#     the unix overlay.
+#     update.channel uses "stable" (supported by the 0.9.1+ Windows build).
+#     This sub-key merge is the one deliberate divergence from the unix overlay.
 #
 # WHY tomlkit (not a hand-rolled emitter): herdr's config has an array-of-tables
 # ([[keys.command]]) and comments worth keeping; stdlib tomllib is read-only.
@@ -137,7 +136,7 @@ except ModuleNotFoundError:
 # Tables the template owns outright.
 MANAGED = {"theme", "ui", "terminal", "keys"}
 # Single keys re-asserted into an otherwise pulled-through table.
-FORCED = {("update", "channel"): "preview"}
+FORCED = {("update", "channel"): "stable"}
 
 with open(live_path, "r", encoding="utf-8") as fh:
     live_text = fh.read().strip()

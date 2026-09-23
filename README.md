@@ -52,12 +52,14 @@ then applies the dotfiles.
   only verified symlink placeholders.
 - **Editors**: VSCode, Cursor, Notepad++ (shared settings/keybindings).
 - **Apps** (winget): Windows Terminal, Alacritty, Raycast, PowerToys, Steam.
-- **Optional Herdr**: native preview multiplexer with `prefix+d` launching the
-  `dev-cli` task/worktree dashboard, `prefix+Y` Yazi temporary pane, low-frequency copy helpers under `prefix+y`,
+- **Optional Herdr**: native multiplexer (0.9.1+) with `prefix+d` launching the
+  `dev-cli` task/worktree dashboard, `prefix+Y` Yazi popup, low-frequency copy helpers under `prefix+y`,
   `prefix+alt+e` safely editing, validating, and reloading the live runtime
   config, and a binary-matched official global agent skill.
 - **`copilot-proxy`** tool series, rewritten as a native PowerShell module, with
   Claude auto-compaction sized from each selected model's live prompt ceiling.
+
+Herdr 0.9.1+ uses fixed Catppuccin Mocha, distinct status symbols, and three agent rows: workspace/review, machine/agent, and the stripped task title. `Alt+g` aliases the LazyGit pane; Yazi, scratch shell, command runner, and translation use the same popup bindings as Unix.
 
 Herdr's `prefix+alt+e` edits the existing `HERDR_CONFIG_PATH` target (or
 `~/.config/herdr/config.toml`) directly and never invokes chezmoi. A failed edit

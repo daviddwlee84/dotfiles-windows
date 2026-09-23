@@ -218,13 +218,14 @@ Describe 'Herdr runtime config editor' {
             [regex]::Matches($template, '(?m)^key = "prefix\+alt\+g"$').Count | Should -Be 0
         }
 
-        It 'keeps the cross-platform Yazi key as a Windows temporary pane' {
+        It 'keeps the cross-platform Yazi key as a 0.9.1 popup' {
             $template = Get-Content -Raw -LiteralPath $script:ConfigTemplate
             $pattern = '(?ms)^\[\[keys\.command\]\]\r?\n' +
                 'key = "prefix\+Y"\r?\n' +
-                'type = "pane"\r?\n' +
+                'type = "popup"\r?\n' +
                 'command = "yazi"\r?\n' +
-                'description = "yazi file manager \(temporary pane\)"\r?$'
+                'width = "90%"\r?\nheight = "85%"\r?\n' +
+                'description = "yazi file manager \(popup\)"\r?$'
             [regex]::Matches($template, $pattern).Count | Should -Be 1
         }
 

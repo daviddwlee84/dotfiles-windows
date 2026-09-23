@@ -89,7 +89,7 @@ changing: **herdr** ships an experimental native-Windows beta. The native option
 | Option | Splits / tabs | Detach + persist | Notes |
 |---|---|---|---|
 | **WezTerm** | yes (panes/tabs, Lua `wezterm.mux`) | yes (mux server + `wezterm connect`) | native Windows; stable default |
-| **herdr** | yes (mouse-first panes/splits) | yes (persistent sessions, detach/attach) | native Windows, **preview beta**; closest to tmux/zellij — opt-in via `installHerdr` |
+| **herdr** | yes (mouse-first panes/splits) | yes (persistent sessions, detach/attach) | native Windows, **stable 0.9.1+**; closest to tmux/zellij — opt-in via `installHerdr` |
 | Windows Terminal | yes (panes/tabs) | no | great terminal, no session persistence |
 | Alacritty | no | no | fast, minimal; pair with a multiplexer |
 | tmux / zellij | — | — | Unix-only; use under WSL |
@@ -103,13 +103,13 @@ differs), but it's the closest stable native experience.
 **herdr** (opt-in, `installHerdr`) is the newer, closest-to-tmux/zellij answer: a
 mouse-first native multiplexer (ConPTY) with panes, splits, persistent sessions,
 and detach/attach. It has no scoop/winget manifest — it installs via herdr.dev's
-official installer, and this machine intentionally follows the preview channel.
+official installer, and this machine intentionally follows the stable channel.
 Its config is managed at `~/.config/herdr/config.toml` (pwsh as the default shell).
-It stays off by default while the Windows build is beta.
+It remains opt-in; the managed keymap requires Herdr 0.9.1 or newer.
 Enabling the stack also installs the latest verified Windows `dev` release into `~\.local\bin` and
 exposes it as `dev-cli`, avoiding Microsoft DevTool's same-named `dev.exe`:
 Herdr `prefix+d` opens its task/worktree dashboard, `prefix+Y` opens Yazi in a
-temporary pane at the focused cwd (the Windows preview still lacks popups), while the low-frequency clipboard
+popup at the focused cwd (Herdr 0.9.1+), while the low-frequency clipboard
 helpers live in the `prefix+y` herdr-plus list (the interactive path picker keeps
 `prefix+p`). The stack still installs Scoop Go
 to build herdr-plus; dev-cli itself needs no Go toolchain. Windows Terminal stays installed for its panes/tabs; Alacritty

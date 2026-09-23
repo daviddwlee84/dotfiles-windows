@@ -1,5 +1,5 @@
 {{- $herdrDir := printf "%s/.config/herdr" (.chezmoi.homeDir | replace "\\" "/") -}}
-# herdr — native Windows terminal multiplexer + AI-agent orchestrator (preview beta).
+# herdr — native Windows terminal multiplexer + AI-agent orchestrator (0.9.1+).
 #
 # Windows port of the parent dotfiles repo's .chezmoitemplates/herdr/config.toml.
 # It mirrors the tmux/unix keymap as closely as the Windows build allows; every
@@ -25,14 +25,14 @@
 # Prefix is ctrl+b (herdr default, same as tmux).
 
 [update]
-# This machine intentionally follows the preview channel.
+# This machine intentionally follows the stable channel.
 # Re-asserted by the overlay as a single key while any other live/user-owned
 # [update] subkeys remain available for current or future Herdr releases.
-channel = "preview"
+channel = "stable"
 
 [theme]
 name = "catppuccin"           # mocha (dark)
-auto_switch = true            # follow OS light/dark
+auto_switch = false            # keep Catppuccin Mocha regardless of terminal appearance
 light_name = "catppuccin-latte"
 dark_name = "catppuccin"
 
@@ -42,6 +42,7 @@ pane_borders = true
 pane_gaps = true
 confirm_close = true
 show_agent_labels_on_pane_borders = true
+status_indicators = "symbols" # distinct static glyphs for each agent state
 
 # "auto" draws herdr's own cursor on Windows to avoid ConPTY flicker;
 # set "native" to hand the cursor to the outer terminal. Windows-only key.
@@ -53,10 +54,10 @@ host_cursor = "auto"
 # actually scan. Valid values: "spaces" | "priority".
 agent_panel_sort = "priority"
 
-# Expanded Agent sidebar row layout. herdr's own default is
-#   [["state_icon", "workspace", "tab"], ["agent"]]
-# and we append the `$review` metadata token so the review-pending ⭐
-# (prefix+m / hmark) is actually VISIBLE in the sidebar.
+# Expanded Agent sidebar: keep workspace names on the first row, machine/agent
+# on the second, and the task title without its activity glyph on the third.
+# Empty titles disappear; machine is hidden when only Local is present.
+# Keep `$review` for the review-pending star (prefix+m / hmark).
 #
 # Required since herdr 0.7.4: `--custom-status` / the flat `custom_status` field
 # were replaced by a namespaced token map, and unlike custom_status a token is
@@ -69,7 +70,8 @@ agent_panel_sort = "priority"
 [ui.sidebar.agents]
 rows = [
   ["state_icon", "workspace", "tab", "$review"],
-  ["agent"],
+  ["machine", "agent"],
+  ["terminal_title_stripped"],
 ]
 
 [terminal]
@@ -134,16 +136,23 @@ description = "dev-cli repository/task dashboard (popup pane)"
 key = "prefix+G"
 type = "pane"
 command = 'pwsh -NoProfile -File "{{ $herdrDir }}/lazygit.ps1"'
-description = "lazygit (popup pane)"
+description = "lazygit (temporary pane)"
 
-# Match the Unix prefix+Y launcher while respecting the Windows preview's lack
-# of `type = "popup"`: this opens a temporary command pane in the focused pane's
-# cwd and closes it when Yazi exits. Do not add width/height; panes ignore them.
+# Prefix-free alias; use the same temporary-pane launcher as prefix+G.
+[[keys.command]]
+key = "alt+g"
+type = "pane"
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/lazygit.ps1"'
+description = "lazygit (temporary pane)"
+
+# Herdr 0.9.1 shares the popup parser and runtime across platforms.
 [[keys.command]]
 key = "prefix+Y"
-type = "pane"
+type = "popup"
 command = "yazi"
-description = "yazi file manager (temporary pane)"
+width = "90%"
+height = "85%"
+description = "yazi file manager (popup)"
 
 # btop as a floating command pane (a real PTY that closes when you quit it).
 # Quick Actions can't host this: herdr-plus runs an action with no PTY/stdin, so
@@ -156,39 +165,22 @@ type = "pane"
 command = "btop"
 description = "btop system monitor (popup pane)"
 
-# --- Scratch shell as a real floating popup (prefix+`) --- DISABLED on Windows ---
-# type = "popup" is NOT implemented in the herdr Windows preview
-# (0.7.5-preview.2026-07-21): the parser rejects it with
-#   invalid keybinding config: unknown variant `popup`, expected one of
-#   `shell`, `pane`, `plugin_action` ... keeping current
-# and drops the binding. Left DEAD (not revived as a tiled `pane`) per preference.
-# To restore: uncomment and keep `type = "popup"` once a Windows preview ships it,
-# or use `type = "pane"` for a tiled fallback (drop width/height — panes ignore
-# them). See backlog/herdr-windows-port-verification.md item #2.
-# [[keys.command]]
-# key = "prefix+`"
-# type = "popup"
-# command = "pwsh"
-# width = "85%"
-# height = "80%"
-# description = "scratch shell (popup)"
+# Floating popups are supported by the 0.9.1 baseline; keep LazyGit as a pane.
+[[keys.command]]
+key = "prefix+`"
+type = "popup"
+command = "pwsh"
+width = "85%"
+height = "80%"
+description = "scratch shell (popup)"
 
-# --- Run an arbitrary command in a floating popup (prefix+E) --- DISABLED on Windows ---
-# Same reason as prefix+` above: `type = "popup"` is unknown to the herdr Windows
-# preview (0.7.5-preview.2026-07-21) and the binding is rejected. Left DEAD per
-# preference; restore/fallback notes are on the prefix+` block above.
-# The generalisation of prefix+G: fzf-pick or type any command, run it in the
-# FOCUSED PANE'S cwd, and the popup closes itself when the command exits.
-# Enter runs the highlighted history entry; Alt+Enter runs exactly what you typed.
-# Exit behaviour: closes on success, holds on failure. Override with
-# $env:HERDR_RUN_HOLD = 'always'|'never'.
-# [[keys.command]]
-# key = "prefix+E"
-# type = "popup"
-# command = 'pwsh -NoProfile -File "{{ $herdrDir }}/run-command.ps1"'
-# width = "80%"
-# height = "70%"
-# description = "run a command in the pane cwd (popup)"
+[[keys.command]]
+key = "prefix+E"
+type = "popup"
+command = 'pwsh -NoProfile -File "{{ $herdrDir }}/run-command.ps1"'
+width = "80%"
+height = "70%"
+description = "run a command in the pane cwd (popup)"
 
 # --- New tab at the workspace ("space") root dir (prefix+C) ---
 # herdr's native new-tab (prefix+c) and the mouse "+" button follow new_cwd,
@@ -255,34 +247,18 @@ type = "pane"
 command = 'pwsh -NoProfile -File "{{ $herdrDir }}/path-pick.ps1"'
 description = "copy a file path from the pane (fzf, two-tier)"
 
-# --- Translate the pane you are reading (prefix+t) ---
-# Pipes the focused pane's content through the `translate` CLI in bilingual mode
-# (-2 --bilingual-mode doc): the original lines stay verbatim and each block's
-# translation is interleaved beneath as `  ↳ …`.
-#
-# Scope is the on-screen page. That is not a shortcut — an agent pane on the
-# ALTERNATE SCREEN has no scrollback at all (a Claude Code pane reports
-# scroll.max_offset_from_bottom = 0, and `pane read --source recent --lines 1000`
-# returns exactly viewport_rows), so one page is all that exists there, and
-# --source visible tracks whatever you scrolled to INSIDE the app. The scrollback
-# variants live on the prefix+y Quick Actions, where a select list can offer them
-# without spending a direct key.
-#
-# type = "pane", not the unix side's "popup": the Windows preview rejects popup
-# (backlog/herdr-windows-port-verification.md #2). A command pane already owns a
-# PTY, so the helper takes its --inline path and pages in place. It also means
-# THIS key keeps working when herdr-plus is absent — which matters here, because
-# the plugin builds from source (needs go) and has never been exercised on a real
-# Windows host.
-#
-# No "$HERDR_ACTIVE_PANE_ID" argument: herdr does not expand $VAR in a command
-# string on this platform (#3), so the helper reads the env var herdr DID inject.
-# lowercase t: prefix+T is already the herdr-sesh session picker.
+# --- Interactive translator (prefix+t) ---
+# Bare `translate` opens its TUI for text entered or pasted by the user.
+# Pane capture and bilingual translation remain on prefix+y Quick Actions.
+# A popup supplies the PTY/stdin the interactive TUI needs; Quick Actions run
+# through `sh -c` without either. Lowercase t: prefix+T is `tv herdr-sesh`.
 [[keys.command]]
 key = "prefix+t"
-type = "pane"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-translate.ps1" visible --inline'
-description = "translate this pane (bilingual)"
+type = "popup"
+command = "translate"
+width = "80%"
+height = "80%"
+description = "translate (interactive TUI, popup)"
 
 # --- herdr-plus plugin (sesh + tmuxp + popup-menu analog) ---
 # Requires: herdr plugin install -y cloudmanic/herdr-plus  (needs go on Windows —

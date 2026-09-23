@@ -148,12 +148,11 @@ to run the update.
 
 ## Translate a herdr pane {#herdr-pane}
 
-With [herdr](https://herdr.dev) installed (`installHerdr`), `prefix + t` pipes the
-focused pane's content through `translate -2 --bilingual-mode doc` and shows the
-result in a temporary command pane: the original lines stay verbatim, each block's
-translation interleaved beneath as `  ↳ …`. `prefix + y` (herdr-plus Quick Actions)
-adds three variants — a scope picker, a target-language prompt, and a copy-to-clipboard
-form.
+With [herdr](https://herdr.dev) 0.9.1+ installed (`installHerdr`), `prefix + t`
+opens the interactive `translate` TUI in an 80% × 80% popup, matching Unix. Enter
+or paste text there; it does not capture the focused pane. `prefix + y`
+(herdr-plus Quick Actions) provides pane capture, scope selection, target-language
+selection and copy-to-clipboard translation through the helper below.
 
 Helper: `~\.config\herdr\pane-translate.ps1`, the PowerShell port of the parent
 repo's `pane-translate.sh`. The two are kept behaviourally identical; the shared
@@ -184,16 +183,13 @@ Inspect any of this without spending an LLM call:
 pwsh -NoProfile -File "$HOME\.config\herdr\pane-translate.ps1" recent:500 --dry-run
 ```
 
-**Windows specifics.** `prefix + t` is `type = "pane"`, not the unix side's
-`popup` — the Windows preview rejects `popup`. It also passes no
-`"$HERDR_ACTIVE_PANE_ID"` argument, because herdr does not expand `$VAR` in a
-command string here; the helper reads the env var herdr injects instead. The
-`prefix+y` variants need the herdr-plus plugin, which builds from source (and so
-needs Go) and is still unverified on a real Windows host — `prefix + t` is the path
-that works without it. See
-[`backlog/herdr-windows-port-verification.md`](https://github.com/daviddwlee84/dotfiles-windows/blob/main/backlog/herdr-windows-port-verification.md).
+**Windows specifics.** The direct TUI popup needs no plugin. Pane-capture
+Quick Actions still require herdr-plus (built with Go), or invoke the helper
+manually. The helper reads Herdr's injected pane environment because Windows
+command strings do not expand `$HERDR_ACTIVE_PANE_ID` like Unix shells do.
+Native popup focus/input and plugin behavior remain Windows runtime checks.
 
-Env: `HERDR_TRANSLATE_MAX_CHARS` (12000), `HERDR_TRANSLATE_TO` (default target
+Pane-helper env (not the direct TUI): `HERDR_TRANSLATE_MAX_CHARS` (12000), `HERDR_TRANSLATE_TO` (default target
 language; otherwise translate's own `[general]` config decides), `HERDR_RUN_HOLD`.
 
 ## Other front-ends

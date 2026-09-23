@@ -282,7 +282,10 @@ its output into native pwsh in the live session (so the `cd` moves this shell).
 
 ## herdr workspace helpers (`hvibe` / `hcode` / …)
 
-`prefix+G` launches LazyGit through a dedicated `pwsh -NoProfile -File` helper.
+The 0.9.1+ keymap uses fixed Catppuccin Mocha and distinct status symbols, with machine/agent on the second row and `terminal_title_stripped` on the third. `prefix+Y`, ``prefix+` ``, `prefix+E`, and `prefix+t` now use popups matching Unix. The prior popup rejection applied to the July 0.7.5 preview; native Windows interaction still needs a runtime smoke test after updating.
+
+
+`prefix+G` and `Alt+g` launch LazyGit through a dedicated `pwsh -NoProfile -File` helper.
 Herdr's Windows custom commands otherwise use `cmd /d /c`, independently of
 `terminal.default_shell = "pwsh"`, and inherit the long-lived server's PATH.
 The helper loads only the managed environment fragment, resolves LazyGit and Git
@@ -315,9 +318,9 @@ pane's on-exit wrapper is a pwsh script passed as `pwsh -EncodedCommand …` rat
 than a bash `trap`; and SpecStory auto-wrapping only engages if a `specstory` CLI
 is on PATH (the coding-agent bundle installs the official Windows release).
 
-!!! warning "herdr is preview/beta"
+!!! note "Herdr runtime verification"
     herdr is opt-in (`installHerdr`), and this machine intentionally follows its
-    preview channel. These helpers drive its CLI scripting surface (`herdr workspace|tab|pane`), which is
+    stable channel. These helpers drive its CLI scripting surface (`herdr workspace|tab|pane`), which is
     validated on a real Windows box, not in CI.
 
 ## SSH key setup (`ssh-setup-remote`)

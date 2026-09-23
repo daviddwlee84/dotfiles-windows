@@ -89,15 +89,13 @@ Everything below was exercised from macOS with chezmoi + pwsh 7.4 + uv:
    whole keymap assumes `type = "pane"` / `type = "popup"` / `type =
    "plugin_action"` behave as documented. `herdr server reload-config` should
    report empty diagnostics — if it rejects a key, that is the first signal.
-2. **`type = "popup"` (herdr >= 0.7.4)** is used for `prefix+E` and
-   ``prefix+` ``. **CONFIRMED unsupported** on the Windows preview
-   `0.7.5-preview.2026-07-21` (2026-07): the parser rejects it —
-   `invalid keybinding config: unknown variant `popup`, expected one of `shell`,
-   `pane`, `plugin_action` ... keeping current` — and drops the binding. Both were
-   **disabled** (commented out) in `.chezmoitemplates/herdr/config.toml` rather
-   than revived as tiled `pane`s, per user preference (dead is acceptable until a
-   Windows preview ships `popup`). Note: `type = "shell"` is NOT a substitute — it
-   runs detached in the background. Restore path documented inline in the config.
+2. **Popup alignment updated for 0.9.1 (2026-09-23).** The July
+   `0.7.5-preview.2026-07-21` rejection is historical. Upstream v0.9.1 has an
+   unconditional `Popup` parser/action and shared popup runtime. The managed
+   baseline now restores scratch and command-runner popups and aligns Yazi and
+   translation geometry with Unix. Config rendering/checking runs on macOS;
+   native Windows input, focus restoration and ConPTY behavior still need the
+   original runtime acceptance checks. Upgrade Herdr before applying this keymap.
 3. **How herdr spawns a `command` string on Windows.** **CONFIRMED (2026-07):**
    the Windows preview does **NOT** expand `$VAR` inside a `[[keys.command]]`
    string — a binding written `... "$HERDR_ACTIVE_PANE_ID"` hands the script the
@@ -140,8 +138,8 @@ Everything below was exercised from macOS with chezmoi + pwsh 7.4 + uv:
    returns early with `herdr-plus: skipped — needs go to build on Windows` — so
    "the plugin is absent" is a live case, not a hypothetical. Every feature that
    ships a Quick Action must therefore also have a direct-key path; the pane
-   translator (`prefix+t`, item 12) is the first one built that way on purpose.
-12. **`prefix+t` pane translator.** `pane-translate.ps1` (2026-08-31). Confirm on
+   translator helper (item 12) can be invoked manually; `prefix+t` now opens the interactive TUI on both platforms.
+12. **Pane translator helper / Quick Actions.** `pane-translate.ps1` (2026-08-31). Confirm on
     a real box: (a) the `type = "pane"` command pane owns a usable PTY so the
     `--inline` viewer's `Read-Host` hold works; (b) `$env:HERDR_ACTIVE_PANE_ID`
     is injected into a command pane, so `Resolve-HerdrPane` picks the SOURCE pane
