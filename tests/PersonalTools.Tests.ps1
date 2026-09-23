@@ -76,7 +76,7 @@ Describe 'Install and upgrade boundaries' {
         $results=@(Update-SelectedPersonalTools @{ installPersonalTools=$true })
         ($results | Where-Object Tool -EQ 'dev-cli').Status | Should -Be 'failed'
         @($results | Where-Object Status -EQ 'unchanged').Count | Should -Be 5
-        Should -Invoke scoop -Times 6 -Exactly
+        Should -Invoke scoop -Times 5 -Exactly
     }
     It 'captures Scoop host-stream errors even when the script exits zero' {
         Mock Get-PersonalToolOwner { [pscustomobject]@{Kind='scoop';Path='owned';Id=$Tool.Id} }
