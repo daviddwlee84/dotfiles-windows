@@ -60,6 +60,14 @@ LazyGit v0.64+ uses `git.diffRenderers`; this repo configures `delta` with dark,
 non-paging output. The config deliberately avoids the deprecated `git.pagers`
 shape so LazyGit does not rewrite the chezmoi-managed file.
 
+## Clipboard over Herdr remote
+
+LazyGit's `Ctrl+O` normally writes to the Windows clipboard on the machine
+running it. When viewing this Herdr session from another machine, the managed
+copy helper instead sends OSC 52 through the active pane to the viewing client.
+Restart LazyGit after applying the config. Outside Herdr, the helper keeps the
+normal Windows clipboard behavior.
+
 ## References
 
 - [LazyGit configuration](https://github.com/jesseduffield/lazygit/blob/master/docs/Config.md)

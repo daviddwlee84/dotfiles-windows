@@ -57,6 +57,13 @@ LazyGit v0.64+ 使用 `git.diffRenderers`；本 repo 以 `delta` 提供深色、
 輸出。設定刻意不使用已棄用的 `git.pagers` 格式，避免 LazyGit 重寫 chezmoi
 管理的檔案。
 
+## Herdr remote 剪貼簿
+
+LazyGit 的 `Ctrl+O` 原本會寫入執行所在 Windows 機器的剪貼簿。從另一台
+機器觀看 Herdr session 時，受管理的複製 helper 會改由目前 pane 送出
+OSC 52，讓觀看端的剪貼簿收到文字。套用設定後須重新開啟 LazyGit；
+在 Herdr 之外，helper 仍使用一般 Windows 剪貼簿。
+
 ## 參考資料
 
 - [LazyGit 設定](https://github.com/jesseduffield/lazygit/blob/master/docs/Config.md)

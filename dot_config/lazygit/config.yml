@@ -27,6 +27,11 @@ git:
     - colorArg: always
       command: delta --dark --paging=never --syntax-theme base16-256 -s
 
+os:
+  # LazyGit captures command stdout, so the helper writes OSC 52 directly to
+  # Herdr's pane console. Outside Herdr it uses the Windows clipboard.
+  copyToClipboardCmd: 'pwsh -NoProfile -File "%USERPROFILE%\.config\lazygit\copy.ps1" {{text}}'
+
 customCommands:
   - key: I
     context: localBranches
