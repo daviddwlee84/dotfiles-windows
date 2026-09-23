@@ -47,6 +47,7 @@ copilot-model -c                   # inspect Main/Fable/Opus/Sonnet/Haiku
 copilot-here on                    # sticky project; or use claude-copilot-once
 claude-copilot --fast             # session-only fast sibling, with warned fallback
 codex-copilot                     # Codex; live OpenAI-first model selection
+# Explicit alternatives: copilot-model gpt-6-sol; codex-copilot -m gpt-6-luna
 
 # One-shot planning presets. Codex still needs `/plan` after the TUI opens.
 codex-copilot -c 'plan_mode_reasoning_effort="ultra"' -c 'service_tier="fast"'
@@ -153,26 +154,25 @@ or compare `billing.restricted_to` plan sets; those fields are diagnostic only.
 The current model still controls the current marker and normal launch precedence,
 and an active project pin still determines where `--auto` writes.
 
-OpenAI generation and capability tier are independent: Astra succeeds Sol as the
-flagship while Terra and Luna remain on 5.6. Therefore `gpt-6-astra` outranks
-`gpt-5.6-sol`, but a hypothetical lightweight `gpt-6-luna` would not. This follows
-OpenAI's [current model guidance](https://developers.openai.com/api/docs/guides/latest-model).
-The current Copilot catalog restricts Astra to `pro_plus` / Business / Enterprise /
-Max and exposes a 1,000,000-token context with an 872,000-token prompt ceiling
-(smaller than Sol's 1,050,000 / 922,000); it starts at `reasoning_effort=low`, with
-no `none` mode. The backward-compatible offline fallback stays
-`gpt-5.6-sol[1m]`; that is not an entitlement guarantee. The live PLANS column
-in `copilot-model -L` and raw `billing.restricted_to` in `--json` describe the
-catalog, not proof of the active account/billing target/organization's entitlement.
-The gateway enforces actual access; a later entitlement rejection still requires
-choosing another served model manually.
+OpenAI generation and capability tier are independent. Among selectable known
+OpenAI models, main preference is `gpt-6-astra` > `gpt-6-sol` > `gpt-5.6-sol`;
+`gpt-6-luna` stays in the lightweight/Haiku tier and cannot displace a flagship.
+GitHub [announced GPT-6 Sol and Luna on 2026-09-22](https://github.blog/changelog/2026-09-22-openais-gpt-6-sol-and-gpt-6-luna-now-available/).
+Terra remains `gpt-5.6-terra`; lower-role Luna prefers `gpt-6-luna`, then
+`gpt-5.6-luna`, from the selectable live entries.
+The backward-compatible offline default remains `gpt-5.6-sol[1m]`; it is not an
+entitlement guarantee. `copilot-model -L` and `--json` show live plan/policy
+metadata, but `billing.restricted_to` does not prove the active billing target's
+access. A later entitlement rejection still requires choosing another served
+model manually. Context and compact values below are a **2026-09-23 live gateway
+snapshot**, not hard-coded promises for every account.
 The generated profile is:
 
 | Claude Code role | Copilot model |
 |---|---|
 | Main / Fable / Opus | selected main (`gpt-6-astra` when it is the best selectable live candidate) |
 | Sonnet | `gpt-5.6-terra` |
-| Haiku / background / legacy small-fast | `gpt-5.6-luna` |
+| Haiku / background / legacy small-fast | `gpt-6-luna`, then selectable `gpt-5.6-luna` |
 
 `-l` remains the pipeable bare-id list. `-L` / `--details` exposes tier,
 price category, context/output limits, reasoning range, fast sibling, advertised
@@ -197,30 +197,51 @@ Auto-compact is configured separately from the full context hint. The launchers
 set `CLAUDE_CODE_AUTO_COMPACT_WINDOW` from live `max_prompt_tokens` (or context
 minus maximum output when that field is absent), then leave Claude Code's default
 roughly-95% threshold unchanged. This prevents a 1M-class client window from
-crossing a smaller provider prompt ceiling such as 922k. `copilot-model -c` and
+crossing a smaller provider prompt ceiling such as Sol/Luna's 872k. `copilot-model -c` and
 `copilot-here status` display the effective value.
 
-For `gpt-6-astra` and `gpt-6-astra-fast`, the default compact budget is now 70% of
-the live prompt ceiling: 610,400 for an 872,000-token ceiling. Configure
-`$env:COPILOT_ASTRA_COMPACT_RATIO='0.70'` with a decimal greater than zero and at
-most one; `1` restores the full prompt budget. The result is rounded down and
-must meet Claude's 100,000-token minimum (Codex requires a positive budget).
-The actual context window and `[1m]` hint remain unchanged. A valid explicit
-`CLAUDE_CODE_AUTO_COMPACT_WINDOW` or Codex `-c model_auto_compact_token_limit=...`
-takes precedence. Existing sessions and project pins are not rewritten; refresh
-managed pins and restart clients deliberately. This is a conservative experiment
-to reduce large compact uploads, not a claimed fix for remote body-read 408s.
+The **2026-09-23 live gateway snapshot** separates provider limits from client
+compaction:
 
-For Astra, distinguish the **1,000,000 total context**, **872,000 input ceiling**
-and **610,400 Codex auto-compact trigger**. The 128,000 output allowance is already
-excluded from the input ceiling; do not subtract it twice. The default leaves
-261,600 input tokens for tool results, estimation error and compaction overhead.
-Claude applies its own roughly-95% trigger to that budget (about 579,880).
-These are launcher settings, not VS Code's context-picker configuration. An old
-Sol session launched with `model_auto_compact_token_limit=922000` must not reuse
-that value for Astra: it exceeds Astra's input limit by 50,000 tokens. Relaunch
-the wrapper for the selected model rather than assuming an in-session model
-switch updates command-line overrides.
+| Model | Provider context | Prompt ceiling | Maximum output | Launcher compact budget |
+|---|---:|---:|---:|---:|
+| `gpt-6-astra` | 1,050,000 | 1,050,000 | 128,000 | 735,000 (70%) |
+| `gpt-6-sol` | 1,000,000 | 872,000 | 128,000 | 872,000 |
+| `gpt-6-luna` | 1,000,000 | 872,000 | 128,000 | 872,000 |
+
+Explicit live `max_prompt_tokens` is authoritative, even when it does not equal
+context minus maximum output. Subtract maximum output only when the prompt field
+is absent. `[1m]` remains a Claude Code display/context hint; raw API IDs have no
+suffix. Sol/Luna do **not** inherit Astra's 70% experiment.
+
+Astra and its `-fast` sibling use
+`floor(live prompt ceiling × COPILOT_ASTRA_COMPACT_RATIO)`, default `0.70`:
+1,050,000 becomes 735,000. The ratio must satisfy `0 < ratio <= 1`; `1` restores
+the full prompt budget. Claude's 100,000-token minimum remains enforced; Codex
+requires a positive budget. This reduces large compact uploads but is not a
+proven fix for remote body-read 408s. Valid explicit
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW` and `-c model_auto_compact_token_limit=...`
+retain precedence; Codex still enforces its own compact cap.
+
+With the matching provider-derived descriptors, **Codex 0.156.1** uses 95% of the
+context as usable input and caps auto-compact at 90% of the full context:
+
+| Model | Codex usable context | Effective Codex auto-compact trigger |
+|---|---:|---:|
+| `gpt-6-astra` | 997,500 | 735,000 |
+| `gpt-6-sol` / `gpt-6-luna` | 950,000 | 872,000 |
+
+The trigger is `min(launcher compact budget, 90% × context)`, not 90% of the
+already-reduced usable context. These values follow Codex's
+[model calculations](https://github.com/openai/codex/blob/rust-v0.156.1/codex-rs/protocol/src/openai_models.rs#L513-L535).
+Claude separately applies its roughly-95% threshold to the injected budget
+(about 698,250 for Astra and 828,400 for Sol/Luna).
+Refresh managed pins and relaunch the wrapper after changing models; in-session
+switching does not recompute launch-time overrides. Existing safe pins and active
+session history are not rewritten. These settings do not change VS Code's
+context picker.
+
+PowerShell override example: `$env:COPILOT_ASTRA_COMPACT_RATIO='0.70'`.
 
 ### Selection, retry and failover are different
 
@@ -435,6 +456,25 @@ and `-fast` main candidates are excluded from automatic selection. This choice
 is independent of any previous model state or Claude project pin; raw model id
 and context/prompt limits come from the same catalog snapshot, without persisting
 the selection.
+
+- The launcher builds a provider-derived `model_catalog_json` from the installed
+  `codex debug models --bundled` descriptors and the same live Copilot snapshot.
+  For exact matching model IDs, only `context_window` and `max_context_window`
+  are updated to the live context value; reasoning, tools, prompts and other
+  metadata stay bundled. Setting only `-c model_context_window=...` is insufficient:
+  Codex clamps it to the descriptor's `max_context_window`.
+- The catalog lives under `$XDG_CACHE_HOME/copilot-proxy/codex-models/` (default
+  `~/.cache/copilot-proxy/codex-models/`). Its cache key includes the Codex version,
+  cache schema and a hash of the canonical live model-to-context map; validated
+  JSON is published atomically. Prompt/output limits do not key this cache:
+  the launcher recomputes the compact override on each launch. The provider-global
+  `~/.codex/models_cache.json` is left alone.
+- A caller-supplied `-c model_catalog_json=...` bypasses managed catalog generation;
+  the caller owns that catalog's descriptors and limits. Otherwise, selecting
+  `gpt-6-sol` or `gpt-6-luna` without an exact bundled descriptor stops launch
+  with an upgrade hint. Use [Codex 0.156.1 or newer](https://github.com/openai/codex/releases/tag/rust-v0.156.1);
+  the helper does not copy another model's reasoning/tool metadata. See the
+  [context-clamping investigation](https://github.com/daviddwlee84/dotfiles/blob/main/pitfalls/codex-copilot-context-window-clamped.md).
 
 Codex uses the enabled shim on `127.0.0.1:4142`; explicit `copilot-proxy shim off`
 uses the backend directly. With the shim enabled, Codex request/stream retries

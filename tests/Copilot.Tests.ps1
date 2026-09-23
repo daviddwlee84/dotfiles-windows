@@ -553,8 +553,8 @@ Describe 'Copilot module' {
         It 'keeps every named tier in one order for Claude and Codex' {
             InModuleScope Copilot {
                 $known = @(
-                    'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.5', 'gpt-5.4',
-                    'gpt-5.3-codex', 'gpt-5.6-luna', 'gpt-5.4-mini', 'gpt-5-mini'
+                    'gpt-6-astra', 'gpt-6-sol', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.5', 'gpt-5.4',
+                    'gpt-5.3-codex', 'gpt-6-luna', 'gpt-5.6-luna', 'gpt-5.4-mini', 'gpt-5-mini'
                 )
                 foreach ($i in 0..($known.Count - 2)) {
                     $pair = @($known[$i + 1], $known[$i])
@@ -588,9 +588,9 @@ Describe 'Copilot module' {
     Context 'capability-tier ranking' {
         # `model_picker_category` is the upstream tier taxonomy and lines up with
         # OpenAI's DURABLE tiers (Sol/Astra powerful, Terra versatile, Luna
-        # lightweight). Generation and tier advance independently - gpt-6-astra is
-        # the gen-6 flagship while Terra and Luna stayed on 5.6 - so ranking on the
-        # version alone would promote a future gpt-6-luna over gpt-5.6-sol.
+        # lightweight). Generation and tier advance independently - gen-6 Luna
+        # remains lightweight while Terra stays on 5.6 - so ranking on the
+        # version alone would promote gpt-6-luna over gpt-5.6-sol.
         BeforeAll {
             InModuleScope Copilot {
                 function script:NewTierCatalog {
@@ -654,6 +654,28 @@ Describe 'Copilot module' {
             InModuleScope Copilot {
                 $cat = NewTierCatalog @{ 'gpt-5.6-sol-fast' = 'powerful'; 'gpt-5.6-sol' = 'powerful' }
                 Select-CopilotBestModel -Model @('gpt-5.6-sol-fast', 'gpt-5.6-sol') -Catalog $cat |
+                    Should -BeExactly 'gpt-5.6-sol'
+            }
+        }
+
+        It 'keeps Astra above new Sol and both Sol generations above new Luna' {
+            InModuleScope Copilot {
+                $cat = NewTierCatalog @{ 'gpt-6-astra' = 'powerful'; 'gpt-6-sol' = 'powerful'
+                    'gpt-6-sol-fast' = 'powerful'; 'gpt-5.6-sol' = 'powerful'; 'gpt-6-luna' = 'lightweight'
+                    'gpt-5.6-luna' = 'lightweight' }
+                foreach ($vector in @(
+                    @{ Ids = @('gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna'); Expected = 'gpt-6-astra' },
+                    @{ Ids = @('gpt-6-sol-fast', 'gpt-6-sol', 'gpt-5.6-sol', 'gpt-6-luna'); Expected = 'gpt-6-sol' },
+                    @{ Ids = @('gpt-5.6-sol', 'gpt-6-luna'); Expected = 'gpt-5.6-sol' },
+                    @{ Ids = @('gpt-6-luna', 'gpt-5.6-luna'); Expected = 'gpt-6-luna' }
+                )) {
+                    Select-CopilotBestModel -Model $vector.Ids -Catalog $cat | Should -BeExactly $vector.Expected
+                    Select-CopilotBestCodexModel -Model $vector.Ids -Catalog $cat | Should -BeExactly $vector.Expected
+                }
+                ($cat.data | Where-Object id -EQ 'gpt-6-sol') | Add-Member -NotePropertyName model_picker_enabled -NotePropertyValue $false
+                $eligible = Get-CopilotAutoCandidateIds -Catalog $cat
+                $eligible | Should -Not -Contain 'gpt-6-sol'
+                Select-CopilotBestCodexModel -Model @($eligible | Where-Object { $_ -ne 'gpt-6-astra' }) -Catalog $cat |
                     Should -BeExactly 'gpt-5.6-sol'
             }
         }
@@ -899,6 +921,11 @@ Describe 'Copilot module' {
     }
 
     Context 'Codex Copilot provider and SpecStory startup' {
+        BeforeEach {
+            InModuleScope Copilot {
+                Mock Get-CopilotCodexCatalogFile { 'C:\fixture cache\catalog.json' }
+            }
+        }
         It 'distinguishes zero arguments from one explicit empty argument' {
             InModuleScope Copilot {
                 Mock codex-copilot {
@@ -1099,6 +1126,220 @@ Describe 'Copilot module' {
         }
     }
 
+    Context 'Codex provider model catalog' {
+        BeforeEach {
+            InModuleScope Copilot -Parameters @{ CacheHome = (Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))) } {
+                param($CacheHome)
+                $script:catalogSavedCache = $env:XDG_CACHE_HOME
+                $env:XDG_CACHE_HOME = $CacheHome
+                $script:catalogVersion = 'codex-cli 0.156.1'
+                $script:catalogReads = 0
+                $script:catalogLaunch = $null
+                $script:catalogSpecstory = $null
+                $script:catalogNativeFailure = $false
+                $script:catalogFixture = [pscustomobject]@{ models = @(
+                    foreach ($id in 'gpt-6-sol', 'gpt-6-luna', 'gpt-6-astra', 'unserved-model') {
+                        [pscustomobject]@{
+                            slug = $id; context_window = 272000; max_context_window = 872000
+                            effective_context_window_percent = 95; auto_compact_token_limit = $null
+                            base_instructions = "exact instructions for $id"
+                            supported_reasoning_levels = @(@{ effort = 'low'; description = 'native choice' })
+                            supports_image_detail_original = $true
+                            custom_metadata = @{ nested = @('preserve', @{ field = 'verbatim' }) }
+                        }
+                    }
+                ); version = 'fixture metadata' }
+                $script:catalogLive = [pscustomobject]@{ data = @(
+                    foreach ($id in 'gpt-6-sol', 'gpt-6-luna', 'gpt-6-astra', 'gpt-6-sol-fast') {
+                        [pscustomobject]@{ id = $id; capabilities = [pscustomobject]@{ limits = [pscustomobject]@{
+                            max_context_window_tokens = 1000000; max_prompt_tokens = 872000; max_output_tokens = 128000
+                        } } }
+                    }
+                ) }
+                function script:codex {
+                    $global:LASTEXITCODE = 0
+                    if ($args[0] -eq '--version') { $script:catalogVersion; return }
+                    if (($args -join ' ') -eq 'debug models --bundled') {
+                        $script:catalogReads++
+                        if ($script:catalogNativeFailure) { $global:LASTEXITCODE = 9; return }
+                        ConvertTo-Json -InputObject $script:catalogFixture -Depth 100 -Compress
+                        return
+                    }
+                    $script:catalogLaunch = @($args)
+                }
+                function script:specstory { $script:catalogSpecstory = @($args) }
+                Mock Test-CopilotAlive { $true }
+                Mock Assert-CopilotShim { $true }
+                Mock Get-CopilotShimEnabled { $true }
+                Mock Get-CopilotClientBase { 'http://127.0.0.1:4142' }
+                Mock Get-CopilotModelCatalog { $script:catalogLive }
+                Mock Get-SpecstoryCodexCmd { 'codex' }
+                Mock Initialize-SpecstoryCodexSessionsRoot { $true }
+                Mock Invoke-RestMethod { throw 'Unexpected HTTP in catalog fixture' }
+                Mock Start-Process { throw 'Unexpected native child in catalog fixture' }
+            }
+        }
+        AfterEach {
+            InModuleScope Copilot {
+                $env:XDG_CACHE_HOME = $script:catalogSavedCache
+                Remove-Item Function:\codex, Function:\specstory -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'overlays only exact served context fields and preserves native descriptors' {
+            InModuleScope Copilot {
+                $path = Get-CopilotCodexCatalogFile -Catalog $script:catalogLive -Model 'gpt-6-sol'
+                $derived = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -Depth 100
+                $derived.models.Count | Should -Be $script:catalogFixture.models.Count
+                @($derived.models.slug) | Should -Not -Contain 'gpt-6-sol-fast'
+                foreach ($descriptor in $derived.models) {
+                    $original = $script:catalogFixture.models | Where-Object slug -CEQ $descriptor.slug
+                    if ($descriptor.slug -eq 'unserved-model') {
+                        $descriptor.context_window | Should -Be 272000
+                        $descriptor.max_context_window | Should -Be 872000
+                    } else {
+                        $descriptor.context_window | Should -Be 1000000
+                        $descriptor.max_context_window | Should -Be 1000000
+                    }
+                    $descriptor.context_window = $original.context_window
+                    $descriptor.max_context_window = $original.max_context_window
+                    ($descriptor | ConvertTo-Json -Depth 100 -Compress) | Should -BeExactly ($original | ConvertTo-Json -Depth 100 -Compress)
+                }
+                $raw = Get-Content -LiteralPath (Join-Path (Split-Path $path) 'codex-cli_0.156.1.json') -Raw | ConvertFrom-Json -Depth 100
+                ($raw | ConvertTo-Json -Depth 100 -Compress) | Should -BeExactly ($script:catalogFixture | ConvertTo-Json -Depth 100 -Compress)
+                $derived.version | Should -BeExactly 'fixture metadata'
+                @(Get-ChildItem -LiteralPath (Split-Path $path) -Filter '*.tmp-*').Count | Should -Be 0
+            }
+        }
+
+        It 'keys the cache by version and canonical context map, not prompt budget or row order' {
+            InModuleScope Copilot {
+                $first = Get-CopilotCodexCatalogFile -Catalog $script:catalogLive -Model 'gpt-6-sol'
+                $stamp = (Get-Item -LiteralPath $first).LastWriteTimeUtc.Ticks
+                [array]::Reverse($script:catalogLive.data)
+                ($script:catalogLive.data | Where-Object id -EQ 'gpt-6-sol').capabilities.limits.max_prompt_tokens = 800000
+                $second = Get-CopilotCodexCatalogFile -Catalog $script:catalogLive -Model 'gpt-6-sol'
+                $second | Should -BeExactly $first
+                (Get-Item -LiteralPath $second).LastWriteTimeUtc.Ticks | Should -Be $stamp
+                ($script:catalogLive.data | Where-Object id -EQ 'gpt-6-sol').capabilities.limits.max_context_window_tokens = 900000
+                $third = Get-CopilotCodexCatalogFile -Catalog $script:catalogLive -Model 'gpt-6-sol'
+                $third | Should -Not -BeExactly $first
+                (Get-Content -LiteralPath $third -Raw | ConvertFrom-Json).models[0].max_context_window | Should -Be 900000
+                $script:catalogReads | Should -Be 1
+                $script:catalogVersion = 'codex-cli 0.156.2'
+                Get-CopilotCodexCatalogFile -Catalog $script:catalogLive -Model 'gpt-6-sol' | Should -Not -BeExactly $third
+                $script:catalogReads | Should -Be 2
+            }
+        }
+
+        It 'ignores invalid contexts and uses the last valid duplicate for catalog and CLI overrides' {
+            InModuleScope Copilot {
+                $script:catalogLive.data = @(
+                    foreach ($value in 900000, $true, '1e6', '1.0', 'NaN', -1, 0, 1000000.5, 9007199254740992, '1000000', $null) {
+                        [pscustomobject]@{ id = 'gpt-6-sol'; capabilities = @{ limits = @{ max_context_window_tokens = $value } } }
+                    }
+                    [pscustomobject]@{ id = 'gpt-6-luna'; capabilities = @{ limits = @{ max_context_window_tokens = $false } } }
+                    [pscustomobject]@{ id = 'gpt-6-astra'; capabilities = @{ limits = @{ max_context_window_tokens = 1e6 } } }
+                )
+                $path = Get-CopilotCodexCatalogFile -Catalog $script:catalogLive -Model 'gpt-6-sol'
+                $models = (Get-Content -LiteralPath $path -Raw | ConvertFrom-Json).models
+                ($models | Where-Object slug -EQ 'gpt-6-sol').max_context_window | Should -Be 1000000
+                ($models | Where-Object slug -EQ 'gpt-6-astra').max_context_window | Should -Be 1000000
+                ($models | Where-Object slug -EQ 'gpt-6-luna').max_context_window | Should -Be 872000
+                codex-copilot --no-specstory -m gpt-6-sol
+                @($script:catalogLaunch | Where-Object { $_ -like 'model_context_window=*' }) | Should -BeExactly @('model_context_window=1000000')
+                codex-copilot --no-specstory -m gpt-6-luna
+                @($script:catalogLaunch | Where-Object { $_ -like 'model_context_window=*' }).Count | Should -Be 0
+            }
+        }
+
+        It 'regenerates corrupt raw and derived files, including a derived file missing the selected new slug' {
+            InModuleScope Copilot {
+                $path = Get-CopilotCodexCatalogFile -Catalog $script:catalogLive -Model 'gpt-6-sol'
+                '{"models":[{"slug":"other"}]}' | Set-Content -LiteralPath $path
+                Get-CopilotCodexCatalogFile -Catalog $script:catalogLive -Model 'gpt-6-sol' | Should -BeExactly $path
+                @((Get-Content -LiteralPath $path -Raw | ConvertFrom-Json).models.slug) | Should -Contain 'gpt-6-sol'
+                'invalid JSON' | Set-Content -LiteralPath $path
+                'invalid JSON' | Set-Content -LiteralPath (Join-Path (Split-Path $path) 'codex-cli_0.156.1.json')
+                Get-CopilotCodexCatalogFile -Catalog $script:catalogLive -Model 'gpt-6-sol' | Should -BeExactly $path
+                $script:catalogReads | Should -Be 2
+                @((Get-Content -LiteralPath $path -Raw | ConvertFrom-Json).models.slug) | Should -Contain 'gpt-6-sol'
+            }
+        }
+
+        It 'stops new <Model> before launch without exact bundled metadata' -ForEach @(
+            @{ Model = 'gpt-6-sol' }, @{ Model = 'gpt-6-luna' }
+        ) {
+            InModuleScope Copilot -Parameters @{ Model = $Model } {
+                param($Model)
+                $script:catalogFixture.models = @($script:catalogFixture.models | Where-Object { $_.slug -ne $Model })
+                $errors = @()
+                codex-copilot --no-specstory -m $Model -ErrorAction SilentlyContinue -ErrorVariable +errors
+                $script:catalogLaunch | Should -BeNullOrEmpty
+                ($errors.Exception.Message -join "`n") | Should -Match 'Upgrade Codex to 0\.156\.1 or newer'
+                ($errors.Exception.Message -join "`n") | Should -Match 'model_catalog_json'
+            }
+        }
+
+        It 'fails closed for new models when extraction fails while retaining other-model fallback' {
+            InModuleScope Copilot {
+                $script:catalogNativeFailure = $true
+                { Get-CopilotCodexCatalogFile -Catalog $script:catalogLive -Model 'gpt-6-sol' } | Should -Throw '*0.156.1*'
+                Get-CopilotCodexCatalogFile -Catalog $script:catalogLive -Model 'custom-model' | Should -BeNullOrEmpty
+                codex-copilot --no-specstory -m custom-model -WarningAction SilentlyContinue
+                $script:catalogLaunch | Should -Contain 'custom-model'
+                @(Get-ChildItem -LiteralPath $env:XDG_CACHE_HOME -Recurse -Filter '*.tmp-*' -ErrorAction SilentlyContinue).Count | Should -Be 0
+            }
+        }
+
+        It 'passes live Sol metadata and retains later context and compact overrides' {
+            InModuleScope Copilot {
+                codex-copilot --no-specstory -m gpt-6-sol
+                $script:catalogLaunch | Should -Contain 'model_context_window=1000000'
+                $script:catalogLaunch | Should -Contain 'model_auto_compact_token_limit=872000'
+                $setting = @($script:catalogLaunch | Where-Object { $_ -like 'model_catalog_json=*' })
+                $setting.Count | Should -Be 1
+                Test-Path -LiteralPath ($setting[0].Substring('model_catalog_json='.Length) | ConvertFrom-Json) | Should -BeTrue
+                codex-copilot --no-specstory -c 'model="gpt-6-sol"' -c 'model_context_window=700000' -c 'model_auto_compact_token_limit=600000'
+                @($script:catalogLaunch | Where-Object { $_ -like 'model_context_window=*' }) |
+                    Should -BeExactly @('model_context_window=1000000', 'model_context_window=700000')
+                @($script:catalogLaunch | Where-Object { $_ -like 'model_auto_compact_token_limit=*' }) |
+                    Should -BeExactly @('model_auto_compact_token_limit=600000')
+            }
+        }
+
+        It 'leaves explicit <Form> catalogs authoritative without inspecting bundled metadata' -ForEach @(
+            @{ Form = 'separate'; Flags = @('-c', 'model_catalog_json="custom.json"') },
+            @{ Form = 'combined'; Flags = @('-cmodel_catalog_json="custom.json"') },
+            @{ Form = 'long'; Flags = @('--config=model_catalog_json="custom.json"') }
+        ) {
+            InModuleScope Copilot -Parameters @{ Flags = $Flags } {
+                param($Flags)
+                Mock Get-CopilotCodexCatalogFile { throw 'must not inspect managed metadata' }
+                codex-copilot --no-specstory -m gpt-6-sol @Flags
+                foreach ($flag in $Flags) { $script:catalogLaunch | Should -Contain $flag }
+                Should -Invoke Get-CopilotCodexCatalogFile -Times 0 -Exactly
+                $script:catalogReads | Should -Be 0
+            }
+        }
+
+        It 'respects -- and quotes Windows catalog paths for direct and SpecStory launches' {
+            InModuleScope Copilot {
+                $path = 'C:\Users\Fixture User\cache\catalog.json'
+                Mock Get-CopilotCodexCatalogFile { 'C:\Users\Fixture User\cache\catalog.json' }
+                codex-copilot -Argv @('--no-specstory', '-m', 'gpt-6-sol', '--', '-c', 'model_catalog_json="prompt-text.json"')
+                $injected = @($script:catalogLaunch | Where-Object { $_ -like 'model_catalog_json=*' })[0]
+                ($injected.Substring('model_catalog_json='.Length) | ConvertFrom-Json) | Should -BeExactly $path
+                $injected | Should -BeExactly 'model_catalog_json="C:\\Users\\Fixture User\\cache\\catalog.json"'
+                Mock Get-Command { [pscustomobject]@{ Name = 'specstory' } } -ParameterFilter { $Name -eq 'specstory' }
+                codex-copilot -m gpt-6-sol
+                $script:catalogSpecstory[0..2] | Should -BeExactly @('run', 'codex', '-c')
+                $script:catalogSpecstory[3] | Should -Match ([regex]::Escape((ConvertTo-CopilotShQuote $injected)))
+                Should -Invoke Get-CopilotCodexCatalogFile -Times 2 -Exactly
+            }
+        }
+    }
+
     Context 'catalog eligibility policy' {
         It 'excludes every veto while retaining entries with absent metadata' {
             InModuleScope Copilot {
@@ -1128,6 +1369,29 @@ Describe 'Copilot module' {
     }
 
     Context 'catalog metadata and Claude Code role profiles' {
+        It 'uses new Sol and Luna live limits without the Astra compact ratio' {
+            InModuleScope Copilot {
+                $catalog = [pscustomobject]@{ data = @(
+                    foreach ($id in 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-luna', 'gpt-5.6-terra') {
+                        [pscustomobject]@{ id = $id; capabilities = [pscustomobject]@{ limits = [pscustomobject]@{
+                            max_context_window_tokens = 1000000; max_prompt_tokens = 872000; max_output_tokens = 128000
+                        } } }
+                    }
+                ) }
+                foreach ($id in 'gpt-6-sol', 'gpt-6-luna') {
+                    ConvertTo-CopilotClaudeModel -Model $id -Catalog $catalog | Should -BeExactly "$id[1m]"
+                    Get-CopilotClaudeCompactWindow -Model $id -Catalog $catalog | Should -Be 872000
+                }
+                $modelProfile = Get-CopilotModelProfile -Model 'gpt-6-sol' -Catalog $catalog
+                foreach ($role in 'main', 'fable', 'opus') { $modelProfile[$role] | Should -BeExactly 'gpt-6-sol[1m]' }
+                $modelProfile.sonnet | Should -BeExactly 'gpt-5.6-terra[1m]'
+                $modelProfile.haiku | Should -BeExactly 'gpt-6-luna[1m]'
+                ($catalog.data | Where-Object id -EQ 'gpt-6-luna') | Add-Member -NotePropertyName policy -NotePropertyValue @{ state = 'disabled' }
+                (Get-CopilotModelProfile -Model 'gpt-6-sol' -Catalog $catalog).haiku | Should -BeExactly 'gpt-5.6-luna[1m]'
+                $catalog.data = @($catalog.data | Where-Object { $_.id -eq 'gpt-6-sol' })
+                (Get-CopilotModelProfile -Model 'gpt-6-sol' -Catalog $catalog).haiku | Should -BeExactly 'gpt-6-sol[1m]'
+            }
+        }
         It 'applies the Astra ratio to the prompt budget without changing capacity' {
             InModuleScope Copilot {
                 $savedRatio = $env:COPILOT_ASTRA_COMPACT_RATIO
@@ -1395,6 +1659,7 @@ Describe 'Copilot module' {
                 $script:autoCatalog = New-CopilotAutoTestCatalog
                 Mock Get-CopilotModelState { $script:state }
                 Mock Get-CopilotModelCatalog { $script:autoCatalog }
+                Mock Get-CopilotCodexCatalogFile { 'C:\fixture cache\catalog.json' }
                 Mock Get-CopilotFastRouting { $null }
                 Mock Invoke-RestMethod { throw 'Unexpected HTTP in isolated model tests' }
                 Mock Start-Process { throw 'Unexpected native child in isolated model tests' }
@@ -1467,6 +1732,41 @@ Describe 'Copilot module' {
                 copilot-model --auto -ErrorAction SilentlyContinue -ErrorVariable +errors
                 $errors.Exception.Message | Should -Match 'needs a reachable proxy'
                 Test-Path $script:state | Should -BeFalse
+            }
+        }
+
+        It 'lists the new model ids offline without changing the built-in default' {
+            InModuleScope Copilot {
+                Mock Get-CopilotModelCatalog { $null }
+                $ids = @(copilot-model -l)
+                $ids | Should -Contain 'gpt-6-sol'
+                $ids | Should -Contain 'gpt-6-luna'
+                Get-CopilotDefaultModel | Should -BeExactly 'gpt-5.6-sol[1m]'
+            }
+        }
+
+        It 'refreshes an old Sol project pin with new Sol roles and its smaller live prompt ceiling' {
+            InModuleScope Copilot {
+                Set-CopilotAutoTestState -InitialModel 'gpt-5.6-sol[1m]' -ProjectPin $true
+                $before = Get-Content -Raw '.claude/settings.local.json' | ConvertFrom-Json
+                $before.env | Add-Member -NotePropertyName CLAUDE_CODE_AUTO_COMPACT_WINDOW -NotePropertyValue '922000'
+                $before | ConvertTo-Json -Depth 8 | Set-Content '.claude/settings.local.json'
+                $script:autoCatalog.data += @(
+                    foreach ($id in 'gpt-6-sol', 'gpt-6-luna') {
+                        [pscustomobject]@{ id = $id; capabilities = @{ limits = @{
+                            max_context_window_tokens = 1000000; max_prompt_tokens = 872000; max_output_tokens = 128000
+                        } } }
+                    }
+                )
+                copilot-model gpt-6-sol
+                $saved = Get-Content -Raw '.claude/settings.local.json' | ConvertFrom-Json
+                foreach ($role in 'ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_FABLE_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL') {
+                    $saved.env.$role | Should -BeExactly 'gpt-6-sol[1m]'
+                }
+                $saved.env.ANTHROPIC_DEFAULT_HAIKU_MODEL | Should -BeExactly 'gpt-6-luna[1m]'
+                $saved.env.ANTHROPIC_SMALL_FAST_MODEL | Should -BeExactly 'gpt-6-luna[1m]'
+                $saved.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW | Should -BeExactly '872000'
+                $saved.env.UNRELATED | Should -BeExactly 'keep-me'
             }
         }
 

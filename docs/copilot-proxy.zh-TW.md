@@ -47,6 +47,7 @@ copilot-model -c                   # 查看 Main/Fable/Opus/Sonnet/Haiku
 copilot-here on                    # 固定本專案；或用 claude-copilot-once
 claude-copilot --fast             # session-only fast sibling，無法使用時警告並 fallback
 codex-copilot                     # Codex；即時 OpenAI-first model selection
+# 明確選擇：copilot-model gpt-6-sol；codex-copilot -m gpt-6-luna
 
 # 單次 planning preset；Codex TUI 開啟後仍需輸入 `/plan`。
 codex-copilot -c 'plan_mode_reasoning_effort="ultra"' -c 'service_tier="fast"'
@@ -134,24 +135,24 @@ project pin 影響；不根據舊 model 推測帳號 tier，也不比較 `billin
 方案集合，這些欄位僅供診斷。目前 model 仍決定 current marker 與一般 launch precedence，
 啟用中的 project pin 仍決定 `--auto` 寫入的位置。
 
-OpenAI 的世代與 capability tier 是兩個獨立維度：Astra 接替 Sol 的旗艦位置，Terra / Luna
-仍留在 5.6。因此 `gpt-6-astra` 高於 `gpt-5.6-sol`，但假想的輕量
-`gpt-6-luna` 不會。意圖依照 OpenAI 的
-[current model guidance](https://developers.openai.com/api/docs/guides/latest-model)。
-目前 Copilot catalog 只向 `pro_plus` / Business / Enterprise / Max 提供 Astra，context /
-prompt ceiling 為 1,000,000 / 872,000（比 Sol 的 1,050,000 / 922,000 小），reasoning
-從 `low` 起跳、沒有 `none`。向後相容的離線 fallback 仍是
-`gpt-5.6-sol[1m]`；這不代表 entitlement 保證。`copilot-model -L` 的 live PLANS
-欄與 `--json` 的原始 `billing.restricted_to` 只描述 catalog，不是目前帳號／billing
-target／organization 實際資格的證據。真正的存取資格由 gateway 執行；若後續 inference
-被 entitlement 拒絕，仍需手動改選其他 served model。
+OpenAI 的世代與 capability tier 是兩個獨立維度。已知且 selectable 的 OpenAI main
+優先順序是 `gpt-6-astra` > `gpt-6-sol` > `gpt-5.6-sol`；`gpt-6-luna` 保留在
+lightweight／Haiku tier，不會擠掉旗艦。GitHub 已在
+[2026-09-22 宣布 GPT-6 Sol 與 Luna 上線](https://github.blog/changelog/2026-09-22-openais-gpt-6-sol-and-gpt-6-luna-now-available/)。
+Terra 仍為 `gpt-5.6-terra`；較低 role 的 Luna 從 selectable live entries 優先選
+`gpt-6-luna`，再退到 `gpt-5.6-luna`。
+向後相容的離線預設仍是 `gpt-5.6-sol[1m]`，不代表 entitlement 保證。
+`copilot-model -L` 與 `--json` 提供 live plan／policy metadata，但
+`billing.restricted_to` 不能證明目前 billing target 的存取資格；若後續被 entitlement
+拒絕，仍需手動改選其他 served model。下方 context／compact 數值是
+**2026-09-23 live gateway snapshot**，不是對所有帳號寫死的保證。
 產生的 profile 是：
 
 | Claude Code role | Copilot model |
 |---|---|
 | Main / Fable / Opus | 選定 main（`gpt-6-astra` 是最佳 selectable live candidate 時即選它） |
 | Sonnet | `gpt-5.6-terra` |
-| Haiku / background / legacy small-fast | `gpt-5.6-luna` |
+| Haiku / background / legacy small-fast | `gpt-6-luna`，再退到 selectable 的 `gpt-5.6-luna` |
 
 `-l` 仍是可 pipe 的裸 id 清單。`-L` / `--details` 顯示 tier、price category、
 context/output limits、reasoning 範圍、fast sibling、刊登的方案與 picker state；`*` 是目前
@@ -171,25 +172,45 @@ model catalog 是不同資料。
 Auto-compact 與完整 context 提示分開設定。Launcher 會用 live `max_prompt_tokens`
 （缺少時才用 context 減 maximum output）注入 `CLAUDE_CODE_AUTO_COMPACT_WINDOW`，並保留
 Claude Code 約 95% 的預設觸發比例。這可避免 client 以 1M 計算，卻超過 provider 實際
-922k prompt ceiling。`copilot-model -c` 與 `copilot-here status` 都會顯示生效值。
+Sol／Luna 的 872k prompt ceiling。`copilot-model -c` 與 `copilot-here status` 都會顯示生效值。
 
-`gpt-6-astra` 與 `gpt-6-astra-fast` 現在預設使用 live prompt ceiling 的 70% 作為 compact
-budget：872,000 ceiling 對應 610,400。可設 `$env:COPILOT_ASTRA_COMPACT_RATIO='0.70'`，
-接受大於零且不超過一的小數；`1` 恢復完整 prompt budget。結果向下取整，Claude 至少需
-100,000 tokens，Codex 至少需正整數；實際 context window 與 `[1m]` 提示不變。
-有效的明確 `CLAUDE_CODE_AUTO_COMPACT_WINDOW` 或 Codex
-`-c model_auto_compact_token_limit=...` 優先。現有 session 與 project pin 不會被改寫，請
-刻意 refresh managed pin 並重啟 client。這是減少大型 compact 上傳的保守實驗，不代表已
-修好遠端 body-read 408。
+**2026-09-23 live gateway snapshot** 要分開看 provider 上限與 client compaction：
 
-Astra 的 **1,000,000 total context**、**872,000 input ceiling** 與
-**610,400 Codex auto-compact trigger** 是三個不同值。Input ceiling 已扣掉 128,000
-output allowance，不要再扣一次。預設保留 261,600 input tokens 給 tool result、估算誤差
-與 compaction 開銷；Claude 再套自己的約 95% trigger，約為 579,880。
-這些是 launcher 設定，不會修改 VS Code 的 context picker。舊 Sol session 若帶著
-`model_auto_compact_token_limit=922000`，不能沿用到 Astra，因為已超過其 input limit
-50,000 tokens。應針對所選模型重新啟動 wrapper，不要假設 session 內換模型會更新
-啟動時的 command-line override。
+| 模型 | Provider context | Prompt ceiling | Maximum output | Launcher compact budget |
+|---|---:|---:|---:|---:|
+| `gpt-6-astra` | 1,050,000 | 1,050,000 | 128,000 | 735,000（70%） |
+| `gpt-6-sol` | 1,000,000 | 872,000 | 128,000 | 872,000 |
+| `gpt-6-luna` | 1,000,000 | 872,000 | 128,000 | 872,000 |
+
+明確的 live `max_prompt_tokens` 優先，即使它不等於 context 減 maximum output；只有
+缺少 prompt 欄位時才做減法。`[1m]` 仍只給 Claude Code 作為顯示／context 提示，raw API
+ID 不帶此後綴。Sol／Luna **不套用** Astra 的 70% 實驗設定。
+
+Astra 與其 `-fast` sibling 使用
+`floor(live prompt ceiling × COPILOT_ASTRA_COMPACT_RATIO)`，預設 `0.70`，因此
+1,050,000 變成 735,000。比例須滿足 `0 < ratio <= 1`；`1` 恢復完整 prompt budget。
+Claude 保留 100,000-token 下限，Codex 的結果須為正數。這是減少大型 compact 上傳的
+保守設定，尚不能宣稱修復遠端 body-read 408。有效的明確
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW` 與 `-c model_auto_compact_token_limit=...`
+仍優先，但 Codex 仍會套用自身的 compact 上限。
+
+配合 provider 專用 descriptor，**Codex 0.156.1** 以 context 的 95% 計算 usable input，
+並以完整 context 的 90% 限制 auto-compact：
+
+| 模型 | Codex usable context | 實際 Codex auto-compact trigger |
+|---|---:|---:|
+| `gpt-6-astra` | 997,500 | 735,000 |
+| `gpt-6-sol` / `gpt-6-luna` | 950,000 | 872,000 |
+
+Trigger 是 `min(launcher compact budget, 90% × context)`，不是把已打折的 usable
+context 再乘 90%。計算依據見 Codex 的
+[model 計算實作](https://github.com/openai/codex/blob/rust-v0.156.1/codex-rs/protocol/src/openai_models.rs#L513-L535)。
+Claude 另把注入的 budget 乘上自身約 95% 的門檻（Astra 約 698,250，Sol／Luna 約
+828,400）。換模型後請刷新 managed pin 並重新啟動 wrapper；session 內切換不會重算
+啟動時的 override。既有安全 pin 與 active session history 不會被改寫，這些設定也不改
+VS Code 的 context picker。
+
+PowerShell 覆寫範例：`$env:COPILOT_ASTRA_COMPACT_RATIO='0.70'`。
 
 ### Selection、retry 與 failover 是不同概念
 
@@ -362,6 +383,23 @@ Gemini 與其他 chat model；automatic selection 會排除 policy-disabled、pi
 embedding-only 與 `-fast` main candidates。此選擇不受舊 model state 或 Claude project
 pin 影響，raw model id 與 context/prompt limits 皆來自同一份 catalog snapshot，且不會
 持久化該次選擇。
+
+- Launcher 以已安裝 Codex 的 `codex debug models --bundled` descriptor 與同一份
+  live Copilot snapshot 產生 provider 專用 `model_catalog_json`。只對精確相符的 model ID
+  把 `context_window` 與 `max_context_window` 更新為 live context；reasoning、tools、
+  prompts 及其他 metadata 全部保留 bundled 值。單傳 `-c model_context_window=...`
+  不夠，Codex 仍會以 descriptor 的 `max_context_window` 夾住它。
+- 快取位於 `$XDG_CACHE_HOME/copilot-proxy/codex-models/`（預設
+  `~/.cache/copilot-proxy/codex-models/`），key 包含 Codex 版本、cache schema 與 canonical
+  live model-to-context map 的 hash；JSON 驗證後才原子發布。Prompt/output limits 不參與
+  此 cache key，因為每次啟動都會重算 compact override；provider 共用的
+  `~/.codex/models_cache.json` 不會被修改。
+- 呼叫者明確傳入 `-c model_catalog_json=...` 時跳過 managed catalog 產生，由呼叫者負責
+  該 catalog 的 descriptor 與上限。否則選 `gpt-6-sol` 或 `gpt-6-luna` 卻沒有精確的
+  bundled descriptor 時，launcher 會停止並提示升級至
+  [Codex 0.156.1 以上](https://github.com/openai/codex/releases/tag/rust-v0.156.1)，不會複製
+  其他模型的 reasoning/tool metadata。詳見
+  [context 被夾住的調查](https://github.com/daviddwlee84/dotfiles/blob/main/pitfalls/codex-copilot-context-window-clamped.md)。
 
 Codex 使用啟用中的 `127.0.0.1:4142` shim；明確 `copilot-proxy shim off` 則直連 backend。
 有 shim 時 Codex request／stream retries 預設 `0/0`，由 shim 負責 replay；direct mode

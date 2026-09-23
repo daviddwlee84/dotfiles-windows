@@ -1601,12 +1601,11 @@ function script:Get-CopilotModelProfile {
         if (-not $haikuRaw) { $haikuRaw = $raw }
     }
     elseif ($raw -like 'gpt-*' -or $raw -match '^o\d' -or $raw -match 'codex') {
-        # Terra and Luna deliberately stay on 5.6 - OpenAI did not ship a gen-6
-        # balanced or lightweight tier, and its own guidance is to mix
-        # gpt-6-astra with gpt-5.6-terra and gpt-5.6-luna.
+        # Keep the balanced Terra role and prefer the new lightweight Luna only
+        # when it is served and selectable. Main/Fable/Opus stay on the main id.
         $sonnetRaw = Select-CopilotFirstServed -Model $models -Candidate @('gpt-5.6-terra')
         if (-not $sonnetRaw) { $sonnetRaw = $raw }
-        $haikuRaw = Select-CopilotFirstServed -Model $models -Candidate @('gpt-5.6-luna', 'gpt-5.4-mini', 'gpt-5-mini')
+        $haikuRaw = Select-CopilotFirstServed -Model $models -Candidate @('gpt-6-luna', 'gpt-5.6-luna', 'gpt-5.4-mini', 'gpt-5-mini')
         if (-not $haikuRaw) { $haikuRaw = $raw }
     }
     elseif ($raw -like 'grok-*') {
@@ -2778,9 +2777,9 @@ function copilot-run {
 # dot_config/shell/43_copilot_proxy.sh. `model_picker_category` is the upstream
 # tier taxonomy and lines up with OpenAI's DURABLE capability tiers (Sol and
 # Astra are `powerful`, Terra `versatile`, Luna `lightweight`). Generation and
-# tier advance independently - gpt-6-astra is the gen-6 flagship while Terra and
-# Luna stayed on 5.6 - so ranking on the version alone would promote a future
-# gpt-6-luna over gpt-5.6-sol. Ranking on the tier first makes that impossible,
+# tier advance independently - gen-6 Luna is lightweight while Terra stays on
+# 5.6 - so ranking on the version alone would promote gpt-6-luna over
+# gpt-5.6-sol. Ranking on the tier first makes that impossible,
 # and it also tiers grok/gemini/mai, which carry no allowlist.
 function script:Get-CopilotTierRows {
     param($Catalog, [string[]] $Model)
@@ -2888,8 +2887,8 @@ function script:Select-CopilotBestOpenAIModel {
     if (-not $Model -or $Model.Count -eq 0) { return $null }
     $Model = @($Model | ForEach-Object { Remove-CopilotContextHint $_ } |
         Where-Object { $_ -notmatch '-fast$' } | Sort-Object -Unique)
-    $allow = @('gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.5', 'gpt-5.4', 'gpt-5.3-codex',
-               'gpt-5.6-luna', 'gpt-5.4-mini', 'gpt-5-mini')
+    $allow = @('gpt-6-astra', 'gpt-6-sol', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.5', 'gpt-5.4', 'gpt-5.3-codex',
+               'gpt-6-luna', 'gpt-5.6-luna', 'gpt-5.4-mini', 'gpt-5-mini')
 
     # With a catalog, a genuinely newer flagship wins without waiting for someone
     # to hand-edit $allow; without one the historical ranker runs unchanged.
@@ -3071,6 +3070,105 @@ function script:Test-CopilotCodexSandboxFlag {
     $false
 }
 
+# Codex's global models_cache.json is not provider-scoped. Keep the exact
+# installed binary's descriptors and change only capacities backed by Copilot's
+# live catalog. In particular, never clone Astra's tool/reasoning metadata for a
+# new Sol or Luna id. Version and context-map keys keep both caches disposable.
+function script:Read-CopilotCodexCatalog {
+    param([Parameter(Mandatory)] [string] $Path)
+    try {
+        $document = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop | ConvertFrom-Json -Depth 100 -ErrorAction Stop
+        if ($document.models -is [array] -and $document.models.Count -gt 0) { return $document }
+    } catch { $null = $_ }
+    $null
+}
+
+function script:Write-CopilotCodexCatalog {
+    param([Parameter(Mandatory)] [string] $Path, [Parameter(Mandatory)] $Catalog)
+    $temporary = "$Path.tmp-$([guid]::NewGuid())"
+    try {
+        $json = ConvertTo-Json -InputObject $Catalog -Depth 100 -Compress -ErrorAction Stop
+        [System.IO.File]::WriteAllText($temporary, $json)
+        [System.IO.File]::Move($temporary, $Path, $true)
+    } finally {
+        if ([System.IO.File]::Exists($temporary)) { [System.IO.File]::Delete($temporary) }
+    }
+}
+
+function script:Get-CopilotModelContextMap {
+    param($Catalog)
+    $contexts = [System.Collections.Generic.SortedDictionary[string,long]]::new([StringComparer]::Ordinal)
+    foreach ($entry in $Catalog.data) {
+        $value = $entry.capabilities.limits.max_context_window_tokens
+        if ($entry.id -isnot [string] -or -not $entry.id -or $null -eq $value -or $value -is [bool]) { continue }
+        if ($value -is [string] -and $value -cnotmatch '^[0-9]+$') { continue }
+        $number = 0.0
+        $text = [Convert]::ToString($value, [Globalization.CultureInfo]::InvariantCulture)
+        if ([double]::TryParse($text, [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$number) -and
+            -not [double]::IsNaN($number) -and -not [double]::IsInfinity($number) -and
+            $number -gt 0 -and $number -le 9007199254740991 -and [math]::Floor($number) -eq $number) {
+            $contexts[$entry.id] = [long]$number
+        }
+    }
+    ,$contexts
+}
+
+function script:Get-CopilotCodexCatalogFile {
+    param($Catalog, [string] $Model)
+    $requiresDescriptor = $Model -cin @('gpt-6-sol', 'gpt-6-luna')
+    $savedExitCode = $global:LASTEXITCODE
+    try {
+        $global:LASTEXITCODE = 0
+        $rawVersion = (& codex --version 2>$null | Out-String).Trim()
+        if (-not $? -or $LASTEXITCODE -ne 0 -or -not $rawVersion) { throw 'could not read Codex version' }
+        $version = $rawVersion -replace '[^A-Za-z0-9._-]', '_'
+        $cacheRoot = if ($env:XDG_CACHE_HOME) { $env:XDG_CACHE_HOME } else { Join-Path $HOME '.cache' }
+        $directory = Join-Path $cacheRoot 'copilot-proxy/codex-models'
+        $bundledPath = Join-Path $directory "$version.json"
+        $bundled = Read-CopilotCodexCatalog -Path $bundledPath
+        if (-not $bundled) {
+            $global:LASTEXITCODE = 0
+            $json = & codex debug models --bundled 2>$null | Out-String
+            if (-not $? -or $LASTEXITCODE -ne 0) { throw 'could not read bundled Codex models' }
+            $bundled = $json | ConvertFrom-Json -Depth 100 -ErrorAction Stop
+            if ($bundled.models -isnot [array] -or $bundled.models.Count -eq 0) { throw 'invalid bundled Codex model catalog' }
+            [System.IO.Directory]::CreateDirectory($directory) | Out-Null
+            Write-CopilotCodexCatalog -Path $bundledPath -Catalog $bundled
+        }
+        if ($requiresDescriptor -and -not @($bundled.models | Where-Object { $_.slug -ceq $Model }).Count) {
+            throw "the installed Codex bundled catalog has no exact descriptor for $Model"
+        }
+
+        $contexts = Get-CopilotModelContextMap -Catalog $Catalog
+        $contextRows = @(foreach ($entry in $contexts.GetEnumerator()) {
+            [ordered]@{ id = $entry.Key; context = $entry.Value }
+        })
+        $canonical = ConvertTo-Json -InputObject $contextRows -Compress -Depth 4
+        $hash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($canonical))).ToLowerInvariant()
+        $derivedPath = Join-Path $directory "$version-copilot-v1-$hash.json"
+        $derived = Read-CopilotCodexCatalog -Path $derivedPath
+        if ($derived -and (-not $requiresDescriptor -or @($derived.models | Where-Object { $_.slug -ceq $Model }).Count)) {
+            return $derivedPath
+        }
+        foreach ($descriptor in $bundled.models) {
+            if ($descriptor.slug -is [string] -and $contexts.ContainsKey($descriptor.slug)) {
+                $context = $contexts[$descriptor.slug]
+                foreach ($key in 'context_window', 'max_context_window') {
+                    if ($descriptor.PSObject.Properties[$key]) { $descriptor.PSObject.Properties[$key].Value = $context }
+                    else { $descriptor | Add-Member -NotePropertyName $key -NotePropertyValue $context }
+                }
+            }
+        }
+        Write-CopilotCodexCatalog -Path $derivedPath -Catalog $bundled
+        $derivedPath
+    } catch {
+        if ($requiresDescriptor) {
+            throw "codex-copilot: cannot prepare exact $Model metadata ($($_.Exception.Message)). Upgrade Codex to 0.156.1 or newer, or pass a compatible -c model_catalog_json=... catalog."
+        }
+        $null
+    } finally { $global:LASTEXITCODE = $savedExitCode }
+}
+
 function script:Get-CodexSessionsRoot {
     $codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME '.codex' }
     Join-Path $codexHome 'sessions'
@@ -3125,14 +3223,27 @@ function codex-copilot {
     $base = Get-CopilotClientBase
     $providerArgs = @(Get-CodexCopilotProviderArgs -Base $base)
     if ($model) {
-        $entry = $catalog.data | Where-Object { $_.id -eq $model } | Select-Object -First 1
-        if ($entry.capabilities.limits.max_context_window_tokens) {
-            $Argv = @('-c', "model_context_window=$($entry.capabilities.limits.max_context_window_tokens)") + @($Argv)
+        $contexts = Get-CopilotModelContextMap -Catalog $catalog
+        if ($contexts.ContainsKey($model)) {
+            $Argv = @('-c', "model_context_window=$($contexts[$model])") + @($Argv)
         }
         $ceiling = Get-CopilotPromptCeiling -Model $model -Catalog $catalog
         if ($null -ne $ceiling -and -not (Test-CopilotCodexConfig -Argv $Argv -Key 'model_auto_compact_token_limit')) {
             $budget = Get-CopilotCompactBudget -Model $model -PromptCeiling $ceiling
             $Argv = @('-c', "model_auto_compact_token_limit=$budget") + @($Argv)
+        }
+    }
+
+    # A caller-supplied catalog is authoritative, including when it provides a
+    # new model missing from this binary's bundled descriptors.
+    if (-not (Test-CopilotCodexConfig -Argv $Argv -Key 'model_catalog_json')) {
+        try { $catalogFile = Get-CopilotCodexCatalogFile -Catalog $catalog -Model $model }
+        catch { Write-Error $_; return }
+        if ($catalogFile) {
+            $quotedPath = ConvertTo-Json -InputObject $catalogFile -Compress
+            $Argv = @('-c', "model_catalog_json=$quotedPath") + @($Argv)
+        } else {
+            Write-Warning 'codex-copilot: could not build the bundled Codex model catalog; metadata may fall back'
         }
     }
 
@@ -3789,8 +3900,8 @@ function copilot-model {
     $fallback = @(
         'claude-fable-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-opus-4-5',
         'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-sonnet-4-5', 'claude-haiku-4-5',
-        'gpt-6-astra',
-        'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.4', 'gpt-5.3-codex',
+        'gpt-6-astra', 'gpt-6-sol',
+        'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-6-luna', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.4', 'gpt-5.3-codex',
         'gpt-5.4-mini', 'gpt-5-mini',
         'grok-4.6', 'grok-4.5'
     )
