@@ -3417,6 +3417,27 @@ function claude-copilot {
         break
     }
 
+    # Wrapper controls may follow Claude options (for example --model NAME).
+    # Keep values and everything after -- opaque to avoid changing prompt data.
+    $forward = [System.Collections.Generic.List[string]]::new()
+    $skipData = $false
+    $literal = $false
+    if ($Argv -and $Argv.Count -gt 0) {
+        foreach ($a in $Argv) {
+            if ($literal) { $forward.Add($a); continue }
+            if ($skipData) { $forward.Add($a); $skipData = $false; continue }
+            if ($a -eq '--') { $literal = $true; $forward.Add($a); continue }
+            if ($a -eq '--no-specstory') { $ss = 'never'; continue }
+            if ($a -eq '--specstory') { $ss = 'auto'; continue }
+            $forward.Add($a)
+            if ($a -in '--model', '--append-system-prompt', '--system-prompt', '--settings',
+                       '--permission-mode', '--permission-prompts', '--permission-prompt-tool', '-p') {
+                $skipData = $true
+            }
+        }
+    }
+    $Argv = @($forward.ToArray())
+
     if (Test-CopilotClaudeLateFast -Argv $Argv) {
         Write-Error "claude-copilot: '--fast' must come before other arguments; refusing to forward it."
         return

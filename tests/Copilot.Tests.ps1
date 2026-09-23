@@ -2129,6 +2129,28 @@ Describe 'Copilot module' {
                 ($script:capturedLaunch -join ' ') | Should -Not -Match -- '--no-specstory'
             }
         }
+        It 'consumes --no-specstory after an explicit model' {
+            InModuleScope Copilot {
+                Mock Get-Command { throw 'SpecStory must not be queried' } -ParameterFilter { $Name -eq 'specstory' }
+                Mock copilot-run { $script:capturedLaunch = @($Argv) }
+
+                claude-copilot --model 'gpt-5.6-sol[1m]' --no-specstory
+
+                $script:capturedLaunch | Should -Be @('claude', '--dangerously-skip-permissions',
+                    '--model', 'gpt-5.6-sol[1m]')
+            }
+        }
+        It 'preserves a literal --no-specstory after the end-of-options marker' {
+            InModuleScope Copilot {
+                Mock Get-Command { $null } -ParameterFilter { $Name -eq 'specstory' }
+                Mock copilot-run { $script:capturedLaunch = @($Argv) }
+
+                claude-copilot -Argv @('--model', 'custom', '--', '--no-specstory')
+
+                $script:capturedLaunch | Should -Be @('claude', '--dangerously-skip-permissions',
+                    '--model', 'custom', '--', '--no-specstory')
+            }
+        }
         It 'uses the direct bypass path when SpecStory is unavailable' {
             InModuleScope Copilot {
                 Mock Get-Command { $null } -ParameterFilter { $Name -eq 'specstory' }

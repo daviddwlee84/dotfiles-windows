@@ -28,3 +28,6 @@ docker/windows/storage/
 
 # Pester -CI test report artifact (justfile `test`)
 testResults.xml
+
+# Test processes without XDG_STATE_HOME can create local runtime state here.
+/.local/

@@ -85,6 +85,7 @@ Describe 'Verified Windows CLI releases' {
     It 'restores the previous version when publishing the verified binary fails' {
         New-Item -ItemType Directory -Force $bin | Out-Null
         Set-Content (Join-Path $bin 'dev-cli.exe') 'existing binary'
+        Mock Move-WindowsCliFile { [IO.File]::Move($Source, $Destination) }
         Mock Move-WindowsCliFile { throw 'fixture publish failure' } -ParameterFilter {
             $Source -like '*unpack*'
         }
