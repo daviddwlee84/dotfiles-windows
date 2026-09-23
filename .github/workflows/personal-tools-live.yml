@@ -1,0 +1,47 @@
+name: Personal tools live acceptance
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  install:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install seven CLIs in isolated runner state
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP ('personal-tools-' + [guid]::NewGuid().ToString('N'))
+          $homeDir = Join-Path $root 'home'
+          New-Item -ItemType Directory -Path $homeDir -Force | Out-Null
+          $env:USERPROFILE = $homeDir
+          $env:HOME = $homeDir
+          $env:SCOOP = Join-Path $root 'scoop'
+          $env:SCOOP_GLOBAL = Join-Path $root 'unused-global'
+          $env:XDG_CONFIG_HOME = Join-Path $homeDir 'config'
+          $env:XDG_STATE_HOME = Join-Path $homeDir 'state'
+          $manager = Join-Path $env:SCOOP 'apps/scoop/current'
+          git init $manager
+          git -C $manager remote add origin https://github.com/ScoopInstaller/Scoop
+          git -C $manager fetch --depth 1 origin b588a06e41d920d2123ec70aee682bae14935939
+          if ($LASTEXITCODE) { throw 'Scoop fetch failed' }
+          git -C $manager checkout --detach FETCH_HEAD
+          if ($LASTEXITCODE) { throw 'Scoop checkout failed' }
+          $config = Join-Path $env:XDG_CONFIG_HOME 'scoop'
+          New-Item -ItemType Directory -Path $config -Force | Out-Null
+          @{last_update=(Get-Date).ToString('o');'aria2-enabled'=$false;scoop_branch='master'} | ConvertTo-Json | Set-Content (Join-Path $config 'config.json')
+          # Use Scoop's exact checked-out script; child functions resolve it via PATH.
+          $env:PATH = (Join-Path $manager 'bin') + ';' + (Join-Path $env:SCOOP 'shims') + ';' + (Join-Path $homeDir '.local/bin') + ';' + $env:PATH
+          "PERSONAL_TOOLS_LIVE_ROOT=$root" >> $env:GITHUB_ENV
+          & pwsh -NoLogo -NoProfile -File tests/PersonalTools.Live.ps1 -Root $root
+          if ($LASTEXITCODE) { throw 'Personal tools acceptance failed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: personal-tools-live
+          path: ${{ env.PERSONAL_TOOLS_LIVE_ROOT }}/personal-tools-live.json
+          if-no-files-found: warn
