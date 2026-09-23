@@ -43,7 +43,7 @@ function Get-PersonalToolOwner {
     } else {
         Join-Path $ScoopRoot "apps\$($Tool.Id)\current\$($Tool.Binary).exe"
     }
-    $command = Get-Command $Tool.Binary -ErrorAction SilentlyContinue
+    $command = Get-Command $Tool.Binary -ListImported -ErrorAction SilentlyContinue
     $kind = 'missing'
     if ($Tool.Manager -eq 'release') {
         if (Test-Path -LiteralPath $candidate -PathType Leaf) { $kind = 'release' }
@@ -124,10 +124,11 @@ function Update-SelectedPersonalTools {
             if ($owner.Kind -eq 'release') {
                 Install-WindowsCliRelease -Name dev-cli -Upgrade
             } else {
-                $output = @(& scoop update $tool.Id 2>&1)
+                $output = @(& scoop update $tool.Id *>&1)
                 $code = $LASTEXITCODE
                 $output | Out-Host
-                if ($code -ne 0 -or ($output -join "`n") -match 'Running process detected|Close them and try again') { throw 'Scoop failed or skipped an active process; close it and retry.' }
+                $plain = (($output -join "`n") -replace '\x1b\[[0-?]*[ -/]*[@-~]', '')
+                if ($code -ne 0 -or $plain -match 'Running process detected|Close them and try again|(?:^|\s)ERROR[ :!]') { throw 'Scoop reported a failure or skipped an active process; inspect its output before retrying.' }
             }
             $afterOwner = Get-PersonalToolOwner -Tool $tool
             if ($afterOwner.Kind -ne $owner.Kind) { throw 'Installation ownership changed during upgrade' }

@@ -78,6 +78,14 @@ Describe 'Install and upgrade boundaries' {
         @($results | Where-Object Status -EQ 'unchanged').Count | Should -Be 6
         Should -Invoke scoop -Times 6 -Exactly
     }
+    It 'captures Scoop host-stream errors even when the script exits zero' {
+        Mock Get-PersonalToolOwner { [pscustomobject]@{Kind='scoop';Path='owned';Id=$Tool.Id} }
+        Mock Get-PersonalToolVersion { 'translate version v1.0.0' }
+        Mock scoop { Write-Host 'ERROR Hash check failed!'; $global:LASTEXITCODE=0 }
+        $results=@(Update-SelectedPersonalTools @{ installTranslate=$true })
+        $results[0].Status | Should -Be 'failed'
+    }
+
     It 'reports Scoop running-process skips as failures despite exit zero' {
         Mock Get-PersonalToolOwner { [pscustomobject]@{Kind='scoop';Path='owned';Id=$Tool.Id} }
         Mock Get-PersonalToolVersion { 'translate version v1.0.0' }
