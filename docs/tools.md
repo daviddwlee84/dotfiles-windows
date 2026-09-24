@@ -54,6 +54,7 @@ are added when **Extra runtimes** is enabled. A default **Python** is uv-managed
 | Alacritty | `Alacritty.Alacritty` |
 | WezTerm | `wez.wezterm` (tmux-like multiplexer; managed `~/.config/wezterm/wezterm.lua` sets pwsh as the shell + Nerd Font) |
 | PowerToys | `Microsoft.PowerToys` |
+| [Files](https://github.com/files-community/Files) | `FilesCommunity.Files` (file manager; stable) |
 | Raycast | `9PFXXSHC64H3` (msstore) |
 | Antigravity | `Google.Antigravity` |
 | Docker Desktop | `Docker.DockerDesktop` (WSL2 backend via the `installWsl` toggle — see below) |

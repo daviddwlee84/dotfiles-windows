@@ -54,6 +54,7 @@ app-alias 前面），所以 `python`、`uv run`、`uv venv`
 | Alacritty | `Alacritty.Alacritty` |
 | WezTerm | `wez.wezterm`（tmux 式多工器；受管的 `~/.config/wezterm/wezterm.lua` 設定 pwsh 為預設 shell + Nerd Font） |
 | PowerToys | `Microsoft.PowerToys` |
+| [Files](https://github.com/files-community/Files) | `FilesCommunity.Files`（檔案管理器；穩定版） |
 | Raycast | `9PFXXSHC64H3`（msstore） |
 | Antigravity | `Google.Antigravity` |
 | Docker Desktop | `Docker.DockerDesktop`（WSL2 後端由 `installWsl` 開關提供 —— 見下方） |

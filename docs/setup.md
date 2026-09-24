@@ -163,7 +163,7 @@ Scoop download cache and temporary staging. See [Disk space](disk-space.md).
 | `Install coding agents (Claude Code, OpenCode, Codex, Copilot CLI, Pi, pia, OMP, SpecStory)` | on (workstation) | native and npm agents plus the Git-managed `pia` combo checkout; credentials and mutable sessions stay outside chezmoi |
 | Agent completion feedback | `notify` (workstation) / `none` (minimal) | what a coding agent does when it finishes: `none` / `notify` (Windows toast) / `peon` (game voice line) / `both` — see [Agent completion sounds](agent-sounds.md) |
 | `Install standalone SpecStory CLI (also included with coding agents)` | off | install the official Windows release without the full agent bundle; retains the `installSpecstoryBuild` data key for compatibility |
-| Windows GUI apps | on (workstation) | VSCode, Cursor, Notepad++, Terminal, Alacritty, PowerToys, Raycast, Docker Desktop, Discord |
+| Windows GUI apps | on (workstation) | VSCode, Cursor, Terminal, Alacritty, PowerToys, Files, Raycast, Docker Desktop, Discord |
 | WSL2 backend | on (workstation) | WSL2 for Docker Desktop's backend; self-elevates (one UAC prompt), reboot required |
 | WSL2 Ubuntu | off | install a WSL2 Ubuntu distro + bootstrap cross-platform dotfiles (needs `installWsl`) |
 | WSL Ubuntu username | your Windows user | UNIX login for the WSL Ubuntu (passwordless sudo, auto-login) |

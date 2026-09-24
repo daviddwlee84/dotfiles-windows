@@ -172,7 +172,7 @@ jobs:
             # below exercises the SpecStory release block; `chezmoi apply --exclude
             # scripts` means it never actually installs in CI.
             '--promptBool','Install standalone SpecStory CLI (also included with coding agents)=true',
-            '--promptBool','Install GUI apps via winget (VSCode, Cursor, Notepad++, Terminal, Alacritty, PowerToys, Raycast)=false',
+            '--promptBool','Install GUI apps via winget (VSCode, Cursor, Terminal, Alacritty, PowerToys, Files, Raycast)=false',
             '--promptBool','Install WSL2 (Docker Desktop backend; needs admin + reboot)=false',
             '--promptBool','Install a WSL2 Ubuntu distro and bootstrap cross-platform dotfiles inside it (needs admin; requires WSL2 platform)=false',
             '--promptString','WSL Ubuntu username=ci',
