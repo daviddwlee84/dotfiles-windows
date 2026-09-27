@@ -813,7 +813,8 @@ function script:Select-SshSetupKey {
         New-Item -ItemType Directory -Path (Split-Path -Parent $keyPath) -Force | Out-Null
         Write-Host ''
         Write-Host "> ssh-keygen $($keygenArgs -join ' ')"
-        & ssh-keygen @keygenArgs
+        $kgOut = & ssh-keygen @keygenArgs
+        if ($kgOut) { $kgOut | ForEach-Object { Write-Host $_ } }
         if ($LASTEXITCODE -ne 0) { return $null }
         Write-Host ''
         Write-Host "Key created: $keyPath"
