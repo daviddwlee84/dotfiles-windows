@@ -144,6 +144,56 @@ Describe 'shared package-source policy' {
     }
 }
 
+Describe 'Git installation ownership' {
+    BeforeAll {
+        function Info($Message) {}
+        function Scoop-Install([string[]]$Apps) {}
+
+        $installer = Render-PackageInstaller -ManagedMachine $true -UseChineseMirror $false -AllowFallback $false
+        $tokens = $null
+        $parseErrors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseInput($installer, [ref]$tokens, [ref]$parseErrors)
+        if ($parseErrors.Count) { throw 'failed to parse package installer' }
+        $selection = @($ast.EndBlock.Statements | Where-Object {
+            $_ -is [System.Management.Automation.Language.IfStatementAst] -and
+            $_.Clauses[0].Item1.Extent.Text -eq 'Get-Command git -CommandType Application -ErrorAction SilentlyContinue'
+        })
+        if ($selection.Count -ne 1) { throw 'expected one Git installation selection block' }
+        $script:GitSelection = [scriptblock]::Create($selection[0].Extent.Text)
+    }
+
+    BeforeEach {
+        Mock Info {}
+        Mock Scoop-Install {}
+    }
+
+    It 'reuses an existing system Git instead of requesting Scoop Git' {
+        Mock Get-Command { [pscustomobject]@{ Source = 'C:\Program Files\Git\cmd\git.exe' } } -ParameterFilter { $Name -eq 'git' }
+
+        & $script:GitSelection
+
+        Should -Invoke Get-Command -Times 1 -Exactly -ParameterFilter {
+            $Name -eq 'git' -and $CommandType -eq 'Application'
+        }
+        Should -Invoke Scoop-Install -Times 0 -Exactly
+    }
+
+    It 'requests Scoop Git when no Git executable is available' {
+        Mock Get-Command { $null } -ParameterFilter { $Name -eq 'git' }
+
+        & $script:GitSelection
+
+        Should -Invoke Scoop-Install -Times 1 -Exactly -ParameterFilter {
+            $Apps.Count -eq 1 -and $Apps[0] -eq 'git'
+        }
+    }
+
+    It 'does not request Git again in the unconditional core toolset' {
+        $installer | Should -Match "Scoop-Install @\(\s*'gh',"
+        $installer | Should -Not -Match "Scoop-Install @\(\s*'git',"
+    }
+}
+
 Describe 'package installer source policy' {
     It 'renders fallback policy into the run-onchange hash' {
         (Render-PackageInstaller -ManagedMachine $true -UseChineseMirror $false -AllowFallback $true) |

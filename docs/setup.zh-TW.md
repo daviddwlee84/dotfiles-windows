@@ -112,7 +112,8 @@ git restore --worktree -- `
 2. 安裝 [scoop](https://scoop.sh)（使用者層級、免系統管理員 —— 但若 shell 本身是
    系統管理員身分，會自動帶上 `-RunAsAdmin`；否則安裝程式會以
    *「Running the installer as administrator is disabled by default」* 拒絕執行）。
-3. 透過 scoop 安裝 `git`、`7zip`、PowerShell 7（`pwsh`）、`chezmoi`、`uv`。
+3. 優先沿用 `PATH` 上既有的 Git 執行檔，找不到時才透過 Scoop 安裝 `git`；
+   其餘透過 Scoop 安裝 `7zip`、PowerShell 7（`pwsh`）、`chezmoi`、`uv`。
    若尚無 pwsh，bootstrap 會先更新 Scoop／bucket metadata，確保安裝目前的
    **stable** manifest。既有 pwsh 不會被隱式升級；確定要升級時請執行
    `scoop update pwsh`。
@@ -123,6 +124,10 @@ git restore --worktree -- `
 6. 執行 `chezmoi init --apply`（若 source 已經 clone 過則改用 `chezmoi update`）
    —— chezmoi 會透過 `[interpreters.ps1]` 自己用 pwsh 跑 repo 的 `.ps1`，所以**不會**
    重啟 shell。從 Windows PowerShell 5.1 或 pwsh 7 起手都可以。
+
+套件安裝腳本也會沿用既有 Git 執行檔，不另裝第二套 Scoop Git。受管理機器請先安裝
+公司批准的 Git；沿用既有安裝不代表通過公司審核，也不會繞過安全政策。已存在的
+重複安裝不會自動移除。
 
 !!! warning "在 GFW 後面"
     bootstrap 期間請開著 VPN —— scoop 會從 **GitHub releases** 下載

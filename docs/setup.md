@@ -123,8 +123,9 @@ git restore --worktree -- `
    is already elevated it auto-passes `-RunAsAdmin`, which the installer
    otherwise refuses with *"Running the installer as administrator is disabled
    by default"*).
-3. Installs `git`, `7zip`, PowerShell 7 (`pwsh`), `chezmoi`, and `uv` via
-   scoop. When pwsh is missing, bootstrap first refreshes Scoop/bucket metadata,
+3. Reuses an existing Git executable on `PATH`, or installs `git` via Scoop
+   when none is available. Installs `7zip`, PowerShell 7 (`pwsh`), `chezmoi`,
+   and `uv` via Scoop. When pwsh is missing, bootstrap first refreshes Scoop/bucket metadata,
    so the install uses the current **stable** manifest. An existing pwsh is not
    upgraded implicitly; use `scoop update pwsh` when you intend to upgrade it.
 4. Refreshes `PATH` from the registry so the just-installed scoop shims
@@ -136,6 +137,11 @@ git restore --worktree -- `
    cloned) — chezmoi runs the repo's `.ps1` scripts under pwsh itself
    (`[interpreters.ps1]`), so it never relaunches the shell. Works from Windows
    PowerShell 5.1 or pwsh 7.
+
+The package installer also reuses an existing Git executable instead of adding
+a second Scoop installation. On managed machines, install the company-approved
+Git first. Reuse does not establish approval or bypass security policy; existing
+duplicate installations are not automatically removed.
 
 !!! warning "Behind the GFW"
     Keep a VPN on for the bootstrap — scoop downloads git / pwsh / chezmoi / uv

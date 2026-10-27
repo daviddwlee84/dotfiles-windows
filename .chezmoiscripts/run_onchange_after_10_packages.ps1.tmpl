@@ -358,9 +358,15 @@ function Install-Weasel {
 # ===========================================================================
 Ensure-Scoop
 
+if (Get-Command git -CommandType Application -ErrorAction SilentlyContinue) {
+    Info 'git: reusing the existing executable from PATH'
+} else {
+    Scoop-Install @('git')
+}
+
 # Core CLI toolset — the shell baseline, always installed.
 Scoop-Install @(
-    'git', 'gh', 'glab', '7zip', 'make', 'just',
+    'gh', 'glab', '7zip', 'make', 'just',
     'starship', 'zoxide', 'fzf', 'fd', 'ripgrep', 'bat', 'eza', 'glow', 'jq',
     'delta', 'lazygit', 'neovim', 'micro', 'yazi', 'btop', 'pueue', 'television', 'tlrc',
     'uv', 'gnupg',
