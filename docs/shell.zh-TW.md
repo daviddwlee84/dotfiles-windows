@@ -49,6 +49,27 @@ function cau { chezmoi update @args; . $PROFILE } # git pull + apply,再 reload
     `Set-Alias` / `Import-Module` 只是重新套用 —— 但**上一次載入定義、這次不再
     定義**的東西**不會**被移除。要保證乾淨的狀態,請開新的 pwsh session。
 
+## 在受限制機器上停用 fzf
+
+若公司政策封鎖 fzf，請勿改用實體執行檔來繞過被攔的 Scoop shim。
+可為目前 Windows 使用者停用這項選用整合：
+
+```powershell
+[Environment]::SetEnvironmentVariable('DOTFILES_DISABLE_FZF', '1', 'User')
+$env:DOTFILES_DISABLE_FZF = '1'
+```
+
+設定後，套件安裝腳本會略過 fzf、PSFzf 與 Clink fzf 橋接。PowerShell profile
+不會初始化 PSFzf 或綁定其快捷鍵，即使模組仍已安裝。其他套件與 shell 整合
+維持不變；未設定此旗標的機器保留原本 fzf 行為。若行程沒有明確覆寫旗標，
+安裝腳本與 profile 都會讀取持久的 User 值，因此從舊 VS Code 行程啟動也能
+套用停用設定。
+
+此旗標不會卸載既有套件，也不會移除已存在的
+`$env:LOCALAPPDATA\clink\fzf.lua`；請確認檔案歸屬後另行清理。重新啟動終端與
+其父應用程式（包括 VS Code），以清除舊模組與快捷鍵。
+PSReadLine 的 Up/Down 前綴歷史搜尋仍可使用。
+
 ## 命令列刪除字詞
 
 啟用 `enableVimMode` 時，**Insert 模式**的 `Ctrl+W` 會往前刪到目前或上一個

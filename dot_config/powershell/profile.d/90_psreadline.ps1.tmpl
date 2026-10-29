@@ -45,7 +45,8 @@ if (Get-Module -Name PSReadLine) {
 
     # PSFzf (imported in 10_tools) binds Ctrl+t files / Ctrl+r history. Re-apply
     # here: the -EditMode reset above wipes those bindings.
-    if (Get-Module -Name PSFzf) {
+    if (($env:DOTFILES_DISABLE_FZF ?? [Environment]::GetEnvironmentVariable('DOTFILES_DISABLE_FZF', 'User')) -ne '1' -and
+        (Get-Module -Name PSFzf)) {
         Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+t' -PSReadlineChordReverseHistory 'Ctrl+r'
     }
 }

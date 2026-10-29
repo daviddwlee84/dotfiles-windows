@@ -48,6 +48,7 @@ Set-WindowsPathPrecedence
 {{ template "package-sources.ps1" . }}
 $managedMachine = {{ if .managedMachine }}$true{{ else }}$false{{ end }}
 $allowPublicPackageFallback = {{ if (get . "allowPublicPackageFallback") }}$true{{ else }}$false{{ end }}
+$fzfEnabled = ($env:DOTFILES_DISABLE_FZF ?? [Environment]::GetEnvironmentVariable('DOTFILES_DISABLE_FZF', 'User')) -ne '1'
 
 # Command-scoped corporate-first runner for the npm/PyPI operations backed by
 # company feeds. Other ecosystems retain their existing source behavior.
@@ -364,10 +365,16 @@ if (Get-Command git -CommandType Application -ErrorAction SilentlyContinue) {
     Scoop-Install @('git')
 }
 
+if ($fzfEnabled) {
+    Scoop-Install @('fzf')
+} else {
+    Info 'fzf: disabled by DOTFILES_DISABLE_FZF; skipping fzf and PSFzf installation'
+}
+
 # Core CLI toolset — the shell baseline, always installed.
 Scoop-Install @(
     'gh', 'glab', '7zip', 'make', 'just',
-    'starship', 'zoxide', 'fzf', 'fd', 'ripgrep', 'bat', 'eza', 'glow', 'jq',
+    'starship', 'zoxide', 'fd', 'ripgrep', 'bat', 'eza', 'glow', 'jq',
     'delta', 'lazygit', 'neovim', 'micro', 'yazi', 'btop', 'pueue', 'television', 'tlrc',
     'uv', 'gnupg',
     # Runtimes are NATIVE via scoop, not mise: mise's activate/shims are
@@ -449,7 +456,7 @@ try {
 
 # PSReadLine ships with pwsh; PSFzf powers the fzf key bindings in profile.d
 # (Ctrl+t = files, Ctrl+r = fuzzy history search).
-if (-not (Get-Module -ListAvailable -Name PSFzf)) {
+if ($fzfEnabled -and -not (Get-Module -ListAvailable -Name PSFzf)) {
     Info 'Install-Module PSFzf'
     Install-Module PSFzf -Scope CurrentUser -Force -AcceptLicense -ErrorAction SilentlyContinue
 }
@@ -695,7 +702,9 @@ if (Have clink) {
     New-Item -ItemType Directory -Force -Path $clinkDir | Out-Null
     $clinkPlugins = @{
         'zoxide.lua' = 'https://raw.githubusercontent.com/shunsambongi/clink-zoxide/master/zoxide.lua'
-        'fzf.lua'    = 'https://raw.githubusercontent.com/chrisant996/clink-fzf/master/fzf.lua'
+    }
+    if ($fzfEnabled) {
+        $clinkPlugins['fzf.lua'] = 'https://raw.githubusercontent.com/chrisant996/clink-fzf/master/fzf.lua'
     }
     foreach ($name in $clinkPlugins.Keys) {
         Info "clink plugin: $name"
@@ -706,7 +715,9 @@ if (Have clink) {
     # reloads the profile scripts first -- so this must run AFTER fzf.lua is
     # downloaded above, else the setting is unknown and the value is silently
     # not persisted (the *> $null swallows the "unknown setting" error).
-    clink set fzf.default_bindings true *> $null    # Ctrl-R history / Ctrl-T files / Alt-C dir
+    if ($fzfEnabled) {
+        clink set fzf.default_bindings true *> $null    # Ctrl-R history / Ctrl-T files / Alt-C dir
+    }
 } else { Register-Failure 'clink (autorun/plugins not configured)' }
 {{ end -}}
 

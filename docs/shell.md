@@ -53,6 +53,29 @@ function cau { chezmoi update @args; . $PROFILE } # git pull + apply, then reloa
     defines is **not** removed. For a guaranteed-clean state, open a new pwsh
     session.
 
+## Disabling fzf on a restricted machine
+
+If company policy blocks fzf, do not run its real binary directly to bypass a
+blocked Scoop shim. Disable the optional integration for this Windows user:
+
+```powershell
+[Environment]::SetEnvironmentVariable('DOTFILES_DISABLE_FZF', '1', 'User')
+$env:DOTFILES_DISABLE_FZF = '1'
+```
+
+With this flag, the package installer skips fzf, PSFzf, and the Clink fzf bridge.
+The PowerShell profile skips PSFzf initialization and its key bindings, even if
+the module is already installed. Other packages and shell integrations are
+unchanged. Without the flag, the existing fzf behavior is preserved. When the
+process has no explicit override, both the installer and profile read the
+persistent User value, including when launched from an older VS Code process.
+
+The flag does not uninstall existing packages or remove an existing
+`$env:LOCALAPPDATA\clink\fzf.lua`; remove those separately after confirming their
+ownership. Restart terminals and their parent applications, including VS Code,
+so they discard old modules and bindings. Normal PSReadLine prefix-history
+search remains available with Up/Down.
+
 ## Command-line word deletion
 
 With `enableVimMode` on, `Ctrl+W` in **Insert mode** deletes backward to the

@@ -73,7 +73,8 @@ Import-CachedInit -Name 'zoxide' -Exe 'zoxide' -Generate { zoxide init powershel
 Import-CachedInit -Name 'atuin' -Exe 'atuin' -Generate { atuin init powershell }
 
 # fzf — fuzzy finder + PSFzf key bindings (Ctrl+t files, Ctrl+r history)
-if (Get-Command fzf -ErrorAction SilentlyContinue) {
+if (($env:DOTFILES_DISABLE_FZF ?? [Environment]::GetEnvironmentVariable('DOTFILES_DISABLE_FZF', 'User')) -ne '1' -and
+    (Get-Command fzf -ErrorAction SilentlyContinue)) {
     $env:FZF_DEFAULT_OPTS = '--height 40% --layout=reverse --border'
     if (Get-Command fd -ErrorAction SilentlyContinue) {
         $env:FZF_DEFAULT_COMMAND = 'fd --hidden --strip-cwd-prefix --exclude .git'
