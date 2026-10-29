@@ -138,10 +138,11 @@ git restore --worktree -- `
    (`[interpreters.ps1]`), so it never relaunches the shell. Works from Windows
    PowerShell 5.1 or pwsh 7.
 
-The package installer also reuses an existing Git executable instead of adding
-a second Scoop installation. On managed machines, install the company-approved
-Git first. Reuse does not establish approval or bypass security policy; existing
-duplicate installations are not automatically removed.
+The package installer reuses existing Git and GitHub CLI (`gh`) executables on
+`PATH` instead of adding duplicate Scoop installations. A missing executable is
+still installed through Scoop. On managed machines, install the company-approved
+versions first. Reuse does not establish approval or bypass security policy;
+existing duplicate installations are not automatically removed.
 
 !!! warning "Behind the GFW"
     Keep a VPN on for the bootstrap — scoop downloads git / pwsh / chezmoi / uv

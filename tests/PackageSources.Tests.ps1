@@ -144,7 +144,10 @@ Describe 'shared package-source policy' {
     }
 }
 
-Describe 'Git installation ownership' {
+Describe '<Label> installation ownership' -ForEach @(
+    @{ Label = 'Git'; Tool = 'git'; Executable = 'C:\Program Files\Git\cmd\git.exe' }
+    @{ Label = 'GitHub CLI'; Tool = 'gh'; Executable = 'C:\Program Files\GitHub CLI\gh.exe' }
+) {
     BeforeAll {
         function Info($Message) {}
         function Scoop-Install([string[]]$Apps) {}
@@ -156,10 +159,10 @@ Describe 'Git installation ownership' {
         if ($parseErrors.Count) { throw 'failed to parse package installer' }
         $selection = @($ast.EndBlock.Statements | Where-Object {
             $_ -is [System.Management.Automation.Language.IfStatementAst] -and
-            $_.Clauses[0].Item1.Extent.Text -eq 'Get-Command git -CommandType Application -ErrorAction SilentlyContinue'
+            $_.Clauses[0].Item1.Extent.Text -eq "Get-Command $Tool -CommandType Application -ErrorAction SilentlyContinue"
         })
-        if ($selection.Count -ne 1) { throw 'expected one Git installation selection block' }
-        $script:GitSelection = [scriptblock]::Create($selection[0].Extent.Text)
+        if ($selection.Count -ne 1) { throw "expected one $Label installation selection block" }
+        $script:ToolSelection = [scriptblock]::Create($selection[0].Extent.Text)
     }
 
     BeforeEach {
@@ -167,30 +170,30 @@ Describe 'Git installation ownership' {
         Mock Scoop-Install {}
     }
 
-    It 'reuses an existing system Git instead of requesting Scoop Git' {
-        Mock Get-Command { [pscustomobject]@{ Source = 'C:\Program Files\Git\cmd\git.exe' } } -ParameterFilter { $Name -eq 'git' }
+    It 'reuses the existing system executable instead of requesting a Scoop copy' {
+        Mock Get-Command { [pscustomobject]@{ Source = $Executable } } -ParameterFilter { $Name -eq $Tool }
 
-        & $script:GitSelection
+        & $script:ToolSelection
 
         Should -Invoke Get-Command -Times 1 -Exactly -ParameterFilter {
-            $Name -eq 'git' -and $CommandType -eq 'Application'
+            $Name -eq $Tool -and $CommandType -eq 'Application'
         }
         Should -Invoke Scoop-Install -Times 0 -Exactly
     }
 
-    It 'requests Scoop Git when no Git executable is available' {
-        Mock Get-Command { $null } -ParameterFilter { $Name -eq 'git' }
+    It 'requests the Scoop package when no executable is available' {
+        Mock Get-Command { $null } -ParameterFilter { $Name -eq $Tool }
 
-        & $script:GitSelection
+        & $script:ToolSelection
 
         Should -Invoke Scoop-Install -Times 1 -Exactly -ParameterFilter {
-            $Apps.Count -eq 1 -and $Apps[0] -eq 'git'
+            $Apps.Count -eq 1 -and $Apps[0] -eq $Tool
         }
     }
 
-    It 'does not request Git again in the unconditional core toolset' {
-        $installer | Should -Match "Scoop-Install @\(\s*'gh',"
-        $installer | Should -Not -Match "Scoop-Install @\(\s*'git',"
+    It 'does not request the tool again in the unconditional core toolset' {
+        $installer | Should -Match "Scoop-Install @\(\s*'glab',"
+        $installer | Should -Not -Match "Scoop-Install @\(\s*'$Tool',"
     }
 }
 

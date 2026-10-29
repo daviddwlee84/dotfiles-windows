@@ -365,6 +365,12 @@ if (Get-Command git -CommandType Application -ErrorAction SilentlyContinue) {
     Scoop-Install @('git')
 }
 
+if (Get-Command gh -CommandType Application -ErrorAction SilentlyContinue) {
+    Info 'gh: reusing the existing executable from PATH'
+} else {
+    Scoop-Install @('gh')
+}
+
 if ($fzfEnabled) {
     Scoop-Install @('fzf')
 } else {
@@ -373,7 +379,7 @@ if ($fzfEnabled) {
 
 # Core CLI toolset — the shell baseline, always installed.
 Scoop-Install @(
-    'gh', 'glab', '7zip', 'make', 'just',
+    'glab', '7zip', 'make', 'just',
     'starship', 'zoxide', 'fd', 'ripgrep', 'bat', 'eza', 'glow', 'jq',
     'delta', 'lazygit', 'neovim', 'micro', 'yazi', 'btop', 'pueue', 'television', 'tlrc',
     'uv', 'gnupg',

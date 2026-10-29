@@ -125,9 +125,9 @@ git restore --worktree -- `
    —— chezmoi 會透過 `[interpreters.ps1]` 自己用 pwsh 跑 repo 的 `.ps1`，所以**不會**
    重啟 shell。從 Windows PowerShell 5.1 或 pwsh 7 起手都可以。
 
-套件安裝腳本也會沿用既有 Git 執行檔，不另裝第二套 Scoop Git。受管理機器請先安裝
-公司批准的 Git；沿用既有安裝不代表通過公司審核，也不會繞過安全政策。已存在的
-重複安裝不會自動移除。
+套件安裝腳本會沿用 `PATH` 上既有的 Git 與 GitHub CLI（`gh`），不另裝重複的
+Scoop 版本；找不到執行檔時才透過 Scoop 安裝。受管理機器請先安裝公司批准的版本。
+沿用既有安裝不代表通過公司審核，也不會繞過安全政策。已存在的重複安裝不會自動移除。
 
 !!! warning "在 GFW 後面"
     bootstrap 期間請開著 VPN —— scoop 會從 **GitHub releases** 下載

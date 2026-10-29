@@ -42,7 +42,7 @@ BeforeAll {
     if ($initializers.Count -ne 1) { throw 'Expected one fzf policy initializer' }
     $script:PolicyInitializer = [scriptblock]::Create($initializers[0].Extent.Text)
     $script:CorePackages = @($installer.EndBlock.Statements | Where-Object {
-        $_.Extent.Text -match '^Scoop-Install @\(\s*''gh'','
+        $_.Extent.Text -match '^Scoop-Install @\(\s*''glab'','
     })
 
     $readLineTemplate = Join-Path $RepoRoot 'dot_config/powershell/profile.d/90_psreadline.ps1.tmpl'
