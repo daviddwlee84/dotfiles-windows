@@ -52,6 +52,7 @@ then applies the dotfiles.
   only verified symlink placeholders.
 - **Editors**: VSCode, Cursor, Notepad++ (shared settings/keybindings).
 - **Apps** (winget): Windows Terminal, Alacritty, Raycast, PowerToys, Steam.
+- Herdr UI is installed when both `installWindowsApps` and `installHerdr` are enabled. The daemon is already default-on for workstation. See [Herdr UI](docs/tools.md#herdr-ui-native-gui-client).
 - **Optional Herdr**: native multiplexer (0.9.1+) with `prefix+d` launching the
   `dev-cli` task/worktree dashboard, `prefix+Y` Yazi popup, low-frequency copy helpers under `prefix+y`,
   `prefix+alt+e` safely editing, validating, and reloading the live runtime

@@ -396,3 +396,25 @@ Scoop 更新尚在進行時，請使用回傳的 `status_command`；它在安裝
 
 `exp` 暫緩 Windows 發布與預設安裝，待 canonical storage 與原生 runtime
 驗證完成；既有手動安裝副本保持不動，也不納入此套件升級。
+
+
+## Herdr UI（原生 GUI client）
+
+[Herdr UI](https://github.com/penso/herdr-gpui) 是既有 Herdr daemon 的獨立圖形介面。
+TUI 與 GUI 可共用 session，關閉 GUI 不會結束終端 session。GUI 安裝器不會安裝或
+升級 Herdr daemon。GUI 偏好設定由應用程式管理；apply 不啟動應用程式，也不開啟登入自啟。
+
+僅在 **`installWindowsApps=true` 且 `installHerdr=true`** 時安裝，順序在 daemon 之後。
+`installHerdr` 在 workstation 已預設開啟、minimal 預設關閉，保留既有選擇。
+
+固定版本並核對 hash 的官方 PowerShell 安裝器會下載 stable zip 並驗證上游 SHA-256，
+安裝至 `%LOCALAPPDATA%\Programs\Herdr UI`，登錄使用者 PATH、開始選單捷徑、
+Explorer 資料夾選單與 `herdr-gpui://` 連結。從開始選單的
+`herdr-gpui-launcher.exe` 啟動可避免額外 console 視窗。該路徑或 PATH 上已有安裝時
+直接跳過，失敗納入套件安裝摘要。
+
+已簽署版本可從應用程式 **Check for Updates** 更新；手動更新請先關閉 GUI，再執行
+[官方安裝器](https://herdrui.dev/install.ps1)，daemon session 會繼續運作。
+`just upgrade-herdr` 只更新 daemon 與相符技能。GUI 支援 x64／ARM64，但原生 Windows
+ARM64 daemon 仍有限制，上游完整 daemon 實測僅跑 x64；GUI 的 ARM64 支援不代表
+daemon 已完全對齊。GUI 也支援連線到 WSL daemon。

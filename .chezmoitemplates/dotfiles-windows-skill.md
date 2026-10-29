@@ -211,3 +211,5 @@ helper outside the installed package). Starting the installed executable to
 poll can make Scoop classify it as running and defer the update. Once complete,
 `<tool> upgrade --status <operation-id>` is also available. If the host disallows
 process breakaway, keep the launching terminal open until a final result.
+
+Herdr UI (`herdr-gpui`) installs only with both `installWindowsApps` and `installHerdr`. Apply skips existing copies; launch from the Start menu and upgrade via Check for Updates. UI preferences are app-owned. `just upgrade-herdr` remains daemon-only. See `docs/tools.md`.

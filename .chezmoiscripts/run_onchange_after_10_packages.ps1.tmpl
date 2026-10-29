@@ -59,6 +59,7 @@ $allowPublicPackageFallback = {{ if (get . "allowPublicPackageFallback") }}$true
 {{ include "scripts/omp-install-core.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 {{ include "scripts/windows-cli-release.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 {{ include "scripts/windows-system-proxy.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
+{{ include "scripts/herdr-gui-install.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 {{ include "scripts/herdr-upgrade-core.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 {{ include "scripts/personal-tools.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 {{ template "weasel-core.ps1" . }}
@@ -673,6 +674,15 @@ if (Have az) {
 Scoop-Install @('go')
 Install-Herdr
 Install-HerdrPlus
+{{ if .installWindowsApps -}}
+try {
+    Install-HerdrGui
+    Set-WindowsPathPrecedence
+} catch {
+    Write-Warning "Herdr UI install error: $_"
+    Register-Failure 'herdr-gpui'
+}
+{{ end -}}
 {{ end -}}
 
 {{ if .installClink -}}

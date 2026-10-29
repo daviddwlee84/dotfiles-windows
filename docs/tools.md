@@ -439,3 +439,31 @@ process breakaway, keep the launching terminal open until a final result.
 
 `exp` is deferred on Windows pending its canonical storage and native runtime
 contract. Existing manual copies are preserved and excluded from this suite.
+
+
+## Herdr UI (native GUI client)
+
+[Herdr UI](https://github.com/penso/herdr-gpui) is a separate client for the
+existing Herdr daemon. TUI and GUI can share sessions; closing the GUI leaves
+terminal sessions running. The UI installer never installs or upgrades the
+Herdr daemon. GUI preferences remain app-owned; apply does not launch the app
+or enable launch at login.
+
+Installation requires **both** `installWindowsApps=true` and `installHerdr=true`.
+`installHerdr` already defaults on for workstation and off for minimal; stored
+choices remain effective. GUI installation runs after the daemon install.
+
+The pinned, hash-verified official PowerShell installer downloads a stable zip
+and verifies its published SHA-256. It installs under
+`%LOCALAPPDATA%\Programs\Herdr UI`, registers the user PATH, Start menu shortcut,
+Explorer folder menu and `herdr-gpui://` links. Open the Start menu shortcut
+(`herdr-gpui-launcher.exe`) to avoid a console window. Existing installations
+at that location or on PATH are skipped, and failures join the package summary.
+
+Use **Check for Updates** in the app for signed installations. For manual
+updates, quit the GUI and run the [official installer](https://herdrui.dev/install.ps1)
+again; daemon sessions remain running. `just upgrade-herdr` only updates the
+daemon and matching skill. The GUI supports x64 and ARM64, but the native
+Windows daemon's ARM64 limitations remain: upstream's live daemon test runs on
+x64 only. Do not assume native GUI ARM64 support proves daemon parity; WSL
+connections are supported by the GUI.
