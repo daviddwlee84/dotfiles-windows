@@ -1,12 +1,12 @@
 # herdr-plus Quick Action — the plugin's "Open Repo" select starter example.
 # Managed by chezmoi. Choosing it shows a second fuzzy list; the picked option's
-# `value` becomes {{.Value}}. Add/remove [[options]] to taste.
+# `value` becomes {{ "{{.Value}}" }}. Add/remove [[options]] to taste.
 # `x open` -> Start-Process (see github.toml). Note dotfiles-windows is listed
 # here in addition to the unix repo's set.
 name = "Open Repo on GitHub"
 description = "Pick one of your repos and open it"
 type = "select"
-command = '''pwsh -NoProfile -Command "Start-Process 'https://github.com/daviddwlee84/{{.Value}}'"'''
+command = {{ includeTemplate "herdr/powershell-command.toml.tmpl" (dict "data" . "args" `-NoProfile -Command "Start-Process 'https://github.com/daviddwlee84/{{.Value}}'"`) }}
 
 [[options]]
 label = "dotfiles-windows"

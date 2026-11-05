@@ -76,7 +76,7 @@ rows = [
 
 [terminal]
 # Match the rest of this repo (WezTerm / Windows Terminal default to pwsh).
-default_shell = "pwsh"
+default_shell = {{ includeTemplate "powershell-executable" . | quote }}
 # CWD policy for new panes/tabs/workspaces (no explicit --cwd):
 #   "follow"  = inherit the SOURCE pane/workspace (default)
 #   "home"    = $HOME · "current" = herdr's own process dir · or a fixed path
@@ -123,7 +123,7 @@ navigate_workspace_up = ["k", "up"]
 [[keys.command]]
 key = "prefix+alt+e"
 type = "pane"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/edit-config.ps1"'
+command = {{ includeTemplate "herdr/powershell-command.toml.tmpl" (dict "data" . "args" (printf "-NoProfile -File \"%s/edit-config.ps1\"" $herdrDir)) }}
 description = "edit runtime config, validate, and reload"
 
 [[keys.command]]
@@ -135,14 +135,14 @@ description = "dev-cli repository/task dashboard (popup pane)"
 [[keys.command]]
 key = "prefix+G"
 type = "pane"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/lazygit.ps1"'
+command = {{ includeTemplate "herdr/powershell-command.toml.tmpl" (dict "data" . "args" (printf "-NoProfile -File \"%s/lazygit.ps1\"" $herdrDir)) }}
 description = "lazygit (temporary pane)"
 
 # Prefix-free alias; use the same temporary-pane launcher as prefix+G.
 [[keys.command]]
 key = "alt+g"
 type = "pane"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/lazygit.ps1"'
+command = {{ includeTemplate "herdr/powershell-command.toml.tmpl" (dict "data" . "args" (printf "-NoProfile -File \"%s/lazygit.ps1\"" $herdrDir)) }}
 description = "lazygit (temporary pane)"
 
 # Herdr 0.9.1 shares the popup parser and runtime across platforms.
@@ -169,7 +169,7 @@ description = "btop system monitor (popup pane)"
 [[keys.command]]
 key = "prefix+`"
 type = "popup"
-command = "pwsh"
+command = {{ includeTemplate "herdr/powershell-command.toml.tmpl" (dict "data" . "args" "") }}
 width = "85%"
 height = "80%"
 description = "scratch shell (popup)"
@@ -177,7 +177,7 @@ description = "scratch shell (popup)"
 [[keys.command]]
 key = "prefix+E"
 type = "popup"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/run-command.ps1"'
+command = {{ includeTemplate "herdr/powershell-command.toml.tmpl" (dict "data" . "args" (printf "-NoProfile -File \"%s/run-command.ps1\"" $herdrDir)) }}
 width = "80%"
 height = "70%"
 description = "run a command in the pane cwd (popup)"
@@ -190,7 +190,7 @@ description = "run a command in the pane cwd (popup)"
 [[keys.command]]
 key = "prefix+C"
 type = "pane"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/new-tab-at-space-root.ps1"'
+command = {{ includeTemplate "herdr/powershell-command.toml.tmpl" (dict "data" . "args" (printf "-NoProfile -File \"%s/new-tab-at-space-root.ps1\"" $herdrDir)) }}
 description = "new tab at the workspace (space) root dir"
 
 # URL picker (tmux prefix+u analog — joshmedeski/tmux-fzf-url). Reads the focused
@@ -200,7 +200,7 @@ description = "new tab at the workspace (space) root dir"
 [[keys.command]]
 key = "prefix+u"
 type = "pane"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/url-pick.ps1"'
+command = {{ includeTemplate "herdr/powershell-command.toml.tmpl" (dict "data" . "args" (printf "-NoProfile -File \"%s/url-pick.ps1\"" $herdrDir)) }}
 description = "URL picker — open a URL from the pane (fzf)"
 
 [[keys.command]]
@@ -222,7 +222,7 @@ description = "Live agent panes (herdr-aware tv channel)"
 [[keys.command]]
 key = "prefix+m"
 type = "pane"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/review-mark.ps1" toggle'
+command = {{ includeTemplate "herdr/powershell-command.toml.tmpl" (dict "data" . "args" (printf "-NoProfile -File \"%s/review-mark.ps1\" toggle" $herdrDir)) }}
 description = "toggle review-pending flag (⭐) on the current pane"
 
 [[keys.command]]
@@ -244,7 +244,7 @@ description = "Review-pending inbox — flagged panes (herdr-aware tv channel)"
 [[keys.command]]
 key = "prefix+p"
 type = "pane"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/path-pick.ps1"'
+command = {{ includeTemplate "herdr/powershell-command.toml.tmpl" (dict "data" . "args" (printf "-NoProfile -File \"%s/path-pick.ps1\"" $herdrDir)) }}
 description = "copy a file path from the pane (fzf, two-tier)"
 
 # --- Interactive translator (prefix+t) ---

@@ -43,6 +43,46 @@
 如果腳本是以**字串資料**嵌入、稍後才執行，則保留自己的 guard。
 務必 render 後 parse 最終結果，不能只檢查各個來源檔。
 
+## PowerShell 本體能跑，但 Scoop shim 被阻擋
+
+`CreateProcessW ... scoop\shims\pwsh.EXE ... Access is denied (os error 5)`
+不代表 PowerShell 本體或所有 Scoop 套件都被擋。先查通知與檔案簽章，再對預定
+使用的本體做一次 `-NoProfile -NonInteractive` 測試；若本體也被拒絕就停止，
+不要停用政策或增加防毒排除。
+
+chezmoi `[data]` 可選填本機的 `powerShellExecutable`，必須是 **`pwsh.exe`
+的本機絕對路徑**，不是命令列。留空或沒有此值時，維持原本從 PATH 找 `pwsh`。
+以下以已存在、經驗證的 Microsoft 安裝為例，請使用本機實際路徑：
+
+```toml
+[data]
+powerShellExecutable = 'C:\Program Files\PowerShell\7\pwsh.exe'
+
+[interpreters.ps1]
+command = 'C:\Program Files\PowerShell\7\pwsh.exe'
+args = ["-NoProfile", "-NonInteractive"]
+```
+
+為了立刻生效，要在既有 chezmoi config 修改以上兩個值，不要覆蓋其他 data。
+之後 `chezmoi init` 會保留 data，並據此產生 interpreter。路徑不能包含 `"`,
+`%`、`!` 或換行，因為 Herdr 自訂命令還會經過 Windows command-string 解析。
+
+override 會接到受管環境的 **process-only PATH**、Herdr 預設 shell、
+PowerShell 自訂命令與 quick actions；Herdr 的巢狀 PowerShell helper 使用目前
+執行的 host。不安裝或核准任何軟體、不改 persisted PATH、不改 bootstrap／套件
+來源，也不等同後續的 restricted 安裝模式。其他 terminal app 自己的 shell
+設定不會被自動更動。
+
+只套用需要的 config／helper，排除 run-scripts 與 externals；不要為修 shell
+做全量 apply。Herdr 的 `terminal` table 由 repo 管理，只改 live 檔會被下次
+apply 覆蓋。舊版 Herdr UI 的 GPUI `[terminal]` 是字型設定，不是 TUI 的 shell
+設定；應確認該版本實際讀取哪個 config，不自行添加不存在的 GPUI key。
+
+**新 shell 與 saved shell 不同：**已儲存的絕對 shim 路徑不會因 PATH 或
+`default_shell` 改變。先驗證新 terminal，再依已安裝版本支援的方式恢復失敗的
+terminal。不刪 session 資料，也不停止仍有工作的 server。單元測試或
+no-profile probe 成功，不代表 saved-session 已恢復。
+
 ## Scope 也是介面的一部分
 
 在函式裡 dot-source，不會讓載入的函式自動變成 global。`reload`、`cas`、

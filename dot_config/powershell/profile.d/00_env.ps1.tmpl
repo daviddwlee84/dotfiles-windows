@@ -57,6 +57,9 @@ $PiOwnedLauncher = Join-Path $PiWrapperRoot 'pia-pi.ps1'
 $OmpOwnedBinary = Join-Path $OmpRoot 'omp.exe'
 {{ end -}}
 $ProfilePaths = @(
+{{ if (get . "powerShellExecutable") -}}
+    (Split-Path -Parent '{{ includeTemplate "powershell-executable" . | replace "'" "''" }}'),
+{{ end -}}
     # Keep Scoop shims above ~/.local/bin: this is the documented shell policy.
     (Join-Path $HOME 'scoop/shims'),
     (Join-Path $HOME '.local/bin'),
@@ -82,6 +85,17 @@ $ProfilePaths = @(
 
 {{ include "scripts/windows-path-precedence.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 Set-WindowsPathPrecedence -ManagedPaths $ProfilePaths
+{{ if (get . "powerShellExecutable") }}
+$SelectedPowerShell = '{{ includeTemplate "powershell-executable" . | replace "'" "''" }}'
+if (-not (Test-Path -LiteralPath $SelectedPowerShell -PathType Leaf)) {
+    Write-Warning "Configured PowerShell is missing: $SelectedPowerShell. Repair powerShellExecutable in chezmoi data; do not rely on a fallback shim."
+} else {
+    # Also outrank inherited process-only shims; do not write persisted PATH.
+    $env:PATH = @(ConvertTo-WindowsPathEntries -PathValues @(
+        (Split-Path -Parent $SelectedPowerShell), $env:PATH
+    )) -join ';'
+}
+{{ end }}
 
 {{ if .installCodingAgents -}}
 if (-not $env:PIA_PI_BIN) {

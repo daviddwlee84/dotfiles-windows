@@ -6,4 +6,4 @@
 # See docs/translate.md § "Translate a herdr pane".
 name = "Translate pane: copy"
 description = "Bilingual translation of the current page, onto the clipboard"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-translate.ps1" visible "$HERDR_PLUS_PANE_ID" --copy'
+command = {{ includeTemplate "herdr/powershell-command.toml.tmpl" (dict "data" . "args" (printf "-NoProfile -File \"%s/pane-translate.ps1\" visible \"$HERDR_PLUS_PANE_ID\" --copy" $herdrDir)) }}

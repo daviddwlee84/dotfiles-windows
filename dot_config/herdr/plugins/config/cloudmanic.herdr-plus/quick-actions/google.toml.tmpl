@@ -3,4 +3,4 @@
 name = "Google"
 description = "Open https://google.com"
 type = "command"
-command = '''pwsh -NoProfile -Command "Start-Process 'https://google.com'"'''
+command = {{ includeTemplate "herdr/powershell-command.toml.tmpl" (dict "data" . "args" `-NoProfile -Command "Start-Process 'https://google.com'"`) }}

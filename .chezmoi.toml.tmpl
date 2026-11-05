@@ -7,6 +7,8 @@
 # the separate cross-platform dotfiles repo.
 
 [data]
+    # Optional machine-local override; no prompt or change to the default PATH lookup.
+    powerShellExecutable = {{ get . "powerShellExecutable" | default "" | quote }}
     # role picks coarse defaults; every toggle can still be overridden.
     {{- $role := promptChoiceOnce . "role" "Role: workstation (full desktop) or minimal (shell only)" (list "workstation" "minimal") "workstation" }}
     {{- $full := eq $role "workstation" }}
@@ -73,7 +75,7 @@
 
 # Run .ps1 scripts (.chezmoiscripts + modify_/create_) under PowerShell 7.
 [interpreters.ps1]
-    command = "pwsh"
+    command = {{ includeTemplate "powershell-executable" . | quote }}
     args = ["-NoProfile", "-NonInteractive"]
 
 [diff]

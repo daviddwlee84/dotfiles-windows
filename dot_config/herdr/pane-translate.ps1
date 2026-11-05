@@ -390,7 +390,8 @@ switch ($act) {
             Start-Sleep -Milliseconds 100
         }
         $self = Join-Path $PSScriptRoot 'pane-translate.ps1'
-        $cmd = "pwsh -NoProfile -File `"$self`" __view `"$capture`" `"$label`""
+        $pwsh = (Join-Path $PSHOME 'pwsh.exe').Replace("'", "''")
+        $cmd = "& '$pwsh' -NoProfile -File `"$self`" __view `"$capture`" `"$label`""
         if ($to) { $cmd += " --to `"$to`"" }
         $null = & herdr pane run $new $cmd 2>&1
         if ($LASTEXITCODE -ne 0) { Show-HerdrNotice "pane-translate: could not start the viewer in $new" 3; exit 1 }

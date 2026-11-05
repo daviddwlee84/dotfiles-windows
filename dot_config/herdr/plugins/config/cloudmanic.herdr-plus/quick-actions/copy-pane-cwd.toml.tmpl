@@ -4,4 +4,4 @@
 # because `pwsh -File` does not expand a leading ~.
 name = "Copy pane: cwd"
 description = "The focused pane's live working directory (what Get-Location returns)"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-copy.ps1" cwd "$HERDR_PLUS_PANE_ID"'
+command = {{ includeTemplate "herdr/powershell-command.toml.tmpl" (dict "data" . "args" (printf "-NoProfile -File \"%s/pane-copy.ps1\" cwd \"$HERDR_PLUS_PANE_ID\"" $herdrDir)) }}

@@ -49,6 +49,7 @@ Someday / nice-to-have.
 
 Needs a spike before committing to a real priority. Tag as `[?/Effort]`.
 
+- [ ] **[?/L] Add an opt-in restricted Windows installation profile** — Investigate IT-approved sources and Scoop-owned runtime/service migrations; keep ordinary Windows unchanged. Deferred after prioritizing the PowerShell/Herdr executable-path repair. → [research](backlog/restricted-windows-install-profile.md)
 - [ ] **[?/L] Example evaluation item** — what spike would answer the question? → [research](backlog/example-evaluation.md)
 - [ ] **[?/L] specstory: capture transcripts without a resident wrapper** — `specstory run` is the agent's parent process, so every pane pays for a second resident parser runtime (measured GB-scale on macOS). `_herdr_wrap_agent` in `dot_config/powershell/profile.d/25_herdr.ps1` has the same shape. Design + spike live in the Unix repo — one backlog doc, not two: `dotfiles/backlog/specstory-detached-transcript-capture.md` (pitfall: `dotfiles/pitfalls/specstory-run-parent-grows-to-multi-gigabyte-rss.md`). Mirror here once the session-id discovery question is settled there.
 - [ ] **[?/S] Align Windows backup with Unix: run_before + unified dir** — Windows backup is run_once_before_ (first-apply only) with a fixed allowlist; Unix is run_before_ (every apply) using chezmoi status smart-selection. Also unify backup dir naming (~/.dotfiles-backup vs ~/.dotfiles_backup). → [research](backlog/align-windows-backup-with-unix-run-before-unified-dir.md)

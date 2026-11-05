@@ -1,0 +1,7 @@
+{{- $exe := includeTemplate "powershell-executable" .data -}}
+{{- if ne $exe "pwsh" -}}{{- $exe = printf "\"%s\"" $exe -}}{{- end -}}
+{{- if .args -}}
+{{- printf "%s %s" $exe .args | quote -}}
+{{- else -}}
+{{- $exe | quote -}}
+{{- end -}}

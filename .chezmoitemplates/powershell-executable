@@ -1,0 +1,9 @@
+{{- $path := get . "powerShellExecutable" | default "" -}}
+{{- if $path -}}
+{{- if or (not (regexMatch `(?i)^[a-z]:[\\/].*[\\/]pwsh\.exe$` $path)) (regexMatch "[\\r\\n\"%!]" $path) -}}
+{{- fail "powerShellExecutable must be an absolute local path to pwsh.exe without quotes, newlines, percent signs, or exclamation marks" -}}
+{{- end -}}
+{{- $path -}}
+{{- else -}}
+pwsh
+{{- end -}}
