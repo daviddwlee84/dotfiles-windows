@@ -161,6 +161,12 @@ entries. Missing packages are not installed. Component commands keep their owner
 unsupported adapters are reported. `upgrade-scoop` and the Scoop font installer refuse
 to run in Microsoft mode. No failure retries by changing winget scope or source.
 
+Installer progress is streamed with the exact package ID. A native Windows UAC
+prompt can still pause an installer: `--silent` / `--disable-interactivity` do not
+approve elevation. Confirm it on the Windows desktop under your IT policy; never
+paste administrator credentials into an agent conversation. For unattended machine
+packages, arrange the approved administrative deployment context beforehand.
+
 Run-script summaries distinguish installed-but-unverified, preserved existing owner,
 pending approval, unsupported, administrator-session-required and failed states.
 Nonfatal apply completion does not mean every selected tool is usable.

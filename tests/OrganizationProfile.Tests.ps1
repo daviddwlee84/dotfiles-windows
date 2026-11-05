@@ -80,7 +80,7 @@ Describe 'Organization source decisions' {
 Describe 'Organization runtime selection is metadata-only' {
     BeforeEach {
         $script:SavedEnvironment = @{}
-        foreach ($key in 'PATH', 'SCOOP', 'SCOOP_GLOBAL', 'NVM_SYMLINK', 'LOCALAPPDATA', 'APPDATA', 'DOTFILES_ORGANIZATION_PROFILE', 'UV_PYTHON_DOWNLOADS', 'AZURE_EXTENSION_USE_DYNAMIC_INSTALL') {
+        foreach ($key in 'PATH', 'SCOOP', 'SCOOP_GLOBAL', 'NVM_SYMLINK', 'LOCALAPPDATA', 'APPDATA', 'ProgramFiles', 'ProgramW6432', 'DOTFILES_ORGANIZATION_PROFILE', 'UV_PYTHON_DOWNLOADS', 'AZURE_EXTENSION_USE_DYNAMIC_INSTALL') {
             $script:SavedEnvironment[$key] = [Environment]::GetEnvironmentVariable($key)
         }
         Initialize-OrganizationPolicy -Data @{ organizationProfile = 'microsoft'; managedMachine = $true } -Catalog $script:Catalog
@@ -95,6 +95,24 @@ Describe 'Organization runtime selection is metadata-only' {
         $env:PATH = @((Join-Path $env:SCOOP 'shims'), (Join-Path $env:SCOOP_GLOBAL 'apps/node/current'), $keep) -join ';'
         Remove-OrganizationScoopPath
         $env:PATH | Should -Be $keep
+    }
+    It 'promotes the installed official archive CLI without duplicate PATH entries' {
+        $env:ProgramFiles = Join-Path $TestDrive 'programs'
+        $env:ProgramW6432 = $env:ProgramFiles
+        $directory = Join-Path $env:ProgramFiles '7-Zip'
+        New-Item -ItemType Directory -Force $directory | Out-Null
+        New-Item -ItemType File (Join-Path $directory '7z.exe') | Out-Null
+        Mock Resolve-OrganizationPython { $null }
+        Set-OrganizationEnvironment
+        Set-OrganizationEnvironment
+        @($env:PATH -split ';' | Where-Object { $_ -eq $directory }).Count | Should -Be 1
+    }
+    It 'does not add an archive directory without its executable' {
+        $env:ProgramFiles = Join-Path $TestDrive 'no-archive'
+        $env:ProgramW6432 = $env:ProgramFiles
+        Mock Resolve-OrganizationPython { $null }
+        Set-OrganizationEnvironment
+        @($env:PATH -split ';') | Should -Not -Contain (Join-Path $env:ProgramFiles '7-Zip')
     }
     It 'prefers the active NVM pair without running Node or npm' {
         $env:NVM_SYMLINK = Join-Path $TestDrive 'nvm-active'
@@ -141,7 +159,7 @@ Describe 'Organization install and upgrade adapters' {
             [pscustomobject]@{ ExitCode = 1625; Output = 'Policy denial' }
         }
         { Invoke-OrganizationWinget -Tool $script:GitTool } | Should -Throw '*no scope/source retry*'
-        Should -Invoke Invoke-OrganizationWingetProcess -Times 1 -Exactly -ParameterFilter { $Arguments[0] -eq 'install' -and '--no-upgrade' -in $Arguments -and 'winget' -in $Arguments }
+        Should -Invoke Invoke-OrganizationWingetProcess -Times 1 -Exactly -ParameterFilter { $Arguments[0] -eq 'install' -and '--no-upgrade' -in $Arguments -and 'winget' -in $Arguments -and $StreamOutput }
     }
     It 'reports pending sources without invoking an installer' {
         Mock Invoke-OrganizationPackageAction { throw 'Must not install pending tools' }
@@ -149,6 +167,36 @@ Describe 'Organization install and upgrade adapters' {
         $result.Count | Should -Be 3
         @($result | Where-Object Status -NE 'pending-approval').Count | Should -Be 0
         Should -Invoke Invoke-OrganizationPackageAction -Times 0
+    }
+}
+
+Describe 'Winget process progress diagnostics' {
+    BeforeAll {
+        function Invoke-FixtureWinget {
+            param([string]$Mode)
+            'download started'
+            'installer started'
+            if ($Mode -ne 'no-exit') { $global:LASTEXITCODE = 5 }
+        }
+    }
+    BeforeEach {
+        Mock Resolve-OrganizationCommand { 'Invoke-FixtureWinget' }
+        Mock Write-Host {}
+    }
+    It 'streams installation progress while retaining output and failure status' {
+        $result = Invoke-OrganizationWingetProcess -Arguments @('install') -StreamOutput
+        $result.ExitCode | Should -Be 5
+        $result.Output | Should -Be "download started`ninstaller started"
+        Should -Invoke Write-Host -Times 2 -Exactly
+    }
+    It 'keeps metadata calls quiet' {
+        $result = Invoke-OrganizationWingetProcess -Arguments @('list')
+        $result.Output | Should -Match 'download started'
+        Should -Invoke Write-Host -Times 0
+    }
+    It 'does not inherit a prior success when no native exit code is returned' {
+        $global:LASTEXITCODE = 0
+        (Invoke-OrganizationWingetProcess -Arguments @('no-exit')).ExitCode | Should -Be 126
     }
 }
 

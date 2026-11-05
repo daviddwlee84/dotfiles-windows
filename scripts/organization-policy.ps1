@@ -216,6 +216,17 @@ function Set-OrganizationEnvironment {
     # Downstream extension autoinstall is separately opt-in.
     if (-not (Test-OrganizationSource azure-devops -Quiet)) { $env:AZURE_EXTENSION_USE_DYNAMIC_INSTALL = 'no' }
     Remove-OrganizationScoopPath
+    # The official 7-Zip installer does not add its CLI to PATH. Match bootstrap's
+    # vendor locations, and promote only an existing executable in this process.
+    if (Test-OrganizationSource 7zip -Operation execute -Quiet) {
+        foreach ($programRoot in @($env:ProgramW6432, $env:ProgramFiles) | Where-Object { $_ } | Select-Object -Unique) {
+            $archiveDirectory = Join-Path $programRoot '7-Zip'
+            if ((Test-Path -LiteralPath (Join-Path $archiveDirectory '7z.exe') -PathType Leaf) -and
+                -not (Test-OrganizationScoopPath $archiveDirectory)) {
+                $env:PATH = $archiveDirectory + ';' + (@($env:PATH -split ';' | Where-Object { $_ -ne $archiveDirectory }) -join ';')
+            }
+        }
+    }
     $python = Resolve-OrganizationPython
     if ($python) {
         $pythonDirectory = Split-Path -Parent $python

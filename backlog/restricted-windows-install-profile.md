@@ -47,6 +47,38 @@ blocked by missing cached mkdocs-material; public manifest lookups were partiall
 limited by GitHub API rate limits, so install-time exact winget metadata checks
 remain required.
 
+## Live dogfood — 2026-11-05
+
+The user authorized applying this branch on the existing Microsoft ARM64 machine.
+A private snapshot of 141 live files was created first. Official winget installation
+and native probes succeeded for PowerShell 7.6.9 and CPython 3.14.10. The local config
+now selects Microsoft policy and those explicit runtimes; existing feature toggles,
+NVM selection, registry fallback policy and local override files were preserved.
+
+Full apply first stopped at the known LazyGit auto-migration conflict. Its reviewed
+diff retained all six branch colors and added the managed clipboard helper; only
+those backed-up LazyGit targets were force-applied. Normal full apply then completed.
+The final files-only status converged; the full profile loaded with zero Scoop PATH
+entries. Eight core executable version probes passed, and the original five tracked
+Herdr/Bun/Pueue processes remained alive. Herdr unmanaged tables, local overrides and
+Claude settings/HUD matched their snapshots.
+
+Dogfood fixes in this working tree:
+- Alacritty must use the explicit PowerShell executable, not inherited `pwsh` lookup.
+- Stream winget install progress and identify the package waiting for native UAC;
+  `--silent` / `--disable-interactivity` do not supply administrator consent.
+- Promote the official 7-Zip CLI directory only when its executable exists; its
+  installer does not add `7z` to PATH. The deployed native ARM64 7-Zip probe passed.
+- Focused tests for these fixes passed (46 tests).
+
+**Not green / merge hold:** Pi's company npm artifact download timed out (rollback
+reported success); Apprise and LiteLLM failed on company PyPI `.whl.metadata` HTTP 404.
+No public-registry fallback or security-policy change was used. Other unapproved
+sources remain pending. Apply's exit 0 is intentionally nonfatal and does not make
+these three failed installations successful. Investigate the corporate feed before
+claiming complete application readiness; this existing-machine dogfood is not a
+clean-machine E2E install test.
+
 The investigation below is retained as historical evidence, not live approval.
 
 ## Investigation

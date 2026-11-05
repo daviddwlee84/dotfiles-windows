@@ -141,6 +141,11 @@ just upgrade
 Microsoft 模式拒絕 `upgrade-scoop` 與 Scoop 字型 installer；winget 失敗時不改
 scope/source 重試。
 
+安裝進度會即時顯示精確的 package ID。原生 Windows UAC 仍可能暫停安裝程式；
+`--silent`／`--disable-interactivity` 不會代替提權同意。請在 Windows 桌面依 IT
+政策確認，不要在 agent 對話中輸入管理員憑證。無人值守的 machine-scope 部署
+需要事先安排已核准的系統管理員部署環境。
+
 Run-script 報表分開列 installed-unverified、existing-owner-preserved、pending、
 unsupported、needs-administrator-session、failed。Apply 非致命完成，不等於所有
 選中的工具都已能執行。

@@ -62,6 +62,18 @@ Describe 'Explicit PowerShell executable' {
         $edit.command | Should -Match '^pwsh -NoProfile -File '
     }
 
+    It 'uses the selected runtime in Alacritty rather than inherited Scoop PATH' {
+        $path = 'C:\Users\Test User\AppData\Local\Microsoft\WindowsApps\pwsh.exe'
+        $config = Invoke-ShellTemplate -Path 'AppData/Roaming/alacritty/alacritty.toml.tmpl' -Executable $path -AsToml
+        $config.terminal.shell.program | Should -BeExactly $path
+        $config.terminal.shell.args | Should -Contain '-NoLogo'
+    }
+
+    It 'keeps the legacy Alacritty PATH default without an explicit runtime' {
+        $config = Invoke-ShellTemplate -Path 'AppData/Roaming/alacritty/alacritty.toml.tmpl' -AsToml
+        $config.terminal.shell.program | Should -BeExactly 'pwsh'
+    }
+
     It 'preserves a path with spaces, apostrophes and Unicode through TOML' {
         $path = "C:\Users\O'Brien $([char]0x6E2C)\PowerShell\pwsh.exe"
         $config = Invoke-ShellTemplate -Path 'herdr/config.toml' -Executable $path -AsToml

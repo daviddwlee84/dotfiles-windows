@@ -2,11 +2,18 @@
 #Requires -PSEdition Core
 # Small adapter over the existing installer helpers, not a second package manager.
 function Invoke-OrganizationWingetProcess {
-    param([string[]]$Arguments)
+    param([string[]]$Arguments, [switch]$StreamOutput)
     $winget = Resolve-OrganizationCommand winget
     if (-not $winget) { throw 'winget unavailable; no alternative provider was attempted.' }
-    $output = @(& $winget @Arguments 2>&1)
-    [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join "`n") }
+    $output = [Collections.Generic.List[string]]::new()
+    $global:LASTEXITCODE = $null
+    & $winget @Arguments 2>&1 | ForEach-Object {
+        $line = [string]$_
+        $output.Add($line)
+        if ($StreamOutput) { Write-Host $line }
+    }
+    $code = if ($null -eq $LASTEXITCODE) { 126 } else { $LASTEXITCODE }
+    [pscustomobject]@{ ExitCode = $code; Output = ($output -join "`n") }
 }
 
 function Invoke-OrganizationWinget {
@@ -39,8 +46,8 @@ function Invoke-OrganizationWinget {
     if (-not $Upgrade) { $arguments += '--no-upgrade' }
     if ($Tool.scope -and $Tool.scope -ne 'default') { $arguments += @('--scope', $Tool.scope) }
     if ($Tool.custom) { $arguments += @('--custom', $Tool.custom) }
-    $result = Invoke-OrganizationWingetProcess -Arguments $arguments
-    if ($result.Output) { Write-Host $result.Output }
+    Write-Host "==> winget $($arguments[0]) $($Tool.packageId) (approve the Windows UAC prompt if requested)"
+    $result = Invoke-OrganizationWingetProcess -Arguments $arguments -StreamOutput
     # 0x8A15002B: no applicable upgrade; never install a missing package instead.
     if ($Upgrade -and $result.ExitCode -eq -1978335189) { return 'unchanged' }
     if ($result.ExitCode -ne 0) { throw "winget failed ($($result.ExitCode)); no scope/source retry attempted." }
