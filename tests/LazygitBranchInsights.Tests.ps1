@@ -55,6 +55,14 @@ AfterAll {
 }
 
 Describe 'Lazygit branch insights config' {
+    It 'keeps branch colors in the current theme schema without migration' {
+        $text = Get-Content -Raw $script:Config
+        $text | Should -Not -Match '(?m)^  branchColorPatterns:'
+        $text | Should -Match '(?m)^  theme:\r?\n    branchColorPatterns:'
+        $colors = [regex]::Matches($text, '(?m)^      ''[^\r\n]+''\s*:\s*''#[0-9a-f]{6}''$')
+        $colors.Count | Should -Be 6
+    }
+
     It 'enables status-first branch display and the I menu' {
         $text = Get-Content -Raw $script:Config
         $text | Should -Match 'nerdFontsVersion: "3"'

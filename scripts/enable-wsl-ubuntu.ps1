@@ -16,6 +16,16 @@
 # self-elevate; if a step returns an elevation error we point at
 # `just enable-wsl-ubuntu` from an admin pwsh. Never aborts the apply (invariant #2).
 $ErrorActionPreference = 'Continue'
+# Standalone entry only; the rendered Microsoft apply wrapper omits this script.
+$organizationHelper = Join-Path $PSScriptRoot 'organization-policy.ps1'
+if (Test-Path -LiteralPath $organizationHelper) {
+    . $organizationHelper
+    try { $null = Import-OrganizationPolicyData } catch { Write-Warning $_; return }
+    if (Test-MicrosoftOrganization) {
+        Write-Warning 'Microsoft profile: distro provisioning is a separate IT-approved operation; existing distros were not changed.'
+        return
+    }
+}
 if (Test-Path variable:PSNativeCommandUseErrorActionPreference) { $PSNativeCommandUseErrorActionPreference = $false }
 $OutputEncoding = [System.Text.UTF8Encoding]::new($false)   # BOM-free stdin to wsl/bash
 $env:WSL_UTF8 = '1'                                         # wsl.exe emits UTF-8, not UTF-16

@@ -2,6 +2,10 @@
 #Requires -PSEdition Core
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'organization-policy.ps1')
+$null = Import-OrganizationPolicyData
+Set-OrganizationEnvironment
+if (-not (Test-OrganizationSource omp -Operation upgrade)) { exit 1 }
 . (Join-Path $PSScriptRoot 'omp-install-core.ps1')
 
 $binary = Get-OmpBinaryPath

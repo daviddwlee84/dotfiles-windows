@@ -2,7 +2,13 @@
 
 The install set lives in `.chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl`
 (the single source of truth), gated by the init toggles. **scoop** handles CLI
-tools; **winget** handles GUI apps.
+tools; **winget** handles GUI apps in the default `organizationProfile=none`.
+The opt-in [Microsoft Organization profile](microsoft-organization.md) instead routes
+cataloged CLI/GUI packages through winget/official sources and explicitly reports
+pending sources. Fresh Microsoft bootstrap supplies official CPython 3.14, Bun and
+PowerShell before the first full apply; Python dependencies still use company PyPI.
+`just organization-doctor` inspects this selection without running
+candidate binaries; the optional `-Probe` requests bounded version checks.
 
 ## CLI tools (scoop)
 

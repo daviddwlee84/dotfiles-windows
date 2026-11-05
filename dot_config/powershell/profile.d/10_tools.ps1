@@ -19,8 +19,13 @@ function Import-CachedInit {
         [string]$RevisionStamp = '',
         [switch]$RetainScope
     )
+    if ((Get-Command Test-MicrosoftOrganization -ErrorAction SilentlyContinue) -and (Test-MicrosoftOrganization)) {
+        $sourceId = switch ($Name) { 'tv' { 'television' }; 'pia' { 'pi-agents' }; default { $Name } }
+        if (-not (Test-OrganizationSource $sourceId -Operation execute -Quiet)) { return }
+    }
     $cmd = Get-Command $Exe -ErrorAction SilentlyContinue
     if (-not $cmd) { return }
+    if ((Get-Command Test-MicrosoftOrganization -ErrorAction SilentlyContinue) -and (Test-MicrosoftOrganization) -and (Test-OrganizationScoopPath $cmd.Source)) { return }
     $cacheDir  = Join-Path $env:XDG_CACHE_HOME 'pwsh-init'
     $cacheFile = Join-Path $cacheDir "$Name.ps1"
     $stampFile = "$cacheFile.stamp"
@@ -83,7 +88,10 @@ if (Get-Command fzf -ErrorAction SilentlyContinue) {
     # `Get-Module -Name` checks only loaded modules, so it's cheap.
     # The Ctrl+t / Ctrl+r chords are bound in 90_psreadline.ps1 — they must be
     # applied AFTER `Set-PSReadLineOption -EditMode`, which resets key handlers.
-    Import-Module PSFzf -ErrorAction SilentlyContinue
+    if (-not (Get-Command Test-MicrosoftOrganization -ErrorAction SilentlyContinue) -or
+        -not (Test-MicrosoftOrganization) -or (Test-OrganizationSource psgallery -Operation execute -Quiet)) {
+        Import-Module PSFzf -ErrorAction SilentlyContinue
+    }
 }
 
 # direnv — per-directory environments

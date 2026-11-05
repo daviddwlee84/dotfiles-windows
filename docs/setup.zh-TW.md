@@ -40,7 +40,11 @@ powershell.exe -ExecutionPolicy Bypass -File "$env:TEMP\bootstrap.ps1" `
   -Name 'Da-Wei Lee' -Email 'daviddwlee84@gmail.com'
 ```
 
-`-NonInteractive` 刻意只支援 `minimal`；role／name／email 任一缺少，或已存在
+預設 profile 的 `-NonInteractive` 刻意只支援 `minimal`。
+全新的 [Microsoft 工作機](microsoft-organization.zh-TW.md) 另支援
+`-OrganizationProfile microsoft -NonInteractive -Role workstation`，可從內建
+Windows PowerShell 5.1 取得新版 runtime 後直接全量 apply。
+兩種模式在 role／name／email 任一缺少，或已存在
 chezmoi config／source，都會在修改 execution policy 或安裝任何東西前拒絕執行。
 既有 `prompt*Once` 資料必須用 `chezmoi init --prompt` 或直接編輯 config 修改；
 unattended 重跑不能安全地把已儲存的 workstation 切成 minimal。如此可避免自動化
@@ -144,6 +148,7 @@ shell 的開發 baseline，**不是**極小安裝：它仍會安裝核心 CLI／
 | 提問 | 預設 | 意義 |
 |---|---|---|
 | Role | `workstation` | `workstation` = 完整桌面；`minimal` = 只有 shell |
+| Organization profile | `none` | `microsoft` 啟用 [Microsoft Organization profile](microsoft-organization.zh-TW.md)，與 role／公司 registry 分開。 |
 | `preferredEditor` | `nvim` | 外部編輯器，與 PSReadLine vi mode 獨立；nvim / micro / vim / nano / code / cursor。之後用 [editorcfg](editor.zh-TW.md) 切換。 |
 | `Install coding agents (Claude Code, OpenCode, Codex, Copilot CLI, Pi, pia, OMP, SpecStory)` | 開（workstation） | 原生與 npm agents，加上 Git 管理的 `pia` combo checkout；credentials 與可變 sessions 都不進 chezmoi |
 | Agent 完成回饋 | `notify`（workstation）/`none`（minimal） | coding agent 跑完時做什麼：`none`／`notify`（Windows 通知）／`peon`（遊戲語音）／`both` —— 見 [Agent 完成音效](agent-sounds.zh-TW.md) |
@@ -168,7 +173,7 @@ shell 的開發 baseline，**不是**極小安裝：它仍會安裝核心 CLI／
 | Personal CLI tools | 開（workstation） | dev-cli、translate 與四個 lazy 工具；獨立於 Herdr |
 | Rime 輸入法（小狼毫） | 關 | 繁體中文輸入法。安裝程式是 machine scope —— 會跳 UAC；並把共用的 Rime `*.custom.yaml` 部署到 `%APPDATA%\Rime` |
 | China mirrors | 關 | pip/uv、npm、RubyGems、Go 與 rustup 走 GFW 鏡像 |
-| Managed machine | 關 | 使用公司 PyPI/npm registry，並略過 org 政策常擋的 app（Tailscale、Grammarly） |
+| Managed machine | 關；新 Microsoft profile 預設開 | 使用公司 PyPI/npm registry，並略過 org 政策常擋的 app（Tailscale、Grammarly） |
 | Public package fallback | 關 | 受管機器的公司 PyPI/npm 發生符合條件的暫時性錯誤時，以隔離的 public source 重試一次 |
 | Backup mode | `smart` | 首次 apply 前備份既有檔案（`smart`/`full`/`off`） |
 | PSReadLine vi mode | 開 | shell 的 vi 編輯模式 |

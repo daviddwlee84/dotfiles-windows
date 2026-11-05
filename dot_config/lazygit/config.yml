@@ -10,13 +10,14 @@
 gui:
   nerdFontsVersion: "3"
   showDivergenceFromBaseBranch: arrowAndNumber
-  branchColorPatterns:
-    '^feat/': '#89b4fa'
-    '^fix(/|_)': '#f38ba8'
-    '^docs/': '#89dceb'
-    '^(chore|refactor|test)/': '#f9e2af'
-    '^worktree[-/]': '#cba6f7'
-    '^(codex|dependabot|renovate)/': '#94e2d5'
+  theme:
+    branchColorPatterns:
+      '^feat/': '#89b4fa'
+      '^fix(/|_)': '#f38ba8'
+      '^docs/': '#89dceb'
+      '^(chore|refactor|test)/': '#f9e2af'
+      '^worktree[-/]': '#cba6f7'
+      '^(codex|dependabot|renovate)/': '#94e2d5'
 
 git:
   mainBranches:

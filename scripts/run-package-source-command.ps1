@@ -9,6 +9,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'organization-policy.ps1')
+$null = Import-OrganizationPolicyData
+Set-OrganizationEnvironment
 . (Join-Path $PSScriptRoot 'package-source-runner.ps1')
 . (Join-Path $PSScriptRoot 'pi-package-core.ps1')
 $policy = Get-ChezmoiPackageSourcePolicy
@@ -47,6 +50,15 @@ switch ($Action) {
             exit $piResult.ExitCode
         }
         foreach ($package in @('opencode-ai', '@openai/codex', '@github/copilot')) {
+            if (Test-MicrosoftOrganization) {
+                $sourceId = @{ 'opencode-ai' = 'opencode'; '@openai/codex' = 'codex'; '@github/copilot' = 'copilot-cli' }[$package]
+                if (-not (Test-OrganizationSource $sourceId -Operation upgrade)) { continue }
+                $npm.Prefix = (Get-OrganizationNpmLayout).Prefix
+                if (-not (Test-Path -LiteralPath (Join-Path $npm.Prefix "node_modules/$package/package.json"))) {
+                    Write-Host "$package is not in the owned prefix; upgrade does not install or take over other owners."
+                    continue
+                }
+            }
             $result = Invoke-PackageSourceCommand -Manager npm -Executable $npm.NodeExecutable `
                 -Arguments @($npm.NpmCli, 'update', '-g', $package) `
                 -Operation $package -PackageSpec $package -NpmPrefix $npm.Prefix -NpmCache $npm.Cache `
@@ -61,6 +73,14 @@ switch ($Action) {
         $npmCommand = (Get-Command npm -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
         $npm = Get-NpmGlobalExecutionContext -NpmCommandPath $npmCommand
         $package = '@steipete/summarize'
+        if (Test-MicrosoftOrganization) {
+            if (-not (Test-OrganizationSource summarize -Operation upgrade)) { exit 1 }
+            $npm.Prefix = (Get-OrganizationNpmLayout).Prefix
+            if (-not (Test-Path -LiteralPath (Join-Path $npm.Prefix "node_modules/$package/package.json"))) {
+                Write-Host 'summarize is not in the owned prefix; upgrade does not install or take over other owners.'
+                exit 0
+            }
+        }
         $result = Invoke-PackageSourceCommand -Manager npm -Executable $npm.NodeExecutable `
             -Arguments @($npm.NpmCli, 'update', '-g', $package) `
             -Operation $package -PackageSpec $package -NpmPrefix $npm.Prefix -NpmCache $npm.Cache `

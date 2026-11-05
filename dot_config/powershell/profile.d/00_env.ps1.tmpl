@@ -12,6 +12,18 @@ try {
     $OutputEncoding = $utf8
 } catch { $null = $_ }
 
+# Retained module scope survives reload/cas/cau; reload also picks up a switch back to none.
+$OrganizationModule = Join-Path $HOME '.config\powershell\modules\OrganizationPolicy\OrganizationPolicy.psm1'
+if (Test-Path -LiteralPath $OrganizationModule) {
+    Import-Module $OrganizationModule -Global -Force
+    Set-OrganizationEnvironment
+}
+{{ if eq (get . "organizationProfile" | default "none") "microsoft" -}}
+elseif (-not (Test-Path -LiteralPath $OrganizationModule)) {
+    throw 'Microsoft profile requires its deployed OrganizationPolicy module; repair the files-only deployment before loading tools.'
+}
+{{ end -}}
+
 # XDG-style base dirs. Several tools honor these on Windows (starship, atuin,
 # zoxide state, our own copilot module) so we set them for a tidy $HOME.
 if (-not $env:XDG_CONFIG_HOME) { $env:XDG_CONFIG_HOME = Join-Path $HOME '.config' }
@@ -31,7 +43,9 @@ $env:HERDR_CONFIG_PATH = Join-Path $env:XDG_CONFIG_HOME 'herdr/config.toml'
 # fall back to a system/winget Git install. First existing candidate wins.
 if (-not $env:YAZI_FILE_ONE) {
     $fileOne = @(
+{{ if ne (get . "organizationProfile" | default "none") "microsoft" -}}
         (Join-Path $HOME 'scoop/apps/git/current/usr/bin/file.exe'),
+{{ end -}}
         'C:\Program Files\Git\usr\bin\file.exe'
     ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
     if ($fileOne) { $env:YAZI_FILE_ONE = $fileOne }
@@ -115,3 +129,22 @@ if ((Test-Path -LiteralPath $PiOwnedLauncher -PathType Leaf) -and
 {{ end -}}
 
 # Default editor is initialized by 09_editor.ps1 after PATH normalization.
+{{ if eq (get . "organizationProfile" | default "none") "microsoft" -}}
+# Do not edit the local override; apply this profile's process-only source rule.
+Set-OrganizationEnvironment
+if ($env:YAZI_FILE_ONE -and (Test-OrganizationScoopPath $env:YAZI_FILE_ONE)) {
+    Remove-Item Env:YAZI_FILE_ONE
+}
+$orgGit = Resolve-OrganizationCommand git
+if ($orgGit) {
+    $gitRoot = Split-Path (Split-Path $orgGit)
+    foreach ($relative in 'usr\bin\file.exe', '..\usr\bin\file.exe') {
+        $candidate = Join-Path $gitRoot $relative
+        if (-not $env:YAZI_FILE_ONE -and (Test-Path -LiteralPath $candidate -PathType Leaf)) { $env:YAZI_FILE_ONE = $candidate }
+    }
+}
+try {
+    $orgNode = Resolve-OrganizationNode
+    if ($orgNode) { $env:PATH = (Split-Path $orgNode) + ';' + $env:PATH }
+} catch { Write-Warning $_ }
+{{ end -}}

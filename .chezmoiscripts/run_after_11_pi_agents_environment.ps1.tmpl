@@ -6,6 +6,11 @@
 # native cmd.exe/Clink sessions as well as PowerShell. 00_env.ps1 repeats the
 # process-scoped setup so the current PowerShell session does not need a restart.
 $ErrorActionPreference = 'Continue'
+{{ if eq (get . "organizationProfile" | default "none") "microsoft" -}}
+# Organization selection is process-scoped; never promote old Scoop defaults into User PATH.
+Write-Host 'Microsoft profile: Pi/OMP environment is selected by the managed shell; persisted overrides are preserved.'
+exit 0
+{{ end -}}
 
 $scoopRoot = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $HOME 'scoop' }
 $piaBin = Join-Path $HOME '.local\share\pi-agents\bin'

@@ -5,6 +5,13 @@
 # outside chezmoi's managed state and can disappear independently of the lock.
 
 $ErrorActionPreference = 'Continue'
+{{ if eq (get . "organizationProfile" | default "none") "microsoft" -}}
+try {
+{{ template "organization-policy.ps1" . }}
+} catch { Write-Warning "Yazi plugins skipped: invalid organization policy: $_"; exit 0 }
+Set-OrganizationEnvironment
+if (-not (Test-OrganizationSource yazi-plugins)) { exit 0 }
+{{ end -}}
 if (Test-Path variable:PSNativeCommandUseErrorActionPreference) { $PSNativeCommandUseErrorActionPreference = $false }
 
 function Get-YaziPluginNames {

@@ -77,4 +77,5 @@ function Set-WindowsPathPrecedence {
     )
 
     $env:PATH = @(ConvertTo-WindowsPathEntries -PathValues ($orderedEntries -join ';')) -join ';'
+    if (Get-Command Remove-OrganizationScoopPath -ErrorAction SilentlyContinue) { Remove-OrganizationScoopPath }
 }

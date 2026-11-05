@@ -4,5 +4,9 @@
 [CmdletBinding()]
 param()
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'organization-policy.ps1')
+$null = Import-OrganizationPolicyData
+Set-OrganizationEnvironment
+if (-not (Test-OrganizationSource specstory -Operation upgrade)) { exit 1 }
 . (Join-Path $PSScriptRoot 'windows-cli-release.ps1')
 Install-WindowsCliRelease -Name specstory -Upgrade

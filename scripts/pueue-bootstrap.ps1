@@ -11,6 +11,16 @@ function Resolve-PueueCommand {
         [switch]$ScoopOnly
     )
 
+    if ((Get-Command Test-MicrosoftOrganization -ErrorAction SilentlyContinue) -and (Test-MicrosoftOrganization)) {
+        # Pending until a matched approved pair and service ownership are reviewed.
+        if (-not (Test-OrganizationSource pueue -Operation execute -Quiet)) { return $null }
+        $client = Resolve-OrganizationCommand pueue
+        if (-not $client) { return $null }
+        $daemon = Join-Path (Split-Path $client) 'pueued.exe'
+        if (-not (Test-Path -LiteralPath $daemon -PathType Leaf) -or (Test-OrganizationScoopPath $daemon)) { return $null }
+        if ($Name -eq 'pueue') { return $client }
+        return $daemon
+    }
     # Resolve both executables from one Scoop `current` directory before PATH.
     # A legacy ~/bin or ~/.local/bin Pueue can otherwise shadow Scoop's shims and
     # mix a 3.x client/daemon with the installed 4.x package.

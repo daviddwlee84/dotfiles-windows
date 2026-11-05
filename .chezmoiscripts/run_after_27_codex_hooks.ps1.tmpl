@@ -3,7 +3,7 @@
 $ErrorActionPreference = 'Continue'
 if (Test-Path variable:PSNativeCommandUseErrorActionPreference) { $PSNativeCommandUseErrorActionPreference = $false }
 
-{{ if .installCodingAgents }}
+{{ if and .installCodingAgents (eq (includeTemplate "organization-source-allowed" (dict "data" . "id" "peon-ping")) "true") }}
 {{ include "scripts/codex-hooks-merge.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 try {
     $enablePeon = {{ if or (eq .agentSounds "peon") (eq .agentSounds "both") }}$true{{ else }}$false{{ end }}

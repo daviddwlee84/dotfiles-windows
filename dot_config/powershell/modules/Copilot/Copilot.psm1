@@ -394,6 +394,21 @@ function script:Clear-CopilotPkgInstallTarget {
 # The kill on expiry is the load-bearing part: a stalled `bun add` left running
 # keeps bun's global install-cache lock, and THAT is what made every subsequent
 # start hang too. Never let one escape.
+function script:Test-CopilotOrganizationSource {
+    param([string]$Id)
+    $module = Join-Path $HOME '.config\powershell\modules\OrganizationPolicy\OrganizationPolicy.psm1'
+    if (Test-Path -LiteralPath $module) {
+        Import-Module $module -Global
+        if (Test-MicrosoftOrganization) { Set-OrganizationEnvironment }
+        return (Test-OrganizationSource -Id $Id)
+    }
+    if ($env:DOTFILES_ORGANIZATION_PROFILE -eq 'microsoft') {
+        Write-Warning 'Organization policy module missing; Copilot provisioning was not attempted.'
+        return $false
+    }
+    $true
+}
+
 function script:Invoke-CopilotPkgInstallTry {
     param([string] $Dir, [switch] $NoProxy, [int] $BudgetSeconds)
 
@@ -558,6 +573,7 @@ function script:Install-CopilotPkgDependencies {
 }
 
 function script:Install-CopilotPkgFromCdn {
+    if (-not (Test-CopilotOrganizationSource copilot-cdn)) { return $false }
     $manifest = Get-CopilotPkgCdnManifest
     if (-not $manifest) { return $false }
     if (-not (Clear-CopilotPkgInstallTarget)) { return $false }
@@ -610,6 +626,7 @@ function script:Install-CopilotPkgFromCdn {
 
 # Ensure the pinned spec is installed. No-op (and no network) once it is.
 function script:Install-CopilotPkg {
+    if (-not (Test-CopilotOrganizationSource copilot-runtime)) { return $false }
     Initialize-CopilotPkgSelection
     if (-not (Get-CopilotPkgSpecInfo)) {
         Write-Error "copilot-proxy: COPILOT_API_PKG must be a registry package spec (name or @scope/name with an optional version/tag/range); aliases and local/git/URL specs are unsupported: $(Get-CopilotPkg)"
@@ -643,6 +660,13 @@ function script:Install-CopilotPkg {
     # reachable THROUGH the proxy, stripping it would break the install. Attempt 2
     # strips it, which is what rescues the socks stall. COPILOT_INSTALL_NOPROXY=1
     # skips straight to attempt 2 (saves the 45s stall on a known-bad host).
+    if ((Get-Command Test-MicrosoftOrganization -ErrorAction SilentlyContinue) -and (Test-MicrosoftOrganization)) {
+        # Do not reinterpret a policy/auth failure as permission to change source/proxy.
+        if (-not (Invoke-CopilotPkgInstallTry -Dir $prefix -BudgetSeconds 90)) {
+            Write-Error 'copilot-proxy: organization provisioning failed; no alternate source or proxy retry attempted.'
+            return $false
+        }
+    } else {
     $skipFirst = ($env:COPILOT_INSTALL_NOPROXY -eq '1')
     if ($skipFirst -or -not (Invoke-CopilotPkgInstallTry -Dir $prefix -BudgetSeconds 45)) {
         if (-not $skipFirst) {
@@ -658,6 +682,7 @@ function script:Install-CopilotPkg {
                 Write-Error "copilot-proxy: could not install $spec from the configured registry or pinned CDN fallback — run 'copilot-proxy doctor'."; return $false
             }
         }
+    }
     }
 
     $metadata = Get-CopilotPkgMetadata

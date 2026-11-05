@@ -12,6 +12,15 @@ function Get-OmpBinaryPath {
 }
 
 function Add-ScoopGitBashToProcessPath {
+    if ((Get-Command Test-MicrosoftOrganization -ErrorAction SilentlyContinue) -and (Test-MicrosoftOrganization)) {
+        $git = Resolve-OrganizationCommand git
+        if (-not $git) { return }
+        $gitRoot = Split-Path (Split-Path $git)
+        $gitBin = Join-Path $gitRoot 'bin'
+        if (Test-Path -LiteralPath (Join-Path $gitBin 'bash.exe') -PathType Leaf) { $env:PATH = "$gitBin;$env:PATH" }
+        Remove-OrganizationScoopPath
+        return
+    }
     $scoopRoot = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $HOME 'scoop' }
     $gitBin = Join-Path $scoopRoot 'apps\git\current\bin'
     $bash = Join-Path $gitBin 'bash.exe'

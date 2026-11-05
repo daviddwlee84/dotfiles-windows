@@ -1,6 +1,6 @@
 # Opt-in restricted Windows installation profile
 
-**Status**: deferred
+**Status**: shipped (profile implementation; work-machine rollout and remaining source adapters pending)
 **Effort**: L
 **Related**: [TODO](../TODO.md), [PowerShell runtime notes](../docs/powershell-maintenance.md),
 `bootstrap.ps1`, `.chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl`
@@ -14,6 +14,40 @@ notification saying the administrator blocked the content.
 The user explicitly chose to repair PowerShell/Herdr executable selection first,
 and defer a restricted installation profile. Normal Windows must retain its
 existing Scoop workflow; do not silently change all `managedMachine` users.
+
+## Implementation — 2026-11-05
+
+The user confirmed winget and official installers, with separate named approval
+for other downloads/builds. The opt-in `organizationProfile=microsoft` now has a
+shared source catalog, pre-Scoop bootstrap branch, provider-aware install/upgrades,
+NVM/owned-prefix separation, process-only Scoop exclusion, secondary-download gates,
+and a metadata-only doctor. Standard `none` behavior remains the default. See
+[Microsoft Organization profile](../docs/microsoft-organization.md).
+
+This ships policy/routing, not a claim that every tool is approved or runnable.
+Pending adapters/sources (including Pueue service migration, compilers, fonts and
+several personal tools) remain explicit. No local installation/apply, Scoop removal,
+service migration, security-policy modification or saved-session rewrite was done.
+Fresh Microsoft workstations now bootstrap directly from in-box Windows PowerShell
+5.1: winget installs/discovers stable pwsh entry points plus Git, chezmoi, uv, Bun,
+official CPython and 7-Zip before modifiers run. Runtime probes and a persisted-config
+handshake precede the full apply, and explicit unattended workstation setup is
+supported. Existing-machine migration remains separate; no real machine was installed
+or fully applied while implementing this path.
+
+Validation on 2026-11-05: PowerShell lint reported no Errors; the full Pester run
+passed 890 tests with 7 skipped, including 14 fresh-machine/bootstrap cases. The
+in-box Windows PowerShell 5.1 entry was exercised with fake installers; the Python
+version probe was also executed from real 5.1 against an existing development runtime.
+This is not a claim of clean-machine installation E2E validation. The focused organization/prompt pass also rendered
+and parsed all 21 PowerShell templates with Microsoft/all-feature data. The public
+`just organization-doctor` recipe was exercised without loading a profile. No
+doctor `-Probe` checks or live deployment were performed. Offline docs build was
+blocked by missing cached mkdocs-material; public manifest lookups were partially
+limited by GitHub API rate limits, so install-time exact winget metadata checks
+remain required.
+
+The investigation below is retained as historical evidence, not live approval.
 
 ## Investigation
 

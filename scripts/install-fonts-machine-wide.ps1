@@ -11,6 +11,9 @@
 #
 # Run via `just install-fonts-machine-wide` from an ELEVATED pwsh.
 $ErrorActionPreference = 'Continue'
+. (Join-Path $PSScriptRoot 'organization-policy.ps1')
+try { $null = Import-OrganizationPolicyData } catch { Write-Warning $_; return }
+if (Test-MicrosoftOrganization) { Write-Warning 'Microsoft profile: the Scoop font installer is disabled; request an approved font deployment from IT.'; return }
 
 function Test-Admin {
     try {

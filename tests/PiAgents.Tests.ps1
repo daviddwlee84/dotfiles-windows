@@ -714,9 +714,9 @@ Describe 'chezmoi and shell integration for Pi, pia, and OMP' {
     It 'exposes separate and aggregate explicit upgrades outside default upgrade' {
         $script:JustSource | Should -Match 'upgrade-npm-agents:'
         $script:JustSource | Should -Match 'upgrade-omp:\s*\r?\n\s*pwsh -NoProfile -File ./scripts/upgrade-omp\.ps1'
-        $script:JustSource | Should -Match 'upgrade-pia:\s*\r?\n\s*chezmoi apply --refresh-externals'
+        $script:JustSource | Should -Match 'upgrade-pia:\s*\r?\n\s*pwsh -NoProfile -File ./scripts/upgrade-packages\.ps1 -Action Pia'
         $script:JustSource | Should -Match 'upgrade-agents: upgrade-npm-agents upgrade-omp upgrade-pia'
-        $script:JustSource | Should -Match 'upgrade: upgrade-scoop upgrade-winget'
+        $script:JustSource | Should -Match 'upgrade:\s*\r?\n\s*pwsh -NoProfile -File ./scripts/upgrade-packages\.ps1 -Action All'
         $script:JustSource | Should -Not -Match 'upgrade:.*upgrade-agents'
         (Get-Content -Raw (Join-Path $RepoRoot 'scripts' 'upgrade-omp.ps1')) |
             Should -Match 'OMP is not installed at its managed path; skipping upgrade'

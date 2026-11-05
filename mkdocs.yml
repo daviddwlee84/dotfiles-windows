@@ -38,6 +38,7 @@ plugins:
             Default editor and Micro: 預設編輯器與 Micro
             Home: 首頁
             Setup: 安裝
+            Microsoft Organization profile: Microsoft 組織設定檔
             GitHub authentication and proxies: GitHub 登入與代理
             Cross-platform Git checkouts: 跨平台 Git checkout
             Tools: 工具索引
@@ -71,6 +72,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Setup: setup.md
+  - Microsoft Organization profile: microsoft-organization.md
   - GitHub authentication and proxies: github-auth.md
   - Cross-platform Git checkouts: git-cross-platform.md
   - Tools: tools.md

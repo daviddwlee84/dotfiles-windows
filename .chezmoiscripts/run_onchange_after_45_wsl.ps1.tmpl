@@ -7,6 +7,6 @@
 # changes. Needs admin + a reboot — the embedded script self-elevates with one
 # UAC prompt when the apply isn't elevated, and never aborts the apply. See
 # docs/tools.md and scripts/enable-wsl.ps1.
-{{ if .installWsl -}}
+{{ if and .installWsl (ne (get . "organizationProfile" | default "none") "microsoft") -}}
 {{ include "scripts/enable-wsl.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 {{ end -}}

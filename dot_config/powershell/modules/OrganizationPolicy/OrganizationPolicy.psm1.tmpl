@@ -1,0 +1,4 @@
+#Requires -Version 7.4
+#Requires -PSEdition Core
+{{ template "organization-policy.ps1" . }}
+Export-ModuleMember -Function *-Organization*, Test-MicrosoftOrganization

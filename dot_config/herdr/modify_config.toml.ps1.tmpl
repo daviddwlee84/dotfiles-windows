@@ -63,7 +63,15 @@ $templateText = @'
 {{ template "herdr/config.toml" . }}
 '@
 
-$liveText = [Console]::In.ReadToEnd()
+$inputBuffer = [IO.MemoryStream]::new()
+try { [Console]::OpenStandardInput().CopyTo($inputBuffer); $liveBytes = $inputBuffer.ToArray() }
+finally { $inputBuffer.Dispose() }
+$liveText = $utf8.GetString($liveBytes)
+
+function Write-HerdrPreservedConfig {
+    if ($liveBytes.Length -gt 0) { Write-StdoutBytes $liveBytes }
+    else { Write-StdoutBytes $utf8.GetBytes($templateText) }
+}
 
 $tmpDir = [System.IO.Path]::GetTempPath()
 $stamp = [System.IO.Path]::GetRandomFileName()
@@ -77,6 +85,10 @@ try {
     [System.IO.File]::WriteAllText($tmplFile, $templateText, $utf8)
     [System.IO.File]::WriteAllText($liveFile, $liveText, $utf8)
 
+{{ template "organization-policy.ps1" . }}
+    Set-OrganizationEnvironment
+    if (-not (Test-OrganizationSource tomlkit)) { Write-HerdrPreservedConfig; return }
+
     # Pick a Python. uv is in this repo's scoop package set; `python` is the
     # uv-managed default install (--default --preview creates the unversioned shim).
     $py = $null
@@ -84,16 +96,22 @@ try {
     $systemPythonCommand = Get-Command python, python3 -CommandType Application -All -ErrorAction SilentlyContinue |
         Where-Object Source -NotLike '*\WindowsApps\python*.exe' | Select-Object -First 1
     $uvCommand = Get-Command uv -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ((Test-MicrosoftOrganization) -and -not $systemPythonCommand -and -not (Test-OrganizationSource uv-python -Quiet)) {
+        [Console]::Error.WriteLine('modify_config.toml: approved Python missing; preserving existing config without downloading Python')
+        Write-HerdrPreservedConfig
+        return
+    }
     if ($uvCommand) {
-        $py = @($uvCommand.Source, 'run', '--no-project', '--quiet', '--with', 'tomlkit', '--python', '>=3.11', 'python')
+        $pythonSelection = if ((Test-MicrosoftOrganization) -and $systemPythonCommand) { $systemPythonCommand.Source } else { '>=3.11' }
+        $py = @($uvCommand.Source, 'run', '--no-project', '--quiet', '--with', 'tomlkit', '--python', $pythonSelection, 'python', '-I')
         $pyUsesPackageRunner = $true
     } elseif ($systemPythonCommand) {
-        $py = @($systemPythonCommand.Source)
+        $py = @($systemPythonCommand.Source, '-I')
     }
 
     if (-not $py) {
-        [Console]::Error.WriteLine('modify_config.toml: no uv/python found; emitting managed template (live/user-owned keys not preserved this run)')
-        Write-StdoutBytes $utf8.GetBytes($templateText)
+        [Console]::Error.WriteLine('modify_config.toml: no uv/python found; preserving existing config')
+        Write-HerdrPreservedConfig
         return
     }
 
@@ -126,12 +144,10 @@ try:
     import tomlkit
 except ModuleNotFoundError:
     print(
-        "modify_config.toml: tomlkit unavailable; emitting managed template "
-        "(live/user-owned keys not preserved this run)",
+        "modify_config.toml: tomlkit unavailable; preserving existing config",
         file=sys.stderr,
     )
-    emit(template_text)
-    sys.exit(0)
+    sys.exit(25)
 
 # Tables the template owns outright.
 MANAGED = {"theme", "ui", "terminal", "keys"}
@@ -152,9 +168,8 @@ try:
         # parser rather than discarding otherwise-preservable runtime state.
         live = tomlkit.parse(live_text).unwrap()
 except Exception:
-    # A corrupt live file must not block the apply — enforce the template.
-    print("modify_config.toml: live config is not valid TOML; enforcing template", file=sys.stderr)
-    live = {}
+    print("modify_config.toml: invalid live TOML; preserving original bytes", file=sys.stderr)
+    sys.exit(26)
 
 for key, value in live.items():
     if key in MANAGED:
@@ -192,10 +207,10 @@ emit(tomlkit.dumps(doc))
             -AllowPublicFallback $allowPublicPackageFallback -AdditionalEnvironment $childEnvironment `
             -OutputMode StandardError
         $rc = $result.ExitCode
-        if ($rc -ne 0 -and $systemPythonCommand -and $result.ProcessTerminated) {
+        if ($rc -ne 0 -and $systemPythonCommand -and $result.ProcessTerminated -and -not (Test-MicrosoftOrganization)) {
             [Console]::Error.WriteLine('modify_config.toml: uv failed; retrying with system Python')
             Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue
-            $result = Invoke-CapturedPackageProcess -Executable $systemPythonCommand.Source -Arguments @($pyFile) `
+            $result = Invoke-CapturedPackageProcess -Executable $systemPythonCommand.Source -Arguments @('-I', $pyFile) `
                 -Environment $childEnvironment -OutputMode StandardError
             $rc = $result.ExitCode
         } elseif ($rc -ne 0 -and -not $result.ProcessTerminated) {
@@ -209,12 +224,15 @@ emit(tomlkit.dumps(doc))
     }
 
     if ($rc -ne 0 -or -not (Test-Path -LiteralPath $outFile)) {
-        [Console]::Error.WriteLine("modify_config.toml: merge failed (exit $rc); emitting managed template")
-        Write-StdoutBytes $utf8.GetBytes($templateText)
+        [Console]::Error.WriteLine("modify_config.toml: merge failed (exit $rc); preserving existing config")
+        Write-HerdrPreservedConfig
         return
     }
 
     Write-StdoutBytes ([System.IO.File]::ReadAllBytes($outFile))
+} catch {
+    [Console]::Error.WriteLine("modify_config.toml: merge unavailable; preserving existing config: $_")
+    Write-HerdrPreservedConfig
 } finally {
     if ($cleanupTempFiles) {
         foreach ($f in $tmplFile, $liveFile, $pyFile, $outFile) {
