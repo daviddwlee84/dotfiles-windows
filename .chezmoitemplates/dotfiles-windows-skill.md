@@ -212,4 +212,7 @@ poll can make Scoop classify it as running and defer the update. Once complete,
 `<tool> upgrade --status <operation-id>` is also available. If the host disallows
 process breakaway, keep the launching terminal open until a final result.
 
-Herdr UI (`herdr-gpui`) installs only with both `installWindowsApps` and `installHerdr`. Apply skips existing copies; launch from the Start menu and upgrade via Check for Updates. UI preferences are app-owned. `just upgrade-herdr` remains daemon-only. See `docs/tools.md`.
+Herdr GUI / Herdr 2 (install-only; pinned + SHA-256-verified upstream installers in `scripts/herdr-installers.ps1`; see `docs/tools.md` § GUI clients and Herdr 2):
+- herdr-core (`hc`, Herdr 2 runtime, x64 only) installs with `installHerdr`; upgrade with `just upgrade-herdr-core`. Herdr 1 and Herdr 2 do not share sessions.
+- Sheprd (formerly Herdr UI; `sheprd.exe` + legacy `herdr-gpui.exe` in `%LOCALAPPDATA%\Programs\Herdr UI`) and the official Herdr App (x64) install with both `installWindowsApps` and `installHerdr`; both self-update.
+- `~/.config/herdr-app/{keys,settings}.json` are `modify_` overlays (engine `scripts/herdr-app-json-merge.ps1`, fragments byte-identical with the parent repo); `mods/tmux-prefix` is vendored (Ctrl+B prefix; Ctrl+B Ctrl+B passes through). `just upgrade-herdr` remains Herdr 1-daemon-only.

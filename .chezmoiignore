@@ -65,6 +65,14 @@ site/**
 AppData/Roaming/television/cable/herdr-*.toml
 {{ end }}
 
+# Official Herdr App config: only where the app itself installs (installHerdr +
+# installWindowsApps, x64 only upstream). Only user-owned files are in the
+# source (keys/settings overlays, personal mods); Herdr owns everything else.
+{{ if not (and .installHerdr .installWindowsApps (eq .chezmoi.arch "amd64")) }}
+.config/herdr-app
+.config/herdr-app/**
+{{ end }}
+
 # summarize config + prompt presets are only deployed when the opt-in
 # installSummarize toggle is on. ~/.summarize/config.json is NOT under .config on
 # purpose: summarize hardcodes that path (no XDG lookup, no SUMMARIZE_CONFIG

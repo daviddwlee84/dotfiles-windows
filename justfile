@@ -78,6 +78,11 @@ upgrade-translate:
 upgrade-herdr:
     pwsh -NoProfile -File ./scripts/upgrade-herdr.ps1
 
+# `hc update` for the installer-managed herdr-core (Herdr 2 runtime). Running
+# terminals keep running; safe from inside an hc terminal. Skips when absent.
+upgrade-herdr-core:
+    pwsh -NoProfile -Command ". ./scripts/herdr-installers.ps1; exit (Update-HerdrCore)"
+
 # Upgrade the official native Windows SpecStory release.
 upgrade-specstory:
     pwsh -NoProfile -File ./scripts/upgrade-windows-cli.ps1 -Name specstory

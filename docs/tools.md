@@ -441,29 +441,52 @@ process breakaway, keep the launching terminal open until a final result.
 contract. Existing manual copies are preserved and excluded from this suite.
 
 
-## Herdr UI (native GUI client)
+## GUI clients and Herdr 2 (Sheprd, Herdr App, herdr-core)
 
-[Herdr UI](https://github.com/penso/herdr-gpui) is a separate client for the
-existing Herdr daemon. TUI and GUI can share sessions; closing the GUI leaves
-terminal sessions running. The UI installer never installs or upgrades the
-Herdr daemon. GUI preferences remain app-owned; apply does not launch the app
-or enable launch at login.
+Herdr now has **two runtimes that do not share sessions**: Herdr 1 (the
+`herdr` TUI above, with the third-party [Sheprd](https://sheprd.org/) GUI and
+iOS clients) and Herdr 2 (`herdr-core` / `hc` with the official
+[Herdr App](https://herdr.dev/)). They install alongside each other. Every
+install below is **install-only**: existing copies are skipped, apply never
+launches an app or enables launch at login, and failures join the package
+summary. Each upstream PowerShell installer is pinned by commit and SHA-256
+and runs in its own pwsh process; it then verifies its release payload.
 
-Installation requires **both** `installWindowsApps=true` and `installHerdr=true`.
-`installHerdr` already defaults on for workstation and off for minimal; stored
-choices remain effective. GUI installation runs after the daemon install.
+| Component | Gate | Arch | Install location | Updates |
+|---|---|---|---|---|
+| herdr-core (`hc`) | `installHerdr` | x64 only (ARM64 skips) | `%LOCALAPPDATA%\Programs\herdr-core` (+ `hc.exe`, user PATH) | `just upgrade-herdr-core` (`hc update`; terminals keep running) |
+| Sheprd (formerly Herdr UI) | `installHerdr` + `installWindowsApps` | x64 / ARM64 | `%LOCALAPPDATA%\Programs\Herdr UI` (`sheprd.exe` + legacy `herdr-gpui.exe`) | in-app **Check for Updates** |
+| Herdr App | `installHerdr` + `installWindowsApps` | x64 only | `%LOCALAPPDATA%\Programs\herdr-app` | in-app (Settings > Updates) |
 
-The pinned, hash-verified official PowerShell installer downloads a stable zip
-and verifies its published SHA-256. It installs under
-`%LOCALAPPDATA%\Programs\Herdr UI`, registers the user PATH, Start menu shortcut,
-Explorer folder menu and `herdr-gpui://` links. Open the Start menu shortcut
-(`herdr-gpui-launcher.exe`) to avoid a console window. Existing installations
-at that location or on PATH are skipped, and failures join the package summary.
+`installHerdr` defaults on for workstation and off for minimal. herdr-core
+templates and quoted shell commands need `sh` on PATH (Git for Windows).
 
-Use **Check for Updates** in the app for signed installations. For manual
-updates, quit the GUI and run the [official installer](https://herdrui.dev/install.ps1)
-again; daemon sessions remain running. `just upgrade-herdr` only updates the
-daemon and matching skill. The GUI supports x64 and ARM64, but the native
-Windows daemon's ARM64 limitations remain: upstream's live daemon test runs on
-x64 only. Do not assume native GUI ARM64 support proves daemon parity; WSL
-connections are supported by the GUI.
+**Sheprd** connects to the Herdr 1 daemon; TUI and GUI share sessions. The
+rename kept the install directory, AppUserModelID `so.pen.herdr-gpui`,
+settings, sign-ins and paired machines. The Start menu shortcut is now
+**Sheprd** (`sheprd-launcher.exe`, no console window), and Explorer gains
+**Open in Sheprd**. Its GUI supports ARM64, but the native Windows ARM64
+daemon remains less tested upstream. `just upgrade-herdr` only updates the
+Herdr 1 daemon and its skill.
+
+**Herdr App** runs its terminals in herdr-core: closing the window leaves
+them running. Usage telemetry is on by default (Settings > Privacy). Mods are
+trusted code, not sandboxed.
+
+### Herdr App config (`~/.config/herdr-app`)
+
+Deployed only where the app installs (`installHerdr` + `installWindowsApps`,
+x64). Only user-owned files are managed, with the same semantics and
+byte-identical fragments as the parent repo:
+
+| File | Managed as |
+|---|---|
+| `keys.json` | `modify_` overlay (`modify_keys.json.ps1.tmpl`): adds the [tmux-prefix](https://herdr.dev/mods/herdrdev/tmux-prefix/) keys, preserves the rest |
+| `settings.json` | `modify_` overlay: `appearance`, `minimum_contrast`; the rest stays app-owned |
+| `mods/tmux-prefix/` | vendored unchanged from `herdrdev/herdr-layout-examples` (pinned) |
+
+An empty or missing file is left for Herdr to create with its defaults; the
+next apply merges. Invalid JSON is passed through untouched. The merge engine
+is `scripts/herdr-app-json-merge.ps1`. In app terminals, Ctrl+B opens the
+tmux-style prefix hint. The herdr TUI also uses Ctrl+B: press **Ctrl+B Ctrl+B**
+to pass a literal prefix through.

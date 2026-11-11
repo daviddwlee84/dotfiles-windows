@@ -398,23 +398,44 @@ Scoop 更新尚在進行時，請使用回傳的 `status_command`；它在安裝
 驗證完成；既有手動安裝副本保持不動，也不納入此套件升級。
 
 
-## Herdr UI（原生 GUI client）
+## GUI 客戶端與 Herdr 2（Sheprd、Herdr App、herdr-core）
 
-[Herdr UI](https://github.com/penso/herdr-gpui) 是既有 Herdr daemon 的獨立圖形介面。
-TUI 與 GUI 可共用 session，關閉 GUI 不會結束終端 session。GUI 安裝器不會安裝或
-升級 Herdr daemon。GUI 偏好設定由應用程式管理；apply 不啟動應用程式，也不開啟登入自啟。
+Herdr 目前有**兩套互不共用 session 的 runtime**：Herdr 1（上方的 `herdr` TUI，
+搭配第三方 [Sheprd](https://sheprd.org/) GUI 與 iOS 客戶端），以及 Herdr 2
+（`herdr-core`／`hc` 搭配官方 [Herdr App](https://herdr.dev/)）。兩者並行安裝。
+以下皆為**僅補裝**：已有安裝即跳過，apply 不啟動應用程式、不開啟登入自啟，失敗納入
+套件安裝摘要。上游 PowerShell 安裝器皆以 commit 與 SHA-256 固定，在獨立 pwsh
+process 執行，再由安裝器自行驗證發行檔。
 
-僅在 **`installWindowsApps=true` 且 `installHerdr=true`** 時安裝，順序在 daemon 之後。
-`installHerdr` 在 workstation 已預設開啟、minimal 預設關閉，保留既有選擇。
+| 元件 | 開關 | 架構 | 安裝位置 | 更新 |
+|---|---|---|---|---|
+| herdr-core（`hc`） | `installHerdr` | 僅 x64（ARM64 跳過） | `%LOCALAPPDATA%\Programs\herdr-core`（含 `hc.exe`，加入使用者 PATH） | `just upgrade-herdr-core`（`hc update`，終端持續運作） |
+| Sheprd（原 Herdr UI） | `installHerdr` + `installWindowsApps` | x64／ARM64 | `%LOCALAPPDATA%\Programs\Herdr UI`（`sheprd.exe` 與相容的 `herdr-gpui.exe`） | App 內 **Check for Updates** |
+| Herdr App | `installHerdr` + `installWindowsApps` | 僅 x64 | `%LOCALAPPDATA%\Programs\herdr-app` | App 內（Settings > Updates） |
 
-固定版本並核對 hash 的官方 PowerShell 安裝器會下載 stable zip 並驗證上游 SHA-256，
-安裝至 `%LOCALAPPDATA%\Programs\Herdr UI`，登錄使用者 PATH、開始選單捷徑、
-Explorer 資料夾選單與 `herdr-gpui://` 連結。從開始選單的
-`herdr-gpui-launcher.exe` 啟動可避免額外 console 視窗。該路徑或 PATH 上已有安裝時
-直接跳過，失敗納入套件安裝摘要。
+`installHerdr` 在 workstation 預設開啟、minimal 預設關閉。herdr-core 的 template 與
+加引號的 shell 指令需要 PATH 上有 `sh`（Git for Windows）。
 
-已簽署版本可從應用程式 **Check for Updates** 更新；手動更新請先關閉 GUI，再執行
-[官方安裝器](https://herdrui.dev/install.ps1)，daemon session 會繼續運作。
-`just upgrade-herdr` 只更新 daemon 與相符技能。GUI 支援 x64／ARM64，但原生 Windows
-ARM64 daemon 仍有限制，上游完整 daemon 實測僅跑 x64；GUI 的 ARM64 支援不代表
-daemon 已完全對齊。GUI 也支援連線到 WSL daemon。
+**Sheprd** 連線 Herdr 1 daemon，TUI 與 GUI 共用 session。改名保留安裝目錄、
+AppUserModelID `so.pen.herdr-gpui`、設定、登入與已配對機器。開始選單捷徑改名為
+**Sheprd**（`sheprd-launcher.exe`，不開 console 視窗），Explorer 新增 **Open in Sheprd**。
+GUI 支援 ARM64，但原生 Windows ARM64 daemon 上游測試仍較少。`just upgrade-herdr`
+只更新 Herdr 1 daemon 與其技能。
+
+**Herdr App** 的終端由 herdr-core 執行，關閉視窗不會結束它們。使用遙測預設開啟
+（Settings > Privacy）。Mods 是受信任的程式碼，沒有 sandbox。
+
+### Herdr App 設定（`~/.config/herdr-app`）
+
+只在會安裝 App 的主機部署（`installHerdr` + `installWindowsApps`、x64）。只管理使用者
+擁有的檔案，語意與 fragment 與上游 repo 逐位元相同：
+
+| 檔案 | 管理方式 |
+|---|---|
+| `keys.json` | `modify_` overlay（`modify_keys.json.ps1.tmpl`）：加入 [tmux-prefix](https://herdr.dev/mods/herdrdev/tmux-prefix/) 按鍵，其餘保留 |
+| `settings.json` | `modify_` overlay：`appearance`、`minimum_contrast`，其餘由 App 管理 |
+| `mods/tmux-prefix/` | 原樣 vendor 自 `herdrdev/herdr-layout-examples`（固定 commit） |
+
+檔案為空或不存在時交給 Herdr 寫入預設值，下次 apply 再合併；無效 JSON 原樣保留。
+合併邏輯在 `scripts/herdr-app-json-merge.ps1`。App 終端中 Ctrl+B 開啟 tmux 風格的
+prefix 提示；herdr TUI 也用 Ctrl+B，按 **Ctrl+B Ctrl+B** 即可送出字面上的 prefix。

@@ -1,0 +1,18 @@
+#!/usr/bin/env pwsh
+#Requires -Version 7.4
+#Requires -PSEdition Core
+# chezmoi modify_ overlay for ~/.config/herdr-app/settings.json (official Herdr App).
+# Runs under pwsh via [interpreters.ps1]; the .ps1 suffix is stripped from the
+# target name (the dot_summarize/modify_config.json.ps1 precedent). Herdr writes
+# this file itself, so the managed fragment .chezmoitemplates/herdr-app/settings.json
+# (byte-identical with the parent repo) is deep-merged in; see that directory's
+# README.md and scripts/herdr-app-json-merge.ps1 for the exact semantics.
+$ErrorActionPreference = 'Stop'
+
+{{ include "scripts/herdr-app-json-merge.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
+
+$overlayJson = @'
+{{ includeTemplate "herdr-app/settings.json" . | trim }}
+'@
+
+Invoke-HerdrAppJsonModify -OverlayJson $overlayJson
