@@ -40,6 +40,7 @@ Worth doing, no rush.
 Someday / nice-to-have.
 
 - [ ] **[S] Example deferred item** — low signal-to-effort, but easy.
+- [ ] **[S] Extend `agentLanguagePolicy` to Codex** — tracked in the parent repo's `TODO.md` (same `modify_` managed-block approach for `~/.codex/AGENTS.md`); the Windows side needs the pwsh/run_onchange equivalent. → [docs](docs/agent-language-policy.md)
 - [ ] **[S] Windows ssh-agent profile fragment** — parallel to the parent repo's `94_ssh_agent.zsh`. A `dot_config/powershell/profile.d/` fragment that ensures the OpenSSH Authentication Agent service is running (`Set-Service ssh-agent -StartupType Automatic`; `Start-Service`) and optionally detects Bitwarden desktop's `//./pipe/openssh-ssh-agent`. Config skeleton (`dot_ssh/`) already shipped; this only automates the agent side.
 - [ ] **[M] Extract the shared Rime config into its own repo** — Today .chezmoitemplates/rime/ is duplicated byte-for-byte in dotfiles and dotfiles-windows, kept in sync by hand + diff. A standalone rime-config repo pulled via .chezmoiexternal in both would remove the drift risk, at the cost of a third repo and a fetch on every apply. → [research](backlog/rime-shared-config.md)
 - [ ] **[S] Automate Rime redeploy on macOS and Linux** — Windows redeploys automatically via run_onchange_after_50_rime_deploy.ps1. The unix repo leaves it manual because Squirrel's --reload is unreliable and ibus restart interrupts the session — revisit if a safe non-disruptive trigger appears.

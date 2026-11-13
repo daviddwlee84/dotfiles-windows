@@ -133,6 +133,7 @@ jobs:
           }
           $expectations = [ordered]@{
             agentSounds = 'none'
+            agentLanguagePolicy = 'none'
             backupMode = 'smart'
             enableVimMode = $true
             preferredEditor = 'nvim'
@@ -168,6 +169,9 @@ jobs:
             # `both` (not the workstation default `notify`) so the render+parse
             # covers BOTH hook-building branches of run_onchange_after_25.
             '--promptChoice','Agent completion feedback (none|notify|peon|both)=both',
+            # zh-TW (not the default `none`) so the apply step deploys and
+            # asserts ~/.claude/rules/language-policy.md.
+            '--promptChoice','Agent language policy (none|zh-TW)=zh-TW',
             # true (unlike the other install toggles) so the render+parse step
             # below exercises the SpecStory release block; `chezmoi apply --exclude
             # scripts` means it never actually installs in CI.
@@ -273,6 +277,15 @@ jobs:
             if ($codexConfig -notmatch [regex]::Escape('"' + $item + '"')) {
               throw "Codex modifier did not install managed status item: $item"
             }
+          }
+
+          $languageRule = Join-Path $dest '.claude\rules\language-policy.md'
+          if (-not (Test-Path -LiteralPath $languageRule -PathType Leaf)) {
+            throw 'agentLanguagePolicy=zh-TW did not deploy ~/.claude/rules/language-policy.md'
+          }
+          $expectedRule = Get-Content -Raw -LiteralPath '.chezmoitemplates\agent-language-policy.md'
+          if ((Get-Content -Raw -LiteralPath $languageRule) -ne $expectedRule) {
+            throw 'deployed language-policy.md differs from .chezmoitemplates/agent-language-policy.md'
           }
 
           Write-Host '--- deployed tree ---'
