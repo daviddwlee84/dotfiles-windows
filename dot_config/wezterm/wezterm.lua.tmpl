@@ -19,6 +19,10 @@ local config = wezterm.config_builder()
 -- shimmed target directly avoids that phantom window. Falls back to the PATH shim
 -- (still better than cmd.exe) if none of the known install paths exist.
 local function pwsh_exe()
+{{ if eq (get . "organizationProfile" | default "none") "microsoft" -}}
+  -- Explicit configured runtime, never the inherited Scoop shim or PATH fallback.
+  return {{ includeTemplate "powershell-executable" . | toJson }}
+{{ else -}}
   local candidates = {
     wezterm.home_dir .. '\\scoop\\apps\\pwsh\\current\\pwsh.exe', -- scoop (this repo's bootstrap)
     'C:\\Program Files\\PowerShell\\7\\pwsh.exe',                 -- winget / MSI install
@@ -28,6 +32,7 @@ local function pwsh_exe()
     if f then f:close(); return path end
   end
   return 'pwsh.exe'
+{{ end -}}
 end
 
 config.default_prog = { pwsh_exe(), '-NoLogo' }

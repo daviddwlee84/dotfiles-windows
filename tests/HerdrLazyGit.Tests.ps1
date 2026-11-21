@@ -71,6 +71,6 @@ Describe 'Herdr LazyGit launcher' {
 
     It 'uses an absolute rendered script path in the keymap, not the bare TUI name' {
         $source = Get-Content (Join-Path $script:Repo '.chezmoitemplates/herdr/config.toml') -Raw
-        $source | Should -Match '(?s)key = "prefix\+G"\s+type = "pane"\s+command = ''pwsh -NoProfile -File "\{\{ \$herdrDir \}\}/lazygit.ps1"'''
+        $source | Should -Match '(?s)key = "prefix\+G"\s+type = "pane"\s+command = \{\{ includeTemplate "herdr/powershell-command\.toml\.tmpl"[^\r\n]+/lazygit\.ps1'
     }
 }

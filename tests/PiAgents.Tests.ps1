@@ -16,6 +16,8 @@ BeforeAll {
     . (Join-Path $RepoRoot 'scripts' 'package-source-runner.ps1')
     . (Join-Path $RepoRoot 'scripts' 'pi-package-core.ps1')
     . (Join-Path $RepoRoot 'scripts' 'omp-install-core.ps1')
+    # These fixtures cover legacy ownership; organization routing has its own suite.
+    function Test-MicrosoftOrganization { $false }
 
     function New-TestNpmContext {
         param([Parameter(Mandatory)] [string] $Root)
@@ -63,7 +65,7 @@ BeforeAll {
 
     function Render-External {
         param([bool] $Enabled)
-        $data = @{ installCodingAgents = $Enabled } | ConvertTo-Json -Compress
+        $data = @{ organizationProfile = 'none'; installCodingAgents = $Enabled } | ConvertTo-Json -Compress
         $rendered = & chezmoi execute-template --source $RepoRoot --override-data $data --file $ExternalTemplate
         if ($LASTEXITCODE -ne 0) { throw 'failed to render external template' }
         $rendered -join "`n"
@@ -71,7 +73,7 @@ BeforeAll {
 
     function Render-EnvironmentProfile {
         param([bool] $Enabled)
-        $data = @{ installCodingAgents = $Enabled } | ConvertTo-Json -Compress
+        $data = @{ organizationProfile = 'none'; installCodingAgents = $Enabled } | ConvertTo-Json -Compress
         $rendered = & chezmoi execute-template --source $RepoRoot --override-data $data --file $EnvironmentProfile
         if ($LASTEXITCODE -ne 0) { throw 'failed to render environment profile' }
         $rendered -join "`n"
@@ -79,7 +81,7 @@ BeforeAll {
 
     function Render-EnvironmentScript {
         param([bool] $Enabled)
-        $data = @{ installCodingAgents = $Enabled } | ConvertTo-Json -Compress
+        $data = @{ organizationProfile = 'none'; installCodingAgents = $Enabled } | ConvertTo-Json -Compress
         $rendered = & chezmoi execute-template --source $RepoRoot --override-data $data --file $EnvironmentScript
         if ($LASTEXITCODE -ne 0) { throw 'failed to render persistent environment script' }
         $rendered -join "`n"
@@ -645,7 +647,15 @@ Describe 'chezmoi and shell integration for Pi, pia, and OMP' {
     It 'forwards Pi short flags, option values, and leading-dash arguments exactly' {
         $savedScoop = $env:SCOOP
         $savedCapture = $env:PI_WRAPPER_CAPTURE
+        $savedUserProfile = $env:USERPROFILE
+        $savedHome = $env:HOME
         try {
+            # The real launcher loads policy from HOME. Give both native launch
+            # paths an empty fixture home so they cannot execute the real Pi install.
+            $fixtureHome = Join-Path $TestDrive 'WrapperHome'
+            New-Item -ItemType Directory -Force $fixtureHome | Out-Null
+            $env:USERPROFILE = $fixtureHome
+            $env:HOME = $fixtureHome
             $env:SCOOP = Join-Path $TestDrive 'WrapperScoop'
             $env:PI_WRAPPER_CAPTURE = Join-Path $TestDrive 'pi-wrapper-argv.json'
             $node = Join-Path $env:SCOOP 'apps\nodejs-lts\current\node.exe'
@@ -708,15 +718,17 @@ Describe 'chezmoi and shell integration for Pi, pia, and OMP' {
             else { $env:SCOOP = $savedScoop }
             if ($null -eq $savedCapture) { Remove-Item Env:PI_WRAPPER_CAPTURE -ErrorAction SilentlyContinue }
             else { $env:PI_WRAPPER_CAPTURE = $savedCapture }
+            [Environment]::SetEnvironmentVariable('USERPROFILE', $savedUserProfile, 'Process')
+            [Environment]::SetEnvironmentVariable('HOME', $savedHome, 'Process')
         }
     }
 
     It 'exposes separate and aggregate explicit upgrades outside default upgrade' {
         $script:JustSource | Should -Match 'upgrade-npm-agents:'
         $script:JustSource | Should -Match 'upgrade-omp:\s*\r?\n\s*pwsh -NoProfile -File ./scripts/upgrade-omp\.ps1'
-        $script:JustSource | Should -Match 'upgrade-pia:\s*\r?\n\s*chezmoi apply --refresh-externals'
+        $script:JustSource | Should -Match 'upgrade-pia:\s*\r?\n\s*pwsh -NoProfile -File ./scripts/upgrade-packages\.ps1 -Action Pia'
         $script:JustSource | Should -Match 'upgrade-agents: upgrade-npm-agents upgrade-omp upgrade-pia'
-        $script:JustSource | Should -Match 'upgrade: upgrade-scoop upgrade-winget'
+        $script:JustSource | Should -Match 'upgrade:\s*\r?\n\s*pwsh -NoProfile -File ./scripts/upgrade-packages\.ps1 -Action All'
         $script:JustSource | Should -Not -Match 'upgrade:.*upgrade-agents'
         (Get-Content -Raw (Join-Path $RepoRoot 'scripts' 'upgrade-omp.ps1')) |
             Should -Match 'OMP is not installed at its managed path; skipping upgrade'

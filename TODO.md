@@ -25,6 +25,7 @@ Likely next batch — items you'd reach for if you sat down to work today.
 
 ## P2
 
+- [ ] **[M] Validate Microsoft profile rollout and remaining source adapters** — Verify the fresh-machine PowerShell 5.1-to-full-apply bootstrap on an IT-managed ARM64 machine, review per-tool/plugin sources, and validate NVM/Pi/Herdr behavior. The bootstrap now installs/discovers approved pwsh, Bun and Python automatically. Pueue service migration, compiler/font sources and unsupported personal-tool adapters remain separate; do not remove Scoop or change security policy automatically. → [research](backlog/restricted-windows-install-profile.md)
 - [ ] **[S] Validate copilot-proxy 2.5.2 on native Windows** — Native implementation and off-Windows Pester passed; confirm process ownership, install/CDN fallback, matched rollback and long-session behavior on Windows before claiming runtime validation. Shared results remain in the Unix-owned upgrade note. → [research](https://github.com/daviddwlee84/dotfiles/blob/main/backlog/copilot-proxy-backend-2-5-2-stability.md)
 - [ ] **[M] Define safe run-for native/script/batch execution contracts** — preserve argv, define exit codes and process-tree timeout behavior before replacing Start-Process serialization; intentionally deferred from the PowerShell 7.4 audit. → [research](backlog/run-for-argument-and-timeout-contract.md)
 
@@ -63,6 +64,8 @@ Needs a spike before committing to a real priority. Tag as `[?/Effort]`.
 - [ ] **[?/M] Agent external-editor context: Windows parity** — Track the Unix-owned agent-external-editor-context investigation in daviddwlee84/dotfiles (backlog/agent-external-editor-context.md); mirror adopted prompt-boundary, Neovim and editor-wait behavior with native PowerShell/ConPTY validation. Shared decision: daviddwlee84/dotfiles-all docs/agent-external-editor-context.md. Keep one full research note in Unix.
 
 ## Done
+
+- ✅ [2026-11-05] [P?/L] Add an opt-in restricted Windows installation profile — Implemented opt-in Microsoft source policy, bootstrap/install/upgrade routing, runtime ownership and diagnostics; real work-machine rollout and pending source adapters remain explicit. See backlog/restricted-windows-install-profile.md.
 
 - ✅ [2026-09-08] [P1/L] copilot-proxy 2.5.2 stability parity — Implemented verified runtime manifests, native transaction recovery, shared shim lifecycle/metrics, Astra budgets and coordinated client retry; Pester and bilingual docs passed, with native runtime verification tracked separately.
 - ✅ [2026-09-04] [P?/M] SpecStory Windows-native CLI (track PR #191) — Shipped official SHA-256-verified Windows releases with coding agents; retained standalone toggle and compatibility upgrade command.

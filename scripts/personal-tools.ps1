@@ -112,6 +112,13 @@ function Update-SelectedPersonalTools {
     [CmdletBinding(SupportsShouldProcess)]
     param([Parameter(Mandatory)][System.Collections.IDictionary]$Data)
     foreach ($tool in @(Get-SelectedPersonalTools -Data $Data)) {
+        if ((Get-Command Test-MicrosoftOrganization -ErrorAction SilentlyContinue) -and (Test-MicrosoftOrganization)) {
+            $decision = Get-OrganizationSourceDecision -Id $tool.Id -Operation upgrade
+            if (-not $decision.Allowed -or $tool.Manager -eq 'scoop') {
+                [pscustomobject]@{ Tool = $tool.Id; Status = 'skipped'; Reason = $decision.Reason }
+                continue
+            }
+        }
         $owner = Get-PersonalToolOwner -Tool $tool
         if ($owner.Kind -notin @('release', 'scoop')) {
             Write-Host "$($tool.Id): $($owner.Kind); skipping"

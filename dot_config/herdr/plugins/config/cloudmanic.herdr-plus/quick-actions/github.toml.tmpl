@@ -4,4 +4,4 @@
 # handler. Wrapped in pwsh so it does not depend on which shell herdr-plus uses.
 name = "GitHub"
 description = "Open https://github.com"
-command = '''pwsh -NoProfile -Command "Start-Process 'https://github.com'"'''
+command = {{ includeTemplate "herdr/powershell-command.toml.tmpl" (dict "data" . "args" `-NoProfile -Command "Start-Process 'https://github.com'"`) }}

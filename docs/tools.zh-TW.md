@@ -2,7 +2,12 @@
 
 安裝清單在 `.chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl`
 （單一事實來源），並由初始化開關控制。**scoop** 負責 CLI 工具；**winget** 負責
-GUI 應用程式。
+GUI 應用程式（預設 `organizationProfile=none`）。
+可選的 [Microsoft Organization profile](microsoft-organization.zh-TW.md) 改以
+清單中的 winget／官方來源安裝 CLI/GUI，其他來源明確列為待核准。
+新機 bootstrap 會在第一次全量 apply 前備妥官方 CPython 3.14、Bun 與 PowerShell；
+Python dependencies 仍走公司 PyPI。
+`just organization-doctor` 只盤點、不執行候選工具；`-Probe` 才要求有 timeout 的版本檢查。
 
 ## CLI 工具（scoop）
 

@@ -13,7 +13,8 @@ Describe 'first-party PowerShell runtime contract' {
         $files += Get-Item (Join-Path $script:Repo 'modify_dot_gitconfig.ps1.tmpl')
         $packageSourcesPartial = Join-Path $script:Repo '.chezmoitemplates/package-sources.ps1'
         $headerlessPartials = @(
-            (Join-Path $script:Repo '.chezmoitemplates/weasel-core.ps1')
+            (Join-Path $script:Repo '.chezmoitemplates/weasel-core.ps1'),
+            (Join-Path $script:Repo '.chezmoitemplates/organization-policy.ps1')
         )
         foreach ($file in $files) {
             $text = Get-Content -LiteralPath $file.FullName -Raw

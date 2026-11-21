@@ -15,6 +15,10 @@ function Protect-PackageSourceOutput {
     if (-not $Text) { return '' }
     $protected = $Text -replace '(?i)(https?://)[^/@\s:]+:[^/@\s]+@', '$1***:***@'
     $protected = $protected -replace '(?im)((?:_authToken|token|password)\s*[=:]\s*)\S+', '$1***'
+    # Azure Artifacts redirects use temporary SAS / vsassets signatures. Preserve
+    # the host/path for classification without disclosing a usable signed URL.
+    $protected = $protected -replace '(?i)([?&](?:sig|signature|P4|X-Amz-Signature|X-Amz-Credential|X-Amz-Security-Token)=)[^&\s"''<>]+', '$1***'
+    $protected = $protected -replace '(?im)(Authorization\s*:\s*(?:Bearer|Basic)\s+)\S+', '$1***'
     $protected
 }
 
@@ -258,6 +262,8 @@ function Get-NpmPackageScope {
 function Get-NpmGlobalExecutionContext {
     param([Parameter(Mandatory)] [string] $NpmCommandPath)
 
+    $organizationNpm = (Get-Command Test-MicrosoftOrganization -ErrorAction SilentlyContinue) -and (Test-MicrosoftOrganization)
+    if ($organizationNpm) { $NpmCommandPath = (Get-OrganizationNpmLayout).NpmCommand }
     $npmDirectory = Split-Path -Parent $NpmCommandPath
     $nodeExecutable = Join-Path $npmDirectory 'node.exe'
     $npmPrefixScript = Join-Path $npmDirectory 'node_modules\npm\bin\npm-prefix.js'
@@ -267,23 +273,28 @@ function Get-NpmGlobalExecutionContext {
             throw "unsupported npm wrapper layout; expected repo-managed Scoop Node files beside $NpmCommandPath"
         }
     }
-    $prefixOutput = @(& $nodeExecutable $npmPrefixScript 2>$null)
-    if ($LASTEXITCODE -eq 0 -and $prefixOutput) {
-        $prefixCli = Join-Path (([string] $prefixOutput[-1]).Trim()) 'node_modules\npm\bin\npm-cli.js'
-        if (Test-Path -LiteralPath $prefixCli -PathType Leaf) { $npmCli = $prefixCli }
+    if (-not $organizationNpm) {
+        $prefixOutput = @(& $nodeExecutable $npmPrefixScript 2>$null)
+        if ($LASTEXITCODE -eq 0 -and $prefixOutput) {
+            $prefixCli = Join-Path (([string] $prefixOutput[-1]).Trim()) 'node_modules\npm\bin\npm-cli.js'
+            if (Test-Path -LiteralPath $prefixCli -PathType Leaf) { $npmCli = $prefixCli }
+        }
     }
 
-    $rootOutput = @(& $NpmCommandPath root -g 2>$null)
+    $rootOutput = @(& $nodeExecutable $npmCli root -g 2>$null)
     if ($LASTEXITCODE -ne 0 -or -not $rootOutput) { throw 'cannot resolve global npm root' }
     $npmRoot = ([string] $rootOutput[-1]).Trim()
-    $cacheOutput = @(& $NpmCommandPath config get cache 2>$null)
+    if ($organizationNpm -and (Test-OrganizationScoopPath $npmRoot)) {
+        throw 'Selected Node/npm still reports a Scoop-owned global prefix; review the explicit npm configuration before migration. No configuration was changed.'
+    }
+    $cacheOutput = @(& $nodeExecutable $npmCli config get cache 2>$null)
     $npmCache = if ($LASTEXITCODE -eq 0 -and $cacheOutput) { ([string] $cacheOutput[-1]).Trim() } else { '' }
     $configValues = @{}
     foreach ($key in @(
         'proxy', 'https-proxy', 'noproxy', 'cafile', 'cert', 'key', 'strict-ssl',
         'ignore-scripts', 'foreground-scripts', 'script-shell', 'engine-strict', 'legacy-peer-deps'
     )) {
-        $valueOutput = @(& $NpmCommandPath config get $key 2>$null)
+        $valueOutput = @(& $nodeExecutable $npmCli config get $key 2>$null)
         if ($LASTEXITCODE -eq 0 -and $valueOutput) {
             $value = ([string] $valueOutput[-1]).Trim()
             if ($value -and $value -notin @('null', 'undefined')) { $configValues[$key] = $value }
@@ -340,6 +351,31 @@ function Invoke-PackageSourceCommand {
         [string] $PublicNpmRegistry = $script:PublicNpmRegistry
     )
 
+    if ((Get-Command Test-MicrosoftOrganization -ErrorAction SilentlyContinue) -and (Test-MicrosoftOrganization)) {
+        if (-not $ManagedMachine -or (Test-OrganizationScoopPath $Executable)) {
+            return [pscustomobject]@{
+                Succeeded = $false; ExitCode = 126; TimedOut = $false; ProcessTerminated = $true
+                FallbackUsed = $false; FailureClass = 'policy'; Attempts = @(); Stdout = ''
+                Stderr = 'Microsoft package operation requires corporate feeds and a non-Scoop runtime; no command was run.'
+            }
+        }
+        if ($Manager -eq 'uv') {
+            $AdditionalEnvironment = @{} + $AdditionalEnvironment
+            $uvEnvironment = Get-OrganizationUvEnvironment -Environment $AdditionalEnvironment
+            foreach ($name in $uvEnvironment.Keys) { $AdditionalEnvironment[$name] = $uvEnvironment[$name] }
+            if (-not (Test-OrganizationSource uv-python -Quiet)) { $AdditionalEnvironment['UV_PYTHON_DOWNLOADS'] = 'never' }
+            # Corporate artifact redirects can take longer to connect through the
+            # managed network path. Bound concurrency without changing that path,
+            # the registry, TLS, or any explicit caller/user transport setting.
+            $transportDefaults = @{ UV_HTTP_CONNECT_TIMEOUT = '60'; UV_HTTP_TIMEOUT = '60'; UV_CONCURRENT_DOWNLOADS = '1' }
+            foreach ($name in $transportDefaults.Keys) {
+                if (-not $AdditionalEnvironment.ContainsKey($name) -and
+                    [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable($name, 'Process'))) {
+                    $AdditionalEnvironment[$name] = $transportDefaults[$name]
+                }
+            }
+        }
+    }
     $attempts = [Collections.Generic.List[object]]::new()
     $tempRoot = $null
     try {

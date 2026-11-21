@@ -22,6 +22,8 @@ BeforeAll {
     }, $true)
     if (-not $functionAst) { throw 'Import-CachedInit was not found' }
     . ([scriptblock]::Create($functionAst.Extent.Text))
+    # Synthetic completion names are cache fixtures, not approved catalog tools.
+    function Test-MicrosoftOrganization { $false }
 }
 
 Describe 'PSReadLine command-mode guard' {

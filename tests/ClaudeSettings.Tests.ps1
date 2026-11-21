@@ -7,7 +7,7 @@ BeforeAll {
     $Utf8 = [Text.UTF8Encoding]::new($false, $true)
     $PwshPath = (Get-Command pwsh -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 
-    $renderData = @{ installCodingAgents = $true; agentSounds = 'notify' } | ConvertTo-Json -Compress
+    $renderData = @{ organizationProfile = 'none'; installCodingAgents = $true; agentSounds = 'notify' } | ConvertTo-Json -Compress
     $rendered = & chezmoi execute-template --source $RepoRoot --override-data $renderData --file $TemplatePath
     if ($LASTEXITCODE -ne 0) { throw 'failed to render Claude settings script' }
     [IO.File]::WriteAllText($RenderedPath, ($rendered -join "`n"), [Text.UTF8Encoding]::new($false))
@@ -218,7 +218,7 @@ Describe 'Claude settings and HUD overlays' {
 
     It 'wires peon only to user-facing events' {
         $peonRenderedPath = Join-Path $TestDrive 'run_onchange_after_25_claude_settings_peon.ps1'
-        $renderData = @{ installCodingAgents = $true; agentSounds = 'peon' } | ConvertTo-Json -Compress
+        $renderData = @{ organizationProfile = 'none'; installCodingAgents = $true; agentSounds = 'peon' } | ConvertTo-Json -Compress
         $rendered = & chezmoi execute-template --source $RepoRoot --override-data $renderData --file $TemplatePath
         $LASTEXITCODE | Should -Be 0
         [IO.File]::WriteAllText($peonRenderedPath, ($rendered -join "`n"), [Text.UTF8Encoding]::new($false))

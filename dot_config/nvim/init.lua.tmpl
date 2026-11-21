@@ -1,0 +1,9 @@
+-- bootstrap lazy.nvim, LazyVim and your plugins
+{{ if ne (includeTemplate "organization-source-allowed" (dict "data" . "id" "nvim-plugins")) "true" -}}
+-- Keep the editor usable without starting the unapproved plugin/build graph.
+vim.schedule(function()
+  vim.notify("Microsoft profile: nvim-plugins source approval is pending; using built-in Neovim.", vim.log.levels.WARN)
+end)
+{{ else -}}
+require("config.lazy")
+{{ end -}}

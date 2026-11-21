@@ -17,7 +17,7 @@
 name = "Translate pane"
 description = "Bilingual view of this pane's content in a split pane"
 type = "select"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-translate.ps1" {{"{{"}}.Value{{"}}"}} "$HERDR_PLUS_PANE_ID"'
+command = {{ includeTemplate "herdr/powershell-command.toml.tmpl" (dict "data" . "args" (printf "-NoProfile -File \"%s/pane-translate.ps1\" {{.Value}} \"$HERDR_PLUS_PANE_ID\"" $herdrDir)) }}
 
 [[options]]
 label = "Current page"

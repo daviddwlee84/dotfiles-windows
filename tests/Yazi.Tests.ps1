@@ -9,7 +9,7 @@ BeforeAll {
     $script:GuardPath = Join-Path $RepoRoot 'dot_config\yazi\plugins\git-guard.yazi\main.lua'
     $script:TemplatePath = Join-Path $RepoRoot '.chezmoiscripts\run_after_16_yazi_plugins.ps1.tmpl'
 
-    $rendered = & chezmoi execute-template --source $RepoRoot --file $TemplatePath | Out-String
+    $rendered = & chezmoi execute-template --source $RepoRoot --override-data '{"organizationProfile":"none"}' --file $TemplatePath | Out-String
     if ($LASTEXITCODE -ne 0) { throw 'failed to render Yazi plugin installer' }
     $script:RenderedPath = Join-Path $TestDrive 'run_after_16_yazi_plugins.ps1'
     [IO.File]::WriteAllText($RenderedPath, $rendered, [Text.UTF8Encoding]::new($false))

@@ -6,10 +6,10 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 . (Join-Path $PSScriptRoot 'personal-tools.ps1')
 . (Join-Path $PSScriptRoot 'windows-cli-release.ps1')
-$source = Split-Path $PSScriptRoot -Parent
-$dataText = & chezmoi data --source $source --format json
-if ($LASTEXITCODE -ne 0) { throw 'Could not read this Windows dotfiles configuration' }
-$data = ($dataText -join "`n") | ConvertFrom-Json -AsHashtable
+. (Join-Path $PSScriptRoot 'organization-policy.ps1')
+$organization = Import-OrganizationPolicyData
+Set-OrganizationEnvironment
+$data = $organization.Data
 $results = @(Update-SelectedPersonalTools -Data $data -WhatIf:$WhatIfPreference)
 $results | Format-Table -AutoSize
 if (@($results | Where-Object Status -EQ 'failed').Count) { exit 1 }

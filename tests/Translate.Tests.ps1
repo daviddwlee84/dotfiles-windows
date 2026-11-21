@@ -47,8 +47,9 @@ Describe 'translate install path' {
         $tools | Should -Match 'translate completion powershell'
     }
 
-    It 'upgrades through scoop' {
-        $just | Should -Match 'upgrade-translate:\s*\r?\n\s*scoop update translate'
+    It 'upgrades through the profile-aware owner router' {
+        $just | Should -Match 'upgrade-translate:\s*\r?\n\s*pwsh -NoProfile -File ./scripts/upgrade-packages\.ps1 -Action Translate'
+        (Get-Content -Raw (Join-Path $PSScriptRoot '../scripts/upgrade-packages.ps1')) | Should -Match "'Translate' \{ & scoop update translate \}"
         $just | Should -Not -Match 'go install github\.com/daviddwlee84/translate@latest'
     }
 

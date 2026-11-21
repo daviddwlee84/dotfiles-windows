@@ -22,6 +22,9 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
+. (Join-Path $PSScriptRoot 'organization-policy.ps1')
+try { $null = Import-OrganizationPolicyData } catch { Write-Warning $_; return }
+if (-not (Test-OrganizationSource wsl-bootstrap)) { return }
 if (Test-Path variable:PSNativeCommandUseErrorActionPreference) { $PSNativeCommandUseErrorActionPreference = $false }
 $OutputEncoding = [System.Text.UTF8Encoding]::new($false)   # BOM-free stdin to wsl/bash
 $env:WSL_UTF8 = '1'

@@ -1,4 +1,4 @@
-{{ if .installCodingAgents -}}
+{{ if and .installCodingAgents (eq (includeTemplate "organization-source-allowed" (dict "data" . "id" "pi-agents")) "true") -}}
 [".local/share/pi-agents"]
     type = "git-repo"
     url = "https://github.com/daviddwlee84/pi-agents.git"

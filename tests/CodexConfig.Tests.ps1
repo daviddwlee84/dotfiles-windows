@@ -91,6 +91,9 @@ BeforeAll {
         $startInfo.ArgumentList.Add('-NonInteractive')
         $startInfo.ArgumentList.Add('-File')
         $startInfo.ArgumentList.Add($ScriptPath)
+        # Exercise the merge, not a real user's Scoop shim (which may be blocked
+        # by App Control). Explicit fixture overrides below still win.
+        $startInfo.Environment['SCOOP'] = Join-Path $TestDrive 'isolated-scoop'
         foreach ($name in $Environment.Keys) {
             $startInfo.Environment[$name] = [string] $Environment[$name]
         }

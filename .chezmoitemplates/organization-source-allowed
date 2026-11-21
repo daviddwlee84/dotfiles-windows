@@ -1,0 +1,15 @@
+{{- $data := .data -}}
+{{- if ne (get $data "organizationProfile" | default "none") "microsoft" -}}true
+{{- else -}}
+{{- $catalog := (include ".chezmoidata/windows-tool-sources.json" | fromJson).windowsToolSources -}}
+{{- $allowed := false -}}
+{{- range $catalog.tools -}}
+{{- if eq .id $.id -}}
+{{- if or (eq .provider "winget") (eq .provider "official") -}}{{- $allowed = true -}}
+{{- else if eq .provider "corporate" -}}{{- $allowed = (get $data "managedMachine" | default false) -}}
+{{- else if and (eq .provider "approval") (has .id (get $data "organizationSourceApprovals" | default (list))) -}}{{- $allowed = true -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- $allowed -}}
+{{- end -}}

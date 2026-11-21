@@ -122,4 +122,4 @@ if their original location stops being a natural reading flow.
 | Trap | Lives in | Why not here |
 |---|---|---|
 | `shim did not come up` / `shim: ON but DOWN` although Bun logs `listening on :4142`; `localhost` health times out but IPv4 succeeds | [Copilot proxy](../docs/copilot-proxy.md) → IPv4 loopback health/client URL | The normal runtime guide documents the fix and existing-client refresh requirement |
-| (example: Tool X version Y bug) | `docs/tool-x.md` → "Known issues" | Already part of the tool's normal config narrative |
+| WinGet uv still installs into `scoop\persist\uv\tools\shims`; `UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` survive PATH cleanup | [Microsoft profile](../docs/microsoft-organization.md#ownership-and-migration), [dogfood evidence](../backlog/restricted-windows-install-profile.md) | The migration guide owns process-only uv storage selection and preservation of old environments |

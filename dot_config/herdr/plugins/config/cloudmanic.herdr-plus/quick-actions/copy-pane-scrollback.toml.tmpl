@@ -6,4 +6,4 @@
 # $HERDR_PLUS_PANE_ID is the focused pane herdr-plus captures when the picker fires.
 name = "Copy pane: content (scrollback)"
 description = "The focused pane's full retained scrollback buffer"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-copy.ps1" content "$HERDR_PLUS_PANE_ID" --source recent'
+command = {{ includeTemplate "herdr/powershell-command.toml.tmpl" (dict "data" . "args" (printf "-NoProfile -File \"%s/pane-copy.ps1\" content \"$HERDR_PLUS_PANE_ID\" --source recent" $herdrDir)) }}

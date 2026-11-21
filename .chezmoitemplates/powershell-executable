@@ -1,0 +1,14 @@
+{{- $path := get . "powerShellExecutable" | default "" -}}
+{{- if eq (get . "organizationProfile" | default "none") "microsoft" -}}
+{{- if or (not $path) (regexMatch `(?i)[\\/]scoop[\\/]` $path) -}}
+{{- fail "Microsoft profile requires powerShellExecutable pointing to an approved non-Scoop pwsh.exe; use bootstrap -OrganizationProfile microsoft or set the explicit runtime before init" -}}
+{{- end -}}
+{{- end -}}
+{{- if $path -}}
+{{- if or (not (regexMatch `(?i)^[a-z]:[\\/].*[\\/]pwsh\.exe$` $path)) (regexMatch "[\\r\\n\"%!]" $path) -}}
+{{- fail "powerShellExecutable must be an absolute local path to pwsh.exe without quotes, newlines, percent signs, or exclamation marks" -}}
+{{- end -}}
+{{- $path -}}
+{{- else -}}
+pwsh
+{{- end -}}

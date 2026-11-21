@@ -127,6 +127,15 @@ if (-not $legalBlank -and [string]::IsNullOrWhiteSpace($liveText)) {
     return
 }
 
+{{ if eq (get . "organizationProfile" | default "none") "microsoft" -}}
+try {
+{{ template "organization-policy.ps1" . }}
+    Set-OrganizationEnvironment
+} catch {
+    Write-PreservedInput -Message "organization policy unavailable: $_" -Bytes $originalBytes
+    return
+}
+{{ end -}}
 $bunCommands = @(Get-Command bun -CommandType Application -All -ErrorAction SilentlyContinue)
 # Match the profile's Scoop-first policy even under chezmoi's -NoProfile child.
 # Old `bun upgrade` copies in scoop/persist/bun/bin can shadow the current shim;
@@ -357,7 +366,9 @@ writeFileSync(outPath, liveText, "utf8");
 '@
     [System.IO.File]::WriteAllText($jsFile, $jsSource, $utf8)
 
-    & $bun.Source $jsFile $overlayFile $liveFile $outFile 1>$null
+    # A pipeline avoids PowerShell 7.6's native null-redirection encoding failure
+    # when this modifier itself has redirected stdin/stdout. Keep stdout private.
+    & $bun.Source $jsFile $overlayFile $liveFile $outFile | Out-Null
     $rc = $LASTEXITCODE
 
     if ($rc -ne 0 -or -not (Test-Path -LiteralPath $outFile -PathType Leaf)) {

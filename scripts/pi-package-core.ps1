@@ -36,8 +36,14 @@ function Get-PiOwnedNpmContext {
     [CmdletBinding()]
     param([Parameter(Mandatory)] $NpmContext)
 
-    $scoopRoot = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $HOME 'scoop' }
-    $prefix = Join-Path $scoopRoot 'persist\nodejs-lts\bin'
+    if ((Get-Command Test-MicrosoftOrganization -ErrorAction SilentlyContinue) -and (Test-MicrosoftOrganization)) {
+        $location = Get-OrganizationPiLocation
+        if (-not $location.Owned) { throw "Existing Pi prefix is user-owned and preserved: $($location.Prefix). Explicit migration is required before upgrades." }
+        $prefix = $location.Prefix
+    } else {
+        $scoopRoot = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $HOME 'scoop' }
+        $prefix = Join-Path $scoopRoot 'persist\nodejs-lts\bin'
+    }
     [pscustomobject]@{
         NodeExecutable = $NpmContext.NodeExecutable
         NpmCli = $NpmContext.NpmCli
@@ -52,6 +58,9 @@ function Get-PiOwnedNpmCommandPath {
     [CmdletBinding()]
     param()
 
+    if ((Get-Command Test-MicrosoftOrganization -ErrorAction SilentlyContinue) -and (Test-MicrosoftOrganization)) {
+        return (Get-OrganizationNpmLayout).NpmCommand
+    }
     $scoopRoot = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $HOME 'scoop' }
     Join-Path $scoopRoot 'apps\nodejs-lts\current\npm.cmd'
 }

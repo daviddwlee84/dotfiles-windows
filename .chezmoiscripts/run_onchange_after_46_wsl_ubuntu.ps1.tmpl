@@ -8,7 +8,7 @@
 # The prelude passes the frozen answers so the embedded script never calls
 # `chezmoi data` mid-apply. Requires the WSL2 platform (installWsl) + reboot
 # first; never aborts the apply. See docs/tools.md and scripts/enable-wsl-ubuntu.ps1.
-{{ if .installWslUbuntu -}}
+{{ if and .installWslUbuntu (ne (get . "organizationProfile" | default "none") "microsoft") -}}
 $WslUser   = {{ .wslUsername | quote }}
 $WslName   = {{ .name | quote }}
 $WslEmail  = {{ .email | quote }}

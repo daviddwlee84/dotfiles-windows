@@ -25,18 +25,16 @@ edit FILE:
 
 # upgrade CLI tools (scoop)
 upgrade-scoop:
-    scoop update
-    scoop update *
+    pwsh -NoProfile -File ./scripts/upgrade-packages.ps1 -Action Scoop
 
 # Upgrade Yazi plugins declared in ~/.config/yazi/package.toml. The latest
 # git.yazi needs a matched yazi/ya >= 26.8.15; upgrade the Scoop package first.
 upgrade-yazi-plugins:
-    scoop update yazi; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    $env:YAZI_CONFIG_HOME = Join-Path $HOME '.config\yazi'; ya pkg upgrade
+    pwsh -NoProfile -File ./scripts/upgrade-packages.ps1 -Action Yazi
 
 # upgrade GUI apps (winget)
 upgrade-winget:
-    winget upgrade --all --accept-source-agreements --accept-package-agreements
+    pwsh -NoProfile -File ./scripts/upgrade-packages.ps1 -Action Winget
 
 # upgrade npm coding agents (close Pi/OpenCode/Codex/Copilot first; Windows locks live executables)
 upgrade-npm-agents:
@@ -52,7 +50,7 @@ upgrade-omp:
 
 # fast-forward the chezmoi-managed pi-agents external checkout
 upgrade-pia:
-    chezmoi apply --refresh-externals
+    pwsh -NoProfile -File ./scripts/upgrade-packages.ps1 -Action Pia
 
 # upgrade the complete Pi/pia/OMP + npm-agent stack (close running agents first)
 # Deliberately not part of `just upgrade`: live executables may be locked.
@@ -64,14 +62,21 @@ upgrade-dev:
     pwsh -NoProfile -File ./scripts/upgrade-windows-cli.ps1 -Name dev-cli
 
 # upgrade everything
-upgrade: upgrade-scoop upgrade-winget
+upgrade:
+    pwsh -NoProfile -File ./scripts/upgrade-packages.ps1 -Action All
+
+# No profile even in the outer recipe: diagnostics must not start profile services.
+[script('pwsh', '-NoLogo', '-NoProfile', '-File')]
+organization-doctor *ARGS:
+    $ErrorActionPreference = 'Stop'
+    & ./scripts/organization-doctor.ps1 {{ARGS}}
 
 # Deliberately NOT part of `just upgrade`: on a box without installTranslate this
 # would install rather than upgrade. (`just upgrade-scoop` does cover it once
 # installed — this recipe is the targeted version.)
 # upgrade the translate CLI from the daviddwlee84 scoop bucket
 upgrade-translate:
-    scoop update translate
+    pwsh -NoProfile -File ./scripts/upgrade-packages.ps1 -Action Translate
 
 # Verified official-installer Herdr update plus binary-matched global skill refresh.
 # Run outside Herdr after detaching; restart Herdr deliberately after completion.

@@ -147,7 +147,7 @@ try {
     $pwshArgs = @()
     if ($noProfile) { $pwshArgs += '-NoProfile' }
     $pwshArgs += @('-Command', $cmd)
-    & pwsh @pwshArgs
+    & (Join-Path $PSHOME 'pwsh.exe') @pwshArgs
     $rc = $LASTEXITCODE
 } finally {
     Pop-Location

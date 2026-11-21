@@ -7,7 +7,7 @@
 name = "Translate pane into…"
 description = "Same as Translate pane, but pick the target language"
 type = "form"
-command = 'pwsh -NoProfile -File "{{ $herdrDir }}/pane-translate.ps1" visible "$HERDR_PLUS_PANE_ID" --to "{{"{{"}}.Value{{"}}"}}"'
+command = {{ includeTemplate "herdr/powershell-command.toml.tmpl" (dict "data" . "args" (printf "-NoProfile -File \"%s/pane-translate.ps1\" visible \"$HERDR_PLUS_PANE_ID\" --to \"{{.Value}}\"" $herdrDir)) }}
 
 [form]
 prompt = "Translate this pane into"

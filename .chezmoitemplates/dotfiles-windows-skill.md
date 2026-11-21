@@ -30,6 +30,13 @@ there is no ansible here. Repo: <https://github.com/daviddwlee84/dotfiles-window
   `30_apps` (`applaunch`/`appquit`/`apprestart`/`sysvol`/`sysmute`/`x`), `35_yazi` (`y`),
   `40_copilot` (imports the Copilot module), `90_psreadline` (vi-mode gated on `enableVimMode`).
 
+## Organization profile
+- `organizationProfile` is `{{ get . "organizationProfile" | default "none" }}`; `none` preserves Scoop. The opt-in `microsoft` profile uses `.chezmoidata/windows-tool-sources.json`, never initializes/updates Scoop, and keeps unknown/plugin/build sources pending until individually approved.
+- `just organization-doctor` is metadata-only; `-Probe` explicitly requests bounded native version checks. Never infer IT approval from presence, winget success or a signature.
+- Fresh Microsoft machines start with built-in PowerShell 5.1: bootstrap installs/verifies pwsh, Git, chezmoi, uv, Bun, official Python and 7-Zip before modifiers, rediscovers MSIX/MSI entry points without restarting, persists `powerShellExecutable`/`pythonExecutable`, verifies config, then performs full apply. `-NonInteractive -Role workstation` is supported only with the Microsoft profile. Its `powerShellExecutable` must be a non-Scoop absolute path. Existing NVM4W is preferred; new owned npm agents use `%LOCALAPPDATA%/dotfiles/npm`, preserving other globals. See `docs/microsoft-organization.md` before migrating.
+- Microsoft uv storage defaults to `%LOCALAPPDATA%/dotfiles/uv/{tools,bin,cache,python,python-bin}` when `UV_*` locations are absent or Scoop-owned. Preserve explicit non-Scoop locations, old environments and persisted User variables; overrides and tool-bin PATH promotion are process/child-only. Repo-owned uv commands default to 60-second connect/read timeouts and one concurrent download unless explicitly configured. This does not change sources, TLS or public fallback; metadata 404 remains ineligible. Captured signed-URL credentials are redacted; raw upstream logs still need review.
+- Do not use blanket upgrades, security exclusions, copied/renamed blocked binaries, automatic service migration or automatic Scoop removal. Pending/unsupported tools are not successful installs. The package descriptions below otherwise describe the standard profile.
+
 ## Packages
 - `.chezmoiscripts/run_onchange_after_10_packages.ps1.tmpl` is the **single source of
   truth** for installs, gated by the init toggles. scoop = CLI tools, winget = GUI

@@ -4,6 +4,18 @@
 $scoopRoot = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $HOME 'scoop' }
 $node = Join-Path $scoopRoot 'apps\nodejs-lts\current\node.exe'
 $packageRoot = Join-Path $scoopRoot 'persist\nodejs-lts\bin\node_modules\@earendil-works\pi-coding-agent'
+$organizationModule = Join-Path $HOME '.config\powershell\modules\OrganizationPolicy\OrganizationPolicy.psm1'
+if (Test-Path -LiteralPath $organizationModule) {
+    Import-Module $organizationModule -Scope Local -Force
+    if (Test-MicrosoftOrganization) {
+        if (-not (Test-OrganizationSource pi -Operation execute)) { exit 126 }
+        try {
+            $location = Get-OrganizationPiLocation
+            $node = $location.NodeExecutable
+            $packageRoot = $location.PackageRoot
+        } catch { [Console]::Error.WriteLine($_); exit 126 }
+    }
+}
 $manifest = Join-Path $packageRoot 'package.json'
 
 if ($args.Count -gt 0 -and $args[0] -ceq 'update') {

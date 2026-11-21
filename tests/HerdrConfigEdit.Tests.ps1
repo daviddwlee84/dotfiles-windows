@@ -212,7 +212,7 @@ Describe 'Herdr runtime config editor' {
             $pattern = '(?ms)^\[\[keys\.command\]\]\r?\n' +
                 'key = "prefix\+alt\+e"\r?\n' +
                 'type = "pane"\r?\n' +
-                'command = ''pwsh -NoProfile -File "\{\{ \$herdrDir \}\}/edit-config\.ps1"''\r?\n' +
+                'command = \{\{ includeTemplate "herdr/powershell-command\.toml\.tmpl"[^\r\n]+/edit-config\.ps1[^\r\n]+\r?\n' +
                 'description = "edit runtime config, validate, and reload"\r?$'
             [regex]::Matches($template, $pattern).Count | Should -Be 1
             [regex]::Matches($template, '(?m)^key = "prefix\+alt\+g"$').Count | Should -Be 0

@@ -50,7 +50,8 @@ jobs:
               './tests/GitAliases.Tests.ps1', './tests/HerdrLazyGit.Tests.ps1',
               './tests/EditorConfig.Tests.ps1', './tests/WindowsCliRelease.Tests.ps1',
               './tests/DevCli.Tests.ps1', './tests/PersonalTools.Tests.ps1',
-              './tests/Translate.Tests.ps1', './tests/HerdrUpgrade.Tests.ps1'
+              './tests/Translate.Tests.ps1', './tests/HerdrUpgrade.Tests.ps1',
+              './tests/OrganizationProfile.Tests.ps1', './tests/FreshMicrosoftBootstrap.Tests.ps1'
             )
             if ($result.FailedCount -or $result.FailedContainersCount) { exit 1 }
           }
@@ -152,10 +153,41 @@ jobs:
             --destination $dest --exclude scripts,externals --no-tty --verbose
           if ($LASTEXITCODE -ne 0) { throw "minimal files-only apply failed (exit $LASTEXITCODE)" }
 
+      - name: Microsoft organization contract (isolated render only)
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'microsoft-contract'
+          New-Item -ItemType Directory -Force $root | Out-Null
+          . (Join-Path $PWD 'bootstrap.ps1')
+          $common = @('--source', $PWD.Path, '--config', (Join-Path $root 'config.toml'),
+            '--persistent-state', (Join-Path $root 'state.db'), '--cache', (Join-Path $root 'cache'),
+            '--destination', (Join-Path $root 'home'))
+          $initArgs = @('init') + $common + @(Get-UnattendedChezmoiArguments -Role workstation `
+            -Name 'CI Microsoft' -Email 'ci@example.com' -OrganizationProfile microsoft)
+          $python = (Get-Command python -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+          Invoke-ChezmoiCommand -Path (Get-Command chezmoi -CommandType Application | Select-Object -First 1).Source `
+            -ArgumentList $initArgs -OrganizationProfile microsoft -PowerShellExecutable (Join-Path $PSHOME 'pwsh.exe') -PythonExecutable $python
+          $data = (chezmoi data @common --format json) | ConvertFrom-Json
+          if ($data.organizationProfile -ne 'microsoft' -or $data.role -ne 'workstation' -or $data.pythonExecutable -ne $python -or -not $data.managedMachine -or $data.allowPublicPackageFallback) {
+            throw 'Microsoft defaults did not preserve the source contract'
+          }
+          $utf8 = [Text.UTF8Encoding]::new($false)
+          [Console]::InputEncoding = $utf8; [Console]::OutputEncoding = $utf8; $OutputEncoding = $utf8
+          foreach ($file in Get-ChildItem -Recurse -File | Where-Object Name -Match '\.(ps1|psm1)\.tmpl$') {
+            $text = (chezmoi execute-template @common --file $file.FullName) -join "`n"
+            if ($LASTEXITCODE -ne 0) { throw "Microsoft render failed: $($file.Name)" }
+            $errors = $null
+            [Management.Automation.Language.Parser]::ParseInput($text, [ref]$null, [ref]$errors) | Out-Null
+            if ($errors) { throw "Microsoft parse failed: $($file.Name): $errors" }
+          }
+          # Package/daemon/network boundaries are mocked by OrganizationProfile.Tests.ps1.
+          # Deliberately no apply and no installers in this lane.
+
       - name: chezmoi init (writes config from prompt answers)
         shell: pwsh
         run: |
           $flags = @(
+            '--promptChoice','Organization profile (none|microsoft)=none',
             '--promptChoice','Preferred external editor (nvim|micro|vim|nano|code|cursor)=nvim',
             '--promptChoice','Role: workstation (full desktop) or minimal (shell only)=minimal',
             '--promptString','Your full name (git)=CI Runner',

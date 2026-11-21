@@ -46,6 +46,52 @@ Template-only fragments such as package-source policy inherit the enclosing
 edition guard. Scripts embedded as **string data** for later execution keep their
 own guard. Always render and parse the final output, not only each source file.
 
+## An executable works but its Scoop shim is blocked
+
+`CreateProcessW ... scoop\shims\pwsh.EXE ... Access is denied (os error 5)`
+does not establish that PowerShell itself, or every Scoop package, is blocked.
+Inspect the notification and file signatures, then test the intended executable
+once with `-NoProfile -NonInteractive`. Stop if it is also denied; do not disable
+policy or add antivirus exclusions.
+
+An optional machine-local `powerShellExecutable` value in chezmoi `[data]`
+selects an **absolute local path to `pwsh.exe`**, not a command line. Empty or
+absent keeps the normal `pwsh` PATH lookup. Example for an existing, verified
+Microsoft installation (use the actual path on your machine):
+
+```toml
+[data]
+powerShellExecutable = 'C:\Program Files\PowerShell\7\pwsh.exe'
+
+[interpreters.ps1]
+command = 'C:\Program Files\PowerShell\7\pwsh.exe'
+args = ["-NoProfile", "-NonInteractive"]
+```
+
+Set both entries in the existing chezmoi config for immediate use; do not replace
+its other data. Subsequent `chezmoi init` preserves the data value and renders the
+interpreter from it. Paths containing `"`, `%`, `!` or newlines are rejected because
+Herdr custom commands also pass through Windows command-string parsing.
+
+The override is wired into the managed environment's **process-only** PATH,
+Herdr's default shell and PowerShell custom commands/quick actions. Nested Herdr
+PowerShell helpers reuse their running host. It does not install or approve any
+software, alter persisted PATH, change bootstrap/package sources, or replace
+the future restricted installation profile. Other terminal applications'
+independent shell settings are not automatically changed.
+
+Apply only the intended config/helpers, excluding run-scripts and externals;
+avoid a full apply just to repair a shell. Herdr's managed `terminal` table is
+reasserted on apply, so a live-only edit is not sufficient. On older Herdr UI
+builds, the GPUI `[terminal]` table contains font settings, not the TUI shell
+setting: verify that build's config selection instead of inventing a GPUI key.
+
+**New shell versus saved shell:** a stored absolute shim path does not change
+when PATH or `default_shell` changes. Verify a new terminal first, then use the
+installed Herdr version's supported recovery flow for the failed terminal.
+Do not delete session data or stop a server with active work. A unit test or a
+successful no-profile probe does not prove saved-session recovery.
+
 ## Scope is part of the interface
 
 Dot-sourcing a file inside a function does not make its functions global.

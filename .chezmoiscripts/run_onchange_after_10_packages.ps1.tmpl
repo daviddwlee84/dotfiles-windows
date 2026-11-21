@@ -41,6 +41,14 @@ try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catc
 # stale Machine installs while CI/portable process-only entries remain first.
 {{ include "scripts/windows-path-precedence.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 Set-WindowsPathPrecedence
+try {
+{{ template "organization-policy.ps1" . }}
+} catch {
+    Write-Warning "Package pass skipped: invalid organization policy: $_"
+    exit 0
+}
+Set-OrganizationEnvironment
+{{ include "scripts/organization-packages.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 
 # Package registries: company-approved pull-through feeds on managed machines,
 # otherwise optional China/GFW mirrors. Shared with profile.d so apply-time and
@@ -225,6 +233,12 @@ function Npm-InstallGlobal([string[]]$pkgs) {
             Info "npm: $p already installed -- skipping (upgrade: just upgrade-npm-agents)"
             continue
         }
+        if (Test-MicrosoftOrganization) {
+            # New installs have a stable owner independent of NVM's selected version.
+            $npm.Prefix = (Get-OrganizationNpmLayout).Prefix
+            $ownedManifest = Join-Path (Join-Path $npm.Prefix 'node_modules') "$p/package.json"
+            if (Test-Path -LiteralPath $ownedManifest -PathType Leaf) { Info "npm: $p already in organization prefix"; continue }
+        }
         Info "npm i -g $p"
         $result = Invoke-PackageSourceCommand -Manager npm -Executable $npm.NodeExecutable `
             -Arguments @($npm.NpmCli, 'install', '-g', $p) -Operation $p `
@@ -235,6 +249,10 @@ function Npm-InstallGlobal([string[]]$pkgs) {
 }
 
 function Install-PiCodingAgent {
+    if (Test-MicrosoftOrganization) {
+        $existing = Get-OrganizationPiLocation
+        if (-not $existing.Owned) { Info "Pi: preserving existing user-owned prefix $($existing.Prefix)"; return }
+    }
     $npmExecutable = Get-PiOwnedNpmCommandPath
     if (-not (Test-Path -LiteralPath $npmExecutable -PathType Leaf)) {
         Register-Failure "npm:$script:PiCodingAgentPackage (owned Scoop npm unavailable)"
@@ -358,6 +376,13 @@ function Install-Weasel {
 }
 
 # ===========================================================================
+# Branch BEFORE any Scoop discovery, bucket setup or secondary downloader.
+if (Test-MicrosoftOrganization) {
+    Invoke-OrganizationPackages | Format-Table -Wrap -AutoSize | Out-Host
+    foreach ($failure in $script:Failures) { Write-Warning "Component failed: $failure" }
+    Info 'Microsoft package pass finished; pending/unsupported/unverified items are not successes.'
+    exit 0
+}
 Ensure-Scoop
 
 # Core CLI toolset — the shell baseline, always installed.

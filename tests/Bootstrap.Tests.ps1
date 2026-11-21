@@ -267,6 +267,7 @@ Describe 'chezmoi bootstrap argument routing' {
             'init', '--apply', '--source', $source,
             '--no-tty', '--promptDefaults',
             '--promptChoice', 'Role: workstation (full desktop) or minimal (shell only)=minimal',
+            '--promptChoice', 'Organization profile (none|microsoft)=none',
             '--promptString', "Your full name (git)=$name",
             '--promptString', "Your git email=$email"
         )
@@ -291,6 +292,7 @@ Describe 'chezmoi bootstrap argument routing' {
             'init', '--apply', '--branch', $branch, $repo,
             '--no-tty', '--promptDefaults',
             '--promptChoice', 'Role: workstation (full desktop) or minimal (shell only)=minimal',
+            '--promptChoice', 'Organization profile (none|microsoft)=none',
             '--promptString', 'Your full name (git)=Linus Torvalds',
             '--promptString', 'Your git email=linus+test@example.com'
         )
@@ -422,7 +424,7 @@ exit 0
         Mock Invoke-ChezmoiSetup {}
 
         {
-            Invoke-Bootstrap -NonInteractive -Role minimal -Name 'Ada' -Email 'ada@example.com'
+            Invoke-Bootstrap -OrganizationProfile none -NonInteractive -Role minimal -Name 'Ada' -Email 'ada@example.com'
         } | Should -Throw '*pwsh validation failed*'
 
         Should -Invoke Resolve-BootstrapCommand -Times 0 -Exactly -ParameterFilter { $CommandName -eq 'chezmoi' }
@@ -578,6 +580,7 @@ $env:BOOTSTRAP_CAPTURE = '__CAPTURE_PATH__'
 $env:BOOTSTRAP_MISSING_SOURCE = '__MISSING_SOURCE__'
 Remove-Item Env:XDG_CONFIG_HOME, Env:CHEZMOI_CONFIG_FILE -ErrorAction SilentlyContinue
 
+function global:Read-Host { 'none' } # answer the pre-install organization prompt
 function global:Get-ExecutionPolicy { 'Bypass' }
 function global:Set-ExecutionPolicy { throw 'Set-ExecutionPolicy must not run in this harness' }
 

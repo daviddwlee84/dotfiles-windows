@@ -7,6 +7,6 @@
 # re-fires whenever that logic changes. The embedded script requests elevation
 # once when needed and otherwise prints one local recovery command; every failure
 # stays non-fatal to the apply. See docs/tools.md and scripts/enable-sshd.ps1.
-{{ if .installSshServer -}}
+{{ if and .installSshServer (ne (get . "organizationProfile" | default "none") "microsoft") -}}
 {{ include "scripts/enable-sshd.ps1" | replace "#Requires -PSEdition Core" "# Core edition is required by the enclosing script." }}
 {{ end -}}

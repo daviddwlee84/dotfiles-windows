@@ -7,6 +7,26 @@
 # the separate cross-platform dotfiles repo.
 
 [data]
+    # Bootstrap supplies these only around the chezmoi child, restoring its env afterward.
+    # --override-data affects rendering, not the config init persists.
+    {{- $organization := env "DOTFILES_BOOTSTRAP_ORGANIZATION_PROFILE" }}
+    {{- if not $organization }}
+    {{- $organization = promptChoiceOnce . "organizationProfile" "Organization profile (none|microsoft)" (list "none" "microsoft") "none" }}
+    {{- end }}
+    {{- if not (has $organization (list "none" "microsoft")) }}{{ fail "Invalid bootstrap organization profile" }}{{ end }}
+    {{- $powerShellExecutable := get . "powerShellExecutable" | default "" }}
+    {{- if and (eq $organization "microsoft") (env "DOTFILES_BOOTSTRAP_POWERSHELL_EXECUTABLE") }}
+    {{- $powerShellExecutable = env "DOTFILES_BOOTSTRAP_POWERSHELL_EXECUTABLE" }}
+    {{- end }}
+    {{- $pythonExecutable := get . "pythonExecutable" | default "" }}
+    {{- if and (eq $organization "microsoft") (env "DOTFILES_BOOTSTRAP_PYTHON_EXECUTABLE") }}
+    {{- $pythonExecutable = env "DOTFILES_BOOTSTRAP_PYTHON_EXECUTABLE" }}
+    {{- end }}
+    powerShellExecutable = {{ $powerShellExecutable | quote }}
+    pythonExecutable = {{ $pythonExecutable | quote }}
+    nodeExecutable = {{ get . "nodeExecutable" | default "" | quote }}
+    organizationProfile = {{ $organization | quote }}
+    organizationSourceApprovals = {{ get . "organizationSourceApprovals" | default (list) | toJson }}
     # role picks coarse defaults; every toggle can still be overridden.
     {{- $role := promptChoiceOnce . "role" "Role: workstation (full desktop) or minimal (shell only)" (list "workstation" "minimal") "workstation" }}
     {{- $full := eq $role "workstation" }}
@@ -65,7 +85,7 @@
     # gets /T (see Install-Weasel in the packages script).
     installInputMethod   = {{ promptBoolOnce . "installInputMethod" "Install the Rime input method (Weasel) for Traditional Chinese (needs admin)" false }}
     useChineseMirror     = {{ promptBoolOnce . "useChineseMirror" "Use China (GFW) mirrors for pip/uv, npm, RubyGems, Go, and rustup" false }}
-    managedMachine       = {{ promptBoolOnce . "managedMachine" "Managed or corporate machine (skip org-policy-blocked apps like Tailscale and Grammarly)" false }}
+    managedMachine       = {{ promptBoolOnce . "managedMachine" "Managed or corporate machine (skip org-policy-blocked apps like Tailscale and Grammarly)" (eq $organization "microsoft") }}
     allowPublicPackageFallback = {{ promptBoolOnce . "allowPublicPackageFallback" "Allow one public PyPI/npm retry after eligible corporate feed failures" false }}
     backupMode           = {{ promptChoiceOnce . "backupMode" "Back up existing files before apply (smart|full|off)" (list "smart" "full" "off") "smart" | quote }}
     preferredEditor      = {{ promptChoiceOnce . "preferredEditor" "Preferred external editor (nvim|micro|vim|nano|code|cursor)" (list "nvim" "micro" "vim" "nano" "code" "cursor") "nvim" | quote }}
@@ -73,7 +93,7 @@
 
 # Run .ps1 scripts (.chezmoiscripts + modify_/create_) under PowerShell 7.
 [interpreters.ps1]
-    command = "pwsh"
+    command = {{ includeTemplate "powershell-executable" (dict "powerShellExecutable" $powerShellExecutable "organizationProfile" $organization) | quote }}
     args = ["-NoProfile", "-NonInteractive"]
 
 [diff]

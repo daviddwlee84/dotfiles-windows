@@ -15,6 +15,10 @@
 # Gated on installCodingAgents. Re-runs when either embedded overlay changes.
 {{ if .installCodingAgents -}}
 $ErrorActionPreference = 'Continue'   # best-effort; never abort the apply
+{{ if ne (includeTemplate "organization-source-allowed" (dict "data" . "id" "agent-plugins")) "true" -}}
+Write-Warning 'Microsoft profile: agent marketplace sources are pending approval; existing Claude settings/HUD are preserved, not reconfigured.'
+exit 0
+{{ end -}}
 
 # Embedded from chezmoi-ignored claude/ sources. Embedding makes this script
 # self-contained and includes both overlays in the run_onchange content hash.

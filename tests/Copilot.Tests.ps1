@@ -122,6 +122,8 @@ Describe 'Copilot module' {
 
     Context 'installed package metadata and verified stamps' {
         BeforeEach {
+            # Provisioning is mocked here; never import the developer's live policy.
+            Mock Test-CopilotOrganizationSource { $true } -ModuleName Copilot
             $env:COPILOT_API_PKG = '@jeffreycao/copilot-api@2.1.0'
             $env:XDG_DATA_HOME = Join-Path $TestDrive "xdg-$([guid]::NewGuid())"
             $script:pkgPrefix = Join-Path $env:XDG_DATA_HOME 'copilot-api/pkg'

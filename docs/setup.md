@@ -43,7 +43,11 @@ powershell.exe -ExecutionPolicy Bypass -File "$env:TEMP\bootstrap.ps1" `
   -Name 'Da-Wei Lee' -Email 'daviddwlee84@gmail.com'
 ```
 
-`-NonInteractive` deliberately supports only `minimal`; it rejects a missing
+For the default profile, `-NonInteractive` deliberately supports only `minimal`.
+Fresh [Microsoft workstations](microsoft-organization.md) additionally support
+`-OrganizationProfile microsoft -NonInteractive -Role workstation`, starting from
+in-box Windows PowerShell 5.1 and acquiring modern runtimes before full apply.
+Both modes reject a missing
 role/name/email **or any existing chezmoi config/source** before changing execution
 policy or installing anything. Existing `prompt*Once` data must be changed with
 `chezmoi init --prompt` or by editing the config—an unattended rerun cannot
@@ -159,6 +163,7 @@ Scoop download cache and temporary staging. See [Disk space](disk-space.md).
 | Prompt | Default | Meaning |
 |---|---|---|
 | Role | `workstation` | `workstation` = full desktop; `minimal` = shell only |
+| Organization profile | `none` | `microsoft` selects the opt-in [Microsoft Organization profile](microsoft-organization.md); separate from role and managed registries. |
 | `preferredEditor` | `nvim` | External editor, independent of PSReadLine vi mode; nvim / micro / vim / nano / code / cursor. Switch later with [editorcfg](editor.md). |
 | `Install coding agents (Claude Code, OpenCode, Codex, Copilot CLI, Pi, pia, OMP, SpecStory)` | on (workstation) | native and npm agents plus the Git-managed `pia` combo checkout; credentials and mutable sessions stay outside chezmoi |
 | Agent completion feedback | `notify` (workstation) / `none` (minimal) | what a coding agent does when it finishes: `none` / `notify` (Windows toast) / `peon` (game voice line) / `both` — see [Agent completion sounds](agent-sounds.md) |
@@ -183,7 +188,7 @@ Scoop download cache and temporary staging. See [Disk space](disk-space.md).
 | Personal CLI tools | on (workstation) | dev-cli, translate and four lazy tools; independent of Herdr |
 | Rime input method (Weasel) | off | Traditional Chinese IME. Machine-scope installer — expect a UAC prompt; deploys the shared Rime `*.custom.yaml` to `%APPDATA%\Rime` |
 | China mirrors | off | pip/uv, npm, RubyGems, Go, and rustup via GFW mirrors |
-| Managed machine | off | use company PyPI/npm registries and skip apps org policy usually blocks (Tailscale, Grammarly) |
+| Managed machine | off; on for new Microsoft profiles | use company PyPI/npm registries and skip apps org policy usually blocks (Tailscale, Grammarly) |
 | Public package fallback | off | on managed machines, retry eligible transient corporate PyPI/npm failures once against the isolated public source |
 | Backup mode | `smart` | snapshot existing files before the first apply (`smart`/`full`/`off`) |
 | PSReadLine vi mode | on | vi editing in the shell |
