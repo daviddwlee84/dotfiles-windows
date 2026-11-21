@@ -107,8 +107,8 @@ status_line = ["model"]
     }
 
     It 'renders only for coding-agent installs and follows the peon sound tier' {
-        $enabled = & chezmoi execute-template --source $RepoRoot --override-data '{"installCodingAgents":true,"agentSounds":"peon"}' --file $TemplatePath | Out-String
-        $disabled = & chezmoi execute-template --source $RepoRoot --override-data '{"installCodingAgents":false,"agentSounds":"none"}' --file $TemplatePath | Out-String
+        $enabled = & chezmoi execute-template --source $RepoRoot --override-data '{"organizationProfile":"none","installCodingAgents":true,"agentSounds":"peon"}' --file $TemplatePath | Out-String
+        $disabled = & chezmoi execute-template --source $RepoRoot --override-data '{"organizationProfile":"none","installCodingAgents":false,"agentSounds":"none"}' --file $TemplatePath | Out-String
         $LASTEXITCODE | Should -Be 0
 
         $enabled | Should -Match 'Sync-CodexHooks'
@@ -116,7 +116,7 @@ status_line = ["model"]
         $disabled | Should -Not -Match 'Sync-CodexHooks'
 
         $rendered = Get-Content -Raw -LiteralPath $TemplatePath |
-            & chezmoi execute-template --source $RepoRoot --override-data '{"installCodingAgents":true,"agentSounds":"peon"}'
+            & chezmoi execute-template --source $RepoRoot --override-data '{"organizationProfile":"none","installCodingAgents":true,"agentSounds":"peon"}'
         $LASTEXITCODE | Should -Be 0
         $parseErrors = $null
         [Management.Automation.Language.Parser]::ParseInput(($rendered -join "`n"), [ref]$null, [ref]$parseErrors) | Out-Null

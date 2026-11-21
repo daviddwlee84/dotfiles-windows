@@ -80,7 +80,7 @@ Describe 'Organization source decisions' {
 Describe 'Organization runtime selection is metadata-only' {
     BeforeEach {
         $script:SavedEnvironment = @{}
-        foreach ($key in 'PATH', 'SCOOP', 'SCOOP_GLOBAL', 'NVM_SYMLINK', 'LOCALAPPDATA', 'APPDATA', 'ProgramFiles', 'ProgramW6432', 'DOTFILES_ORGANIZATION_PROFILE', 'UV_PYTHON_DOWNLOADS', 'AZURE_EXTENSION_USE_DYNAMIC_INSTALL') {
+        foreach ($key in 'PATH', 'SCOOP', 'SCOOP_GLOBAL', 'NVM_SYMLINK', 'LOCALAPPDATA', 'APPDATA', 'ProgramFiles', 'ProgramW6432', 'DOTFILES_ORGANIZATION_PROFILE', 'UV_PYTHON_DOWNLOADS', 'UV_TOOL_DIR', 'UV_TOOL_BIN_DIR', 'UV_CACHE_DIR', 'UV_PYTHON_INSTALL_DIR', 'UV_PYTHON_BIN_DIR', 'UV_PYTHON', 'AZURE_EXTENSION_USE_DYNAMIC_INSTALL') {
             $script:SavedEnvironment[$key] = [Environment]::GetEnvironmentVariable($key)
         }
         Initialize-OrganizationPolicy -Data @{ organizationProfile = 'microsoft'; managedMachine = $true } -Catalog $script:Catalog
@@ -113,6 +113,48 @@ Describe 'Organization runtime selection is metadata-only' {
         Mock Resolve-OrganizationPython { $null }
         Set-OrganizationEnvironment
         @($env:PATH -split ';') | Should -Not -Contain (Join-Path $env:ProgramFiles '7-Zip')
+    }
+    It 'replaces Scoop-owned uv storage only in the returned process environment' {
+        $env:SCOOP = Join-Path $TestDrive 'old-scoop'
+        $env:UV_TOOL_DIR = Join-Path $env:SCOOP 'persist/uv/tools/versions'
+        $env:UV_TOOL_BIN_DIR = Join-Path $env:SCOOP 'persist/uv/tools/shims'
+        $env:UV_CACHE_DIR = Join-Path $env:SCOOP 'persist/uv/cache'
+        $userValue = [Environment]::GetEnvironmentVariable('UV_TOOL_DIR', 'User')
+        $mapping = Get-OrganizationUvEnvironment
+        $mapping.UV_TOOL_DIR | Should -Be (Join-Path $env:LOCALAPPDATA 'dotfiles/uv/tools')
+        $mapping.UV_TOOL_BIN_DIR | Should -Be (Join-Path $env:LOCALAPPDATA 'dotfiles/uv/bin')
+        $mapping.UV_CACHE_DIR | Should -Be (Join-Path $env:LOCALAPPDATA 'dotfiles/uv/cache')
+        $env:UV_TOOL_DIR | Should -Be (Join-Path $env:SCOOP 'persist/uv/tools/versions')
+        [Environment]::GetEnvironmentVariable('UV_TOOL_DIR', 'User') | Should -Be $userValue
+    }
+    It 'promotes the owned uv tool directory only in the process when it exists' {
+        $env:LOCALAPPDATA = Join-Path $TestDrive 'local-app-data'
+        $env:UV_TOOL_BIN_DIR = Join-Path $HOME 'scoop/persist/uv/tools/shims'
+        $bin = Join-Path $env:LOCALAPPDATA 'dotfiles/uv/bin'
+        $userPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
+        $userBin = [Environment]::GetEnvironmentVariable('UV_TOOL_BIN_DIR', 'User')
+        Mock Resolve-OrganizationPython { $null }
+        Set-OrganizationEnvironment
+        @($env:PATH -split ';') | Should -Not -Contain $bin
+        New-Item -ItemType Directory -Force $bin | Out-Null
+        Set-OrganizationEnvironment
+        Set-OrganizationEnvironment
+        $env:UV_TOOL_BIN_DIR | Should -Be $bin
+        @($env:PATH -split ';' | Where-Object { $_ -eq $bin }).Count | Should -Be 1
+        [Environment]::GetEnvironmentVariable('PATH', 'User') | Should -Be $userPath
+        [Environment]::GetEnvironmentVariable('UV_TOOL_BIN_DIR', 'User') | Should -Be $userBin
+    }
+    It 'preserves explicit non-Scoop uv storage and does not mutate caller overrides' {
+        $env:UV_TOOL_DIR = Join-Path $TestDrive 'custom-tools'
+        $overrides = @{ UV_TOOL_BIN_DIR = (Join-Path $TestDrive 'custom-bin') }
+        $mapping = Get-OrganizationUvEnvironment -Environment $overrides
+        $mapping.ContainsKey('UV_TOOL_DIR') | Should -BeFalse
+        $mapping.ContainsKey('UV_TOOL_BIN_DIR') | Should -BeFalse
+        $overrides.Count | Should -Be 1
+    }
+    It 'does not redirect uv storage for the legacy profile' {
+        Initialize-OrganizationPolicy -Data @{ organizationProfile = 'none' } -Catalog $script:Catalog
+        (Get-OrganizationUvEnvironment).Count | Should -Be 0
     }
     It 'prefers the active NVM pair without running Node or npm' {
         $env:NVM_SYMLINK = Join-Path $TestDrive 'nvm-active'
@@ -167,6 +209,56 @@ Describe 'Organization install and upgrade adapters' {
         $result.Count | Should -Be 3
         @($result | Where-Object Status -NE 'pending-approval').Count | Should -Be 0
         Should -Invoke Invoke-OrganizationPackageAction -Times 0
+    }
+}
+
+Describe 'Corporate uv child environment' {
+    BeforeAll { . (Join-Path $script:Repo 'scripts/package-source-runner.ps1') }
+    BeforeEach {
+        Initialize-OrganizationPolicy -Data @{ organizationProfile = 'microsoft'; managedMachine = $true } -Catalog $script:Catalog
+        $script:TransportSaved = @{}
+        foreach ($name in 'UV_HTTP_TIMEOUT','UV_HTTP_CONNECT_TIMEOUT','UV_CONCURRENT_DOWNLOADS') {
+            $script:TransportSaved[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+            [Environment]::SetEnvironmentVariable($name, $null, 'Process')
+        }
+        Mock Invoke-CapturedPackageProcess {
+            $script:CapturedUvEnvironment = $Environment
+            [pscustomobject]@{ ExitCode = 0; TimedOut = $false; LaunchFailed = $false; Terminated = $true; Stdout = ''; Stderr = '' }
+        }
+    }
+    AfterEach { foreach ($name in $script:TransportSaved.Keys) { [Environment]::SetEnvironmentVariable($name, $script:TransportSaved[$name], 'Process') } }
+    It 'adds conservative transport defaults only to the child' {
+        $result = Invoke-PackageSourceCommand -Manager uv -Executable 'C:\Approved\uv.exe' -Arguments @('tool','install','apprise') -Operation apprise -ManagedMachine $true -AllowPublicFallback $false -OutputMode Capture
+        $result.Succeeded | Should -BeTrue
+        $script:CapturedUvEnvironment.UV_HTTP_CONNECT_TIMEOUT | Should -Be '60'
+        $script:CapturedUvEnvironment.UV_HTTP_TIMEOUT | Should -Be '60'
+        $script:CapturedUvEnvironment.UV_CONCURRENT_DOWNLOADS | Should -Be '1'
+        [Environment]::GetEnvironmentVariable('UV_HTTP_CONNECT_TIMEOUT','Process') | Should -BeNullOrEmpty
+        $script:CapturedUvEnvironment.UV_INSECURE_HOST | Should -BeNullOrEmpty
+    }
+    It 'isolates inherited and caller-supplied Scoop storage in the uv child' {
+        $previous = $env:UV_TOOL_DIR
+        $scoopTools = Join-Path $HOME 'scoop/persist/uv/tools/versions'
+        $overrides = @{ UV_TOOL_BIN_DIR = (Join-Path $HOME 'scoop/persist/uv/tools/shims') }
+        try {
+            $env:UV_TOOL_DIR = $scoopTools
+            $null = Invoke-PackageSourceCommand -Manager uv -Executable 'C:\Approved\uv.exe' -Arguments @('tool','install','apprise') -Operation apprise -ManagedMachine $true -AllowPublicFallback $false -AdditionalEnvironment $overrides -OutputMode Capture
+            $script:CapturedUvEnvironment.UV_TOOL_DIR | Should -Be (Join-Path $env:LOCALAPPDATA 'dotfiles/uv/tools')
+            $script:CapturedUvEnvironment.UV_TOOL_BIN_DIR | Should -Be (Join-Path $env:LOCALAPPDATA 'dotfiles/uv/bin')
+            $env:UV_TOOL_DIR | Should -Be $scoopTools
+            $overrides.UV_TOOL_BIN_DIR | Should -Be (Join-Path $HOME 'scoop/persist/uv/tools/shims')
+            $overrides.Count | Should -Be 1
+        } finally { [Environment]::SetEnvironmentVariable('UV_TOOL_DIR', $previous, 'Process') }
+    }
+    It 'preserves explicit user and per-command transport settings' {
+        $env:UV_CONCURRENT_DOWNLOADS = '7'
+        $override = @{ UV_HTTP_CONNECT_TIMEOUT = '20'; UV_HTTP_TIMEOUT = '45' }
+        $null = Invoke-PackageSourceCommand -Manager uv -Executable 'C:\Approved\uv.exe' -Arguments @('tool','install','apprise') -Operation apprise -ManagedMachine $true -AllowPublicFallback $false -AdditionalEnvironment $override -OutputMode Capture
+        $script:CapturedUvEnvironment.UV_HTTP_CONNECT_TIMEOUT | Should -Be '20'
+        $script:CapturedUvEnvironment.UV_HTTP_TIMEOUT | Should -Be '45'
+        $script:CapturedUvEnvironment.ContainsKey('UV_CONCURRENT_DOWNLOADS') | Should -BeFalse
+        $env:UV_CONCURRENT_DOWNLOADS | Should -Be '7'
+        $override.Count | Should -Be 2
     }
 }
 

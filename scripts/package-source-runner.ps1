@@ -15,6 +15,10 @@ function Protect-PackageSourceOutput {
     if (-not $Text) { return '' }
     $protected = $Text -replace '(?i)(https?://)[^/@\s:]+:[^/@\s]+@', '$1***:***@'
     $protected = $protected -replace '(?im)((?:_authToken|token|password)\s*[=:]\s*)\S+', '$1***'
+    # Azure Artifacts redirects use temporary SAS / vsassets signatures. Preserve
+    # the host/path for classification without disclosing a usable signed URL.
+    $protected = $protected -replace '(?i)([?&](?:sig|signature|P4|X-Amz-Signature|X-Amz-Credential|X-Amz-Security-Token)=)[^&\s"''<>]+', '$1***'
+    $protected = $protected -replace '(?im)(Authorization\s*:\s*(?:Bearer|Basic)\s+)\S+', '$1***'
     $protected
 }
 
@@ -355,9 +359,21 @@ function Invoke-PackageSourceCommand {
                 Stderr = 'Microsoft package operation requires corporate feeds and a non-Scoop runtime; no command was run.'
             }
         }
-        if ($Manager -eq 'uv' -and -not (Test-OrganizationSource uv-python -Quiet)) {
+        if ($Manager -eq 'uv') {
             $AdditionalEnvironment = @{} + $AdditionalEnvironment
-            $AdditionalEnvironment['UV_PYTHON_DOWNLOADS'] = 'never'
+            $uvEnvironment = Get-OrganizationUvEnvironment -Environment $AdditionalEnvironment
+            foreach ($name in $uvEnvironment.Keys) { $AdditionalEnvironment[$name] = $uvEnvironment[$name] }
+            if (-not (Test-OrganizationSource uv-python -Quiet)) { $AdditionalEnvironment['UV_PYTHON_DOWNLOADS'] = 'never' }
+            # Corporate artifact redirects can take longer to connect through the
+            # managed network path. Bound concurrency without changing that path,
+            # the registry, TLS, or any explicit caller/user transport setting.
+            $transportDefaults = @{ UV_HTTP_CONNECT_TIMEOUT = '60'; UV_HTTP_TIMEOUT = '60'; UV_CONCURRENT_DOWNLOADS = '1' }
+            foreach ($name in $transportDefaults.Keys) {
+                if (-not $AdditionalEnvironment.ContainsKey($name) -and
+                    [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable($name, 'Process'))) {
+                    $AdditionalEnvironment[$name] = $transportDefaults[$name]
+                }
+            }
         }
     }
     $attempts = [Collections.Generic.List[object]]::new()

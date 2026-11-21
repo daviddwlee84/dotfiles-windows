@@ -205,12 +205,38 @@ function Get-OrganizationPiLocation {
     [pscustomobject]@{ NodeExecutable = $layout.NodeExecutable; Prefix = $layout.Prefix; PackageRoot = (Join-Path $layout.Prefix 'node_modules\@earendil-works\pi-coding-agent'); Owned = $true }
 }
 
+function Get-OrganizationUvEnvironment {
+    param([hashtable]$Environment = @{})
+    $values = @{}
+    if (-not (Test-MicrosoftOrganization)) { return $values }
+    $root = Join-Path $env:LOCALAPPDATA 'dotfiles\uv'
+    $defaults = @{
+        UV_TOOL_DIR = (Join-Path $root 'tools')
+        UV_TOOL_BIN_DIR = (Join-Path $root 'bin')
+        UV_CACHE_DIR = (Join-Path $root 'cache')
+        UV_PYTHON_INSTALL_DIR = (Join-Path $root 'python')
+        UV_PYTHON_BIN_DIR = (Join-Path $root 'python-bin')
+    }
+    foreach ($name in $defaults.Keys) {
+        $current = if ($Environment.ContainsKey($name)) { $Environment[$name] } else { [Environment]::GetEnvironmentVariable($name, 'Process') }
+        # Recognize the old Scoop owner, not arbitrary user locations. Never move
+        # old environments or rewrite persisted User variables during migration.
+        if (-not $current -or (Test-OrganizationScoopPath $current)) { $values[$name] = $defaults[$name] }
+    }
+    $values
+}
+
 function Set-OrganizationEnvironment {
     if (-not (Test-MicrosoftOrganization)) {
         if ($env:DOTFILES_ORGANIZATION_PROFILE -eq 'microsoft') { Remove-Item Env:DOTFILES_ORGANIZATION_PROFILE }
         return
     }
     $env:DOTFILES_ORGANIZATION_PROFILE = 'microsoft'
+    $uvEnvironment = Get-OrganizationUvEnvironment
+    foreach ($name in $uvEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, $uvEnvironment[$name], 'Process') }
+    if ($env:UV_TOOL_BIN_DIR -and (Test-Path -LiteralPath $env:UV_TOOL_BIN_DIR -PathType Container)) {
+        $env:PATH = $env:UV_TOOL_BIN_DIR + ';' + (@($env:PATH -split ';' | Where-Object { $_ -ne $env:UV_TOOL_BIN_DIR }) -join ';')
+    }
     # uv distributions bypass PyPI. Disallow implicit downloads unless separately approved.
     if (-not (Test-OrganizationSource uv-python -Quiet)) { $env:UV_PYTHON_DOWNLOADS = 'never' }
     # Downstream extension autoinstall is separately opt-in.

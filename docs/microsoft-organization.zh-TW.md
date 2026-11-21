@@ -115,11 +115,35 @@ Copilot provisioning 需要獨立核准，Microsoft 模式失敗後不換 proxy�
 - 不切換 NVM 版本、不搬其他 npm globals。新的 repo-owned npm agents 使用
   `%LOCALAPPDATA%\dotfiles\npm`。已辨識的既有 Pi 可沿用原 prefix 執行，但不
   接管升級；需要時另行確認遷移 ownership。
-- 已有其他 owner 的工具不重複安裝；這可能需要先明確遷移，才能讓新 profile 管理更新。
+- uv 的儲存位置也必須排除 Scoop：WinGet 的 `uv.exe` 仍可能繼承 Scoop 的
+  `UV_TOOL_DIR`、`UV_TOOL_BIN_DIR`、`UV_CACHE_DIR`、`UV_PYTHON_INSTALL_DIR`、
+  `UV_PYTHON_BIN_DIR`。缺少值或可辨識的 Scoop 路徑，只在 process／套件子程序中
+  改用 `%LOCALAPPDATA%\dotfiles\uv\{tools,bin,cache,python,python-bin}`；明確的
+  非 Scoop 自訂位置保留。工具 `bin` 存在後才加入 process PATH，第一次安裝後請開新
+  shell。舊環境不搬移／刪除，User 環境變數不改寫；已核准工具另裝到選定的非 Scoop
+  tool root。不要用 `uv tool update-shell` 當作遷移捷徑。
+- 其他已有不同 owner 的工具不重複安裝；這可能需要先明確遷移，才能讓新 profile 管理更新。
 - 不自動搬移 Pueue service／queue、不改 Herdr saved-session path、不卸載 Scoop、
   不換 prompt、不編輯 environment.local 檔案。
 - 切換 profile 後開新 approved PowerShell／GUI session；執行中的 Herdr server
   仍保有舊環境與 saved shell 絕對路徑。
+
+## 公司 registry 排查
+
+排查期間維持 `allowPublicPackageFallback=false`。`.whl.metadata` HTTP 404 不是
+允許 fallback 的暫時性錯誤；index 或 HEAD 成功也不代表安裝成功。明確重試同一個
+公司來源，檢查實際安裝結果及執行入口。
+
+Microsoft 的 repo-owned uv 命令只在**子程序**預設
+`UV_HTTP_CONNECT_TIMEOUT=60`、`UV_HTTP_TIMEOUT=60`、`UV_CONCURRENT_DOWNLOADS=1`。
+這些保守的傳輸設定容許較慢的 artifact redirect，不修改 registry、proxy、DNS、
+認證或 TLS。明確的 process／caller 設定優先，runner 的整體 timeout 仍有效。
+這是緩解措施，不是 feed 或網路產品的根因證明。參見
+[uv 環境變數文件](https://docs.astral.sh/uv/reference/environment/)。
+
+擷取的套件輸出會遮蔽 artifact query 簽章與 Authorization header，保留
+host／path／錯誤資訊。上游原始 log 仍可能包含憑證，不要分享 signed redirect URL
+或未檢查的 debug log。
 
 ## 診斷與升級
 

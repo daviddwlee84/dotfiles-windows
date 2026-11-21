@@ -4,6 +4,9 @@
 BeforeAll {
     $RepoRoot = Split-Path -Parent $PSScriptRoot
     . (Join-Path $RepoRoot 'scripts/package-source-runner.ps1')
+    # Registry policy is orthogonal to the deployed machine profile. Do not let
+    # Get-Command auto-import a real Microsoft profile into these isolated fixtures.
+    function Test-MicrosoftOrganization { $false }
 
     function New-FakeNpmCommand {
         param([Parameter(Mandatory)] [string] $Path)
@@ -54,7 +57,9 @@ exit /b 1
             [Parameter(Mandatory)] [string] $Mode,
             [bool] $Managed = $true,
             [bool] $AllowFallback = $true,
-            [int] $TimeoutSeconds = 10,
+            # These policy tests are not startup benchmarks; busy Windows hosts
+            # can take more than ten seconds to launch the cmd/findstr fixture.
+            [int] $TimeoutSeconds = 30,
             [string] $Package = '@openai/codex'
         )
         Invoke-PackageSourceCommand -Manager npm -Executable $env:ComSpec `
@@ -119,7 +124,7 @@ Describe 'corporate-first package runner' {
 
     It 'retries public exactly once after an eligible corporate 503' {
         $result = Invoke-FakeNpm -Mode 503
-        $result.Succeeded | Should -BeTrue
+        $result.Succeeded | Should -BeTrue -Because ($result | ConvertTo-Json -Depth 5 -Compress)
         $result.FallbackUsed | Should -BeTrue
         @($result.Attempts).Count | Should -Be 2
         $result.Attempts[0].FailureClass | Should -BeExactly 'http-5xx'
@@ -156,11 +161,26 @@ Describe 'corporate-first package runner' {
     }
 
     It 'classifies a runner-enforced timeout and retries at most once' {
+        # Test the policy deterministically: a busy Windows host can spend the
+        # entire one-second budget starting cmd before it emits corporate context.
+        Mock Invoke-CapturedPackageProcess {
+            [pscustomobject]@{ ExitCode = -1; TimedOut = $true; LaunchFailed = $false; Terminated = $true;
+                Stdout = ''; Stderr = 'request to https://packagefeedproxy.microsoft.io/npm/ is still pending' }
+        }
         $result = Invoke-FakeNpm -Mode timeout -TimeoutSeconds 1
         $result.Succeeded | Should -BeFalse
         @($result.Attempts).Count | Should -Be 2
         $result.Attempts[0].FailureClass | Should -BeExactly 'timeout'
         $result.Attempts[1].FailureClass | Should -BeExactly 'timeout'
+        Should -Invoke Invoke-CapturedPackageProcess -Times 2 -Exactly
+    }
+
+    It 'terminates a real timed-out child without requiring startup output to win a race' {
+        $result = Invoke-FakeNpm -Mode timeout -TimeoutSeconds 1 -AllowFallback $false
+        $result.Succeeded | Should -BeFalse
+        $result.TimedOut | Should -BeTrue
+        $result.ProcessTerminated | Should -BeTrue
+        @($result.Attempts).Count | Should -Be 1
     }
 
     It 'restores parent registry state and removes temporary npm configs' {
@@ -180,6 +200,14 @@ Describe 'corporate-first package runner' {
             if ($null -eq $previous) { Remove-Item Env:npm_config_registry -ErrorAction SilentlyContinue }
             else { $env:npm_config_registry = $previous }
         }
+    }
+
+    It 'redacts signed artifact queries and authorization headers without hiding failure context' {
+        $text = "request to https://store.vsblob.vsassets.io/artifact?sv=1&sig=example-sas&P4=example-signature&se=2099 failed: ETIMEDOUT`nAuthorization: Bearer example-bearer"
+        $protected = Protect-PackageSourceOutput $text
+        $protected | Should -Not -Match 'example-sas|example-signature|example-bearer'
+        $protected | Should -Match 'store\.vsblob\.vsassets\.io/artifact\?sv=1&sig=\*\*\*&P4=\*\*\*&se=2099 failed: ETIMEDOUT'
+        $protected | Should -Match 'Authorization: Bearer \*\*\*'
     }
 
     It 'redacts credentials from captured child output' {

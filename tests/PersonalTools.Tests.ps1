@@ -3,6 +3,8 @@
 BeforeAll {
     $RepoRoot = Split-Path $PSScriptRoot -Parent
     . (Join-Path $RepoRoot 'scripts/personal-tools.ps1')
+    # Exercise the standard owner fixtures, not the developer's deployed profile.
+    function Test-MicrosoftOrganization { $false }
     function Install-DevCli {}
     function Scoop-Install { param([string[]]$apps) }
     function Register-Failure { param($what) }

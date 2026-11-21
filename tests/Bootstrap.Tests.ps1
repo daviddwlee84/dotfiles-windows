@@ -424,7 +424,7 @@ exit 0
         Mock Invoke-ChezmoiSetup {}
 
         {
-            Invoke-Bootstrap -NonInteractive -Role minimal -Name 'Ada' -Email 'ada@example.com'
+            Invoke-Bootstrap -OrganizationProfile none -NonInteractive -Role minimal -Name 'Ada' -Email 'ada@example.com'
         } | Should -Throw '*pwsh validation failed*'
 
         Should -Invoke Resolve-BootstrapCommand -Times 0 -Exactly -ParameterFilter { $CommandName -eq 'chezmoi' }

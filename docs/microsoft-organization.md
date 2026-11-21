@@ -133,12 +133,40 @@ self-updaters, user scripts, plugins already configured elsewhere, or WSL's own 
   npm agents use `%LOCALAPPDATA%\dotfiles\npm`. Existing recognized Pi installs can
   run from their original prefix, but are not taken over for upgrades; migrate them
   separately after reviewing ownership.
-- Existing differently owned tools are preserved rather than duplicated. This may
+- uv storage must be non-Scoop too: a WinGet `uv.exe` can still inherit Scoop's
+  `UV_TOOL_DIR`, `UV_TOOL_BIN_DIR`, `UV_CACHE_DIR`, `UV_PYTHON_INSTALL_DIR` and
+  `UV_PYTHON_BIN_DIR`. Missing or recognized Scoop-owned values default to
+  `%LOCALAPPDATA%\dotfiles\uv\{tools,bin,cache,python,python-bin}` in the process
+  or package child only. Explicit non-Scoop locations are preserved. The shell
+  promotes the tool `bin` directory once it exists; open a new shell after the
+  first installation. Existing environments are not moved/deleted and User
+  variables are not rewritten; approved tools are installed separately in the
+  selected non-Scoop tool root. Do not run `uv tool update-shell` as a migration shortcut.
+- Other differently owned tools are preserved rather than duplicated. This may
   require an explicit migration before the new profile can manage updates.
 - No automatic Pueue service/queue migration, saved Herdr session rewrite, Scoop
   removal, prompt replacement, or environment-local file edits.
 - Open a new approved PowerShell/GUI session after changing profiles. An already
   running Herdr server retains its environment and saved absolute shell paths.
+
+## Corporate registry troubleshooting
+
+Keep `allowPublicPackageFallback=false` while diagnosing the company feed. A
+`.whl.metadata` HTTP 404 is not an eligible transient fallback; a successful index
+or HEAD request alone does not prove installation works. Retry the same company
+source explicitly and inspect the actual installer result and executable.
+
+Microsoft repo-owned uv commands default to `UV_HTTP_CONNECT_TIMEOUT=60`,
+`UV_HTTP_TIMEOUT=60` and `UV_CONCURRENT_DOWNLOADS=1` **only in the child process**.
+These conservative transport settings accommodate slow artifact redirects without
+changing the registry, proxy, DNS, authentication or TLS. Explicit process/caller
+settings win, and the runner's overall timeout still applies. These are mitigations,
+not proof of a feed or network product's root cause. See the
+[uv environment reference](https://docs.astral.sh/uv/reference/environment/).
+
+Captured package output masks signed artifact query credentials and Authorization
+headers while retaining host/path/error context. Raw upstream logs can still contain
+credentials; do not share signed redirect URLs or unreviewed debug logs.
 
 ## Diagnostics and upgrades
 

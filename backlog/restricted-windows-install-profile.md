@@ -63,7 +63,7 @@ entries. Eight core executable version probes passed, and the original five trac
 Herdr/Bun/Pueue processes remained alive. Herdr unmanaged tables, local overrides and
 Claude settings/HUD matched their snapshots.
 
-Dogfood fixes in this working tree:
+Dogfood fixes committed locally as `32b27e1`:
 - Alacritty must use the explicit PowerShell executable, not inherited `pwsh` lookup.
 - Stream winget install progress and identify the package waiting for native UAC;
   `--silent` / `--disable-interactivity` do not supply administrator consent.
@@ -71,13 +71,82 @@ Dogfood fixes in this working tree:
   installer does not add `7z` to PATH. The deployed native ARM64 7-Zip probe passed.
 - Focused tests for these fixes passed (46 tests).
 
-**Not green / merge hold:** Pi's company npm artifact download timed out (rollback
+**Initial result / merge hold (superseded in part below):** Pi's company npm artifact download timed out (rollback
 reported success); Apprise and LiteLLM failed on company PyPI `.whl.metadata` HTTP 404.
 No public-registry fallback or security-policy change was used. Other unapproved
 sources remain pending. Apply's exit 0 is intentionally nonfatal and does not make
 these three failed installations successful. Investigate the corporate feed before
 claiming complete application readiness; this existing-machine dogfood is not a
 clean-machine E2E install test.
+
+## Corporate registry follow-up — 2026-11-09
+
+- Pi's same-source npm retry succeeded (`FallbackUsed=false`, 121 packages).
+  Its deployed no-profile launcher reported **1.4.0**. The retry's npm timeout/retry
+  options were command-scoped; persistent npm config was unchanged.
+- Apprise's metadata 404 no longer reproduced. A subsequent pywin32 artifact
+  connection timeout was resolved in a retry with 60-second connect/read timeouts
+  and one concurrent download. This does not establish a network product's root cause.
+- The first successful Apprise retry exposed inherited Scoop `UV_*` storage: even
+  WinGet uv installed into the old Scoop tool environment. That retry **did change
+  the old Apprise environment**; do not describe the whole investigation as leaving
+  it untouched. No old directories were deleted or moved.
+- The new policy redirects absent/Scoop-owned uv storage to
+  `%LOCALAPPDATA%\dotfiles\uv` only in process/child environments, retaining explicit
+  non-Scoop locations and persisted User values. Apprise was then installed through
+  the corporate feed into this independent root. Its **2.1.0** executable ran and
+  `win32api`, `win32con`, `win32gui` imported successfully using its environment's
+  Python with `-I`; no notification was sent.
+- Microsoft repo-owned uv child defaults are now 60-second connect/read timeouts
+  and download concurrency 1; explicit caller/process settings win. Registry,
+  fallback classification, TLS, DNS, GSA and proxy settings are unchanged. Captured
+  output redacts artifact signatures and Authorization header credentials.
+
+**Still blocked: LiteLLM.** The same corporate-only install now fails on
+`litellm-1.106.1-cp310-abi3-macosx_10_12_x86_64.whl.metadata`, not the earlier Granian
+metadata. The company simple index returned 200 and advertised metadata; a bounded
+metadata GET returned 404 with this backend message:
+
+```text
+Cannot find the file litellm-1.106.1-cp310-abi3-macosx_10_12_x86_64.whl.metadata in package 'litellm 1.106.1' in feed 'pypi-public'
+```
+
+This is evidence for the corporate feed maintainer, not a reason to enable public
+fallback. The index listed Windows amd64 wheels and an sdist for 1.106.1, but no
+Windows ARM64 or universal wheel. Platform compatibility still needs review even
+if the feed metadata is repaired. No automatic version pin/downgrade, x64 runtime
+switch or source-build workaround was introduced. LiteLLM is not verified usable;
+merge remains on hold, and pending source approvals/adapters remain unchanged.
+
+The OrganizationPolicy module and both shared skills were backed up under the
+private dogfood snapshot and target-applied with scripts/externals excluded. A new
+no-profile child imported the deployed module through a function scope, then
+resolved Apprise to the owned uv bin and ran Apprise/Pi version probes successfully.
+Process PATH had zero Scoop entries, the checked persisted User PATH/uv variables
+were unchanged, and the three deployed targets converged. Changed-file analyzer
+checks reported zero Errors (one pre-existing automatic-variable warning).
+
+The post-migration full Pester run reported **879 passed, 26 failed, 8 skipped**;
+OrganizationProfile and PackageSourceRunner passed all **49** tests. The failures
+exposed legacy fixtures inheriting the live Microsoft profile: template renders
+skipped unapproved hooks/plugins, metadata/cache fixtures auto-imported live source
+policy, and the Pi argv child found the real deployed policy instead of its fake
+Scoop owner. Fixtures now select `none` or stub only the policy boundary for mocked
+operations; the real Pi launcher child gets an isolated home. Production policy
+was not weakened. These fixture changes also pass analyzer Error checks.
+
+On 2026-11-22 the native Windows full-suite rerun after the fixture edits
+reported 901 passed, 5 failed, 7 skipped and one failed container. All five
+failed test entries were LazyGit branch-insights cases. A separate run passed
+all five LazyGit cases, all 35 OrganizationProfile cases and all 14
+PackageSourceRunner cases. The full-suite gate is still open; isolated success
+does not establish the cause of the full-suite failure.
+
+Replaying the runtime prerequisite and profile on `ddbceb6` produced 920
+passed, 5 failed and 8 skipped. The LazyGit container failed during setup with
+Pester's escaped `break`/`continue` diagnostic. A clean `ddbceb6` worktree on
+the same host also produced that container error (839 passed, 18 failed
+overall). Treat this as a known baseline failure, not a green full-suite run.
 
 The investigation below is retained as historical evidence, not live approval.
 
